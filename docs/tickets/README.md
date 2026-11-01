@@ -29,16 +29,16 @@ Goal: INV-1001 TXT flows through the CLI to a persisted mock receipt in offline 
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P1-01](P1-01-source-intake-and-txt-extraction.md) | Source intake and clean TXT extraction | P0-03 | todo |
-| [P1-02](P1-02-ledger-writes.md) | Ledger writes and audit events | P0-03, P0-04 | todo |
-| [P1-03](P1-03-reasoning-interface-and-offline-simulator.md) | Reasoning interface and offline simulator | P0-03 | todo |
-| [P1-04](P1-04-eligibility-policy-gate.md) | Deterministic eligibility policy gate | P0-02, P0-03 | todo |
-| [P1-05](P1-05-guarded-mock-payment-service.md) | Guarded, idempotent mock payment service | P0-04, P1-02, P1-04 | todo |
-| [P1-06](P1-06-agent-nodes.md) | Ingestion, validation, approval, and payment agent nodes | P1-01, P1-03, P1-04, P1-05, P0-06–P0-08 | todo |
-| [P1-07](P1-07-workflow-and-processing-service.md) | LangGraph workflow and shared processing service | P1-02, P1-06 | todo |
-| [P1-08](P1-08-structured-logging-and-results.md) | Structured logging and result output | P0-01, P0-03 | todo |
-| [P1-09](P1-09-cli-entry-point.md) | CLI entry point | P1-07, P1-08 | todo |
-| [P1-10](P1-10-phase-1-end-to-end-tests.md) | Phase 1 end-to-end and offline-network tests | P1-09 | todo |
+| [P1-01](P1-01-source-intake-and-txt-extraction.md) | Source intake and clean TXT extraction | P0-03 | done |
+| [P1-02](P1-02-ledger-writes.md) | Ledger writes and audit events | P0-03, P0-04 | done |
+| [P1-03](P1-03-reasoning-interface-and-offline-simulator.md) | Reasoning interface and offline simulator | P0-03 | done |
+| [P1-04](P1-04-eligibility-policy-gate.md) | Deterministic eligibility policy gate | P0-02, P0-03 | done |
+| [P1-05](P1-05-guarded-mock-payment-service.md) | Guarded, idempotent mock payment service | P0-04, P1-02, P1-04 | done |
+| [P1-06](P1-06-agent-nodes.md) | Ingestion, validation, approval, and payment agent nodes | P1-01, P1-03, P1-04, P1-05, P0-06–P0-08 | done |
+| [P1-07](P1-07-workflow-and-processing-service.md) | LangGraph workflow and shared processing service | P1-02, P1-06 | done |
+| [P1-08](P1-08-structured-logging-and-results.md) | Structured logging and result output | P0-01, P0-03 | done |
+| [P1-09](P1-09-cli-entry-point.md) | CLI entry point | P1-07, P1-08 | done |
+| [P1-10](P1-10-phase-1-end-to-end-tests.md) | Phase 1 end-to-end and offline-network tests | P1-09 | done |
 
 Suggested order: P1-01, P1-02, P1-03, P1-04, P1-08 in parallel → P1-05 → P1-06 → P1-07 → P1-09 → P1-10.
 

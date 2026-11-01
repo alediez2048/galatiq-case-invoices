@@ -1,6 +1,6 @@
 # P1-03 — Reasoning interface and offline simulator
 
-Phase: 1 · Status: todo · Depends on: P0-03 · Requirements: A07, A08
+Phase: 1 · Status: done · Depends on: P0-03 · Requirements: A07, A08
 
 ## Context
 

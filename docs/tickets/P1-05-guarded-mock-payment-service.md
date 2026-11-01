@@ -1,6 +1,6 @@
 # P1-05 — Guarded, idempotent mock payment service
 
-Phase: 1 · Status: todo · Depends on: P0-04, P1-02, P1-04 · Requirements: A05, P05
+Phase: 1 · Status: done · Depends on: P0-04, P1-02, P1-04 · Requirements: A05, P05
 
 ## Context
 

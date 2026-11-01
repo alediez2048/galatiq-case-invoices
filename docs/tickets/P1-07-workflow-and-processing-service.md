@@ -1,6 +1,6 @@
 # P1-07 — LangGraph workflow and shared processing service
 
-Phase: 1 · Status: todo · Depends on: P1-06, P1-02 · Requirements: A07, P06
+Phase: 1 · Status: done · Depends on: P1-06, P1-02 · Requirements: A07, P06
 
 ## Context
 

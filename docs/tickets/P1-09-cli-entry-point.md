@@ -17,7 +17,7 @@ The assignment requires `python main.py --invoice_path=data/invoices/invoice1.tx
   - `--events` (default `output/events.jsonl`).
   - `--evaluation-date YYYY-MM-DD` (default today, recorded in the result).
 - Exit codes: `0` for any completed business outcome (including `rejected`, `duplicate`, waiting states); non-zero for `failed` and usage errors.
-- Missing database or uninitialized schema → clear message telling the user to run the seed script; do not auto-create silently.
+- Missing database or uninitialized schema → create it and run the idempotent seed (P0-05 never resets existing data), printing `Initialized <path> and seeded inventory` to stderr. This keeps the assignment's bare command working on a fresh clone and matches the API's startup behavior (P5-01). (Revised 2026-11-01; earlier wording refused to run.)
 - Update `docs/development.md` with run examples.
 
 ## Decision needed
@@ -28,5 +28,5 @@ The assignment requires `python main.py --invoice_path=data/invoices/invoice1.tx
 
 - [ ] `python main.py --invoice_path=data/invoices/invoice_1001.txt` runs after documented setup and prints a `paid_mock` result.
 - [ ] `--mode live` fails with a clear "not available yet" message and exit code ≠ 0; invoice remains unpaid.
-- [ ] Running against an unseeded database prints the seed instruction and exits non-zero.
+- [ ] Running against a missing database creates and seeds it, prints the notice, and completes the run; a second run prints no notice.
 - [ ] `--help` documents every option.

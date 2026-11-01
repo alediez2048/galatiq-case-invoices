@@ -19,6 +19,6 @@ The approval agent proposes approve/reject/review with evidence; a critique chal
 ## Acceptance criteria
 
 - [ ] Fake provider recommending approve on INV-1002 → critique issue `uncited_blocker`; gate result `rejected` regardless.
-- [ ] Fake provider recommending reject on clean INV-1001 → recorded; gate result `rejected` with model reason (per P1-04), flagged as `model_rejected_clean_invoice` (warning) for review in demo analysis.
+- [ ] Fake provider recommending reject on clean INV-1001 → recorded; gate result `awaiting_human_approval` with finding `model_disagreement` (per P1-04); a human approve then pays, a decline rejects.
 - [ ] A clean otherwise-valid USD 10,000.01 fixture → critique confirms threshold scrutiny; gate → `awaiting_human_approval`.
 - [ ] Exactly one critique and at most one revision per run (asserted with call counts).

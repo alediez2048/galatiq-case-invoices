@@ -9,7 +9,7 @@ Dates arrive as `2026-01-15`, `Jan 30 2026`, `January 27, 2026`, `26-Jan-2O26`, 
 ## Scope
 
 - Date parser accepting ISO, `Mon D YYYY`, `Month D, YYYY`, `D-Mon-YYYY`, and slash dates. For `NN/NN/YYYY`, accept `MM/DD` only when unambiguous (one component > 12); otherwise `ambiguous_date` → `needs_review`. Apply after P2-08's `rule:ocr_digit`.
-- Relative words (`yesterday`, `today`, `ASAP`, `immediately`) → `due_date_unresolved` (blocker for payment; not converted using the system clock).
+- Relative words (`yesterday`, `today`, `ASAP`, `immediately`) → `due_date_unresolved` (severity `review`: routes to `needs_review` unless a blocker also exists, as in 1003; never converted using the system clock). `ambiguous_date`, `unsupported_currency`, and `currency_conflict` are also `review` severity.
 - Due date earlier than invoice date → `due_before_invoice_date` (warning).
 - Terms check: when `Net N` is stated and both dates parse, compare due date with invoice date + N days; mismatch → `terms_inconsistent` (warning).
 - Currency: explicit code wins; `$` with no code → USD with `currency_assumed_usd` (generalizes the minimal P1-01 rule to every format); explicit `EUR` → `unsupported_currency` (review); conflicting signals (e.g. `€` with `USD`) → `currency_conflict` (review).

@@ -1,6 +1,8 @@
 # P6-03 — Demo setup and evaluator walkthrough
 
-Phase: 6 · Status: todo · Depends on: P5-10, P3-10 · Requirements: A10, P11
+Phase: 6 · Status: todo · Depends on: P5-10 (offline half); P3-10 (live half only) · Requirements: A10, P11
+
+Split 2026-11-01: the **offline walkthrough** (steps 2–9 and 11 in offline mode) depends only on P5-10 and is what P6-04 and P6-06 require. The **live walkthrough** (step 1 and 10 plus a live pass of the rest) depends on P3-10 and is added when credentials exist; if they never do, P6-04 discloses it instead.
 
 ## Context
 

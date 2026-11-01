@@ -22,6 +22,9 @@ Track each item to a recorded resolution in `docs/decisions.md`, or a disclosure
 | 8 | INV-1012 auto-pay vs always review | P2-11 |
 | 9 | How corrected submissions supersede unpaid versions | P4-05 |
 | 10 | README layout for solution vs assignment | P6-04 |
+| 11 | Model disagrees with a clean invoice → `awaiting_human_approval` | **Resolved 2026-11-01** (decisions.md round 3) |
+| 12 | Scope cut line (core vs deferred) | **Resolved 2026-11-01** (tickets index) |
+| 13 | Provider adapter: official `xai_sdk` vs OpenAI-compatible client | **Resolved 2026-11-01**: keep `xai_sdk` |
 
 - Where the evaluator can be asked, draft the question; send only with the user's approval.
 - Items decided earlier are marked resolved with a link to the decision.

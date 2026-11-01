@@ -10,10 +10,10 @@ P1-07 only detects byte-identical files. Phase 2 must also handle the same invoi
 
 - Business identity = vendor key + invoice-number identity key (P2-08).
 - **Refine the P1-02 semantic hash** to cover payable content only: identity, currency, due date, and canonical lines (item, quantity, unit price) plus the final total. Exclude stated subtotal/tax lines, notes, terms text, filename, and layout, because 1011 PDF omits the subtotal and tax lines that 1011 TXT states.
-- After normalization, before validation:
-  - Same identity + same semantic hash → `duplicate`, referencing the prior outcome and receipt.
-  - Same identity + different hash + prior version paid → `needs_review` with blocker `revision_after_payment`. No payment.
-  - Same identity + different hash + prior version unpaid → `needs_review` with `version_conflict`; both versions stay unpaid.
+- After normalization, before validation (same exemptions as P1-07: a prior `failed` run is not a duplicate; runs linked via `retry_of` / `mode_switch_of` skip this check; an explicitly requested offline run after a live `awaiting_human_approval` is therefore a separate labeled run that never inherits the live recommendation, per constraints):
+  - Same identity + same semantic hash → run finishes `duplicate`, referencing the prior run, outcome, and receipt; `invoices.status` unchanged.
+  - Same identity + different hash + prior version paid → `needs_review` with `revision_after_payment` (severity `review`). No payment; `invoices.current_version` stays on the paid version.
+  - Same identity + different hash + prior version unpaid → `needs_review` with `version_conflict` (severity `review`); both versions stay unpaid.
 - Record each new source and version even when blocked.
 - At payment, the P0-04 uniqueness constraint remains the final guard.
 

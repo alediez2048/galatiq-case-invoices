@@ -1,6 +1,8 @@
 # P5-01 — FastAPI application skeleton
 
-Phase: 5 · Status: todo · Depends on: P1-07, P4-05 · Requirements: P12
+Phase: 5 · Status: todo · Depends on: P1-07, P2-11, P3-08 (retry endpoint only) · Requirements: P12
+
+Dependency revised 2026-11-01: only P5-04 and P5-09 need Phase 4. The skeleton, read endpoints, and processing UI can ship after Phase 2 so an evaluator-visible UI exists early.
 
 ## Context
 
@@ -13,7 +15,9 @@ FastAPI handlers and the CLI call the same Python service; the backend, not the 
 - Bind to `127.0.0.1` by default; CORS allows only the local Vite dev origin.
 - Uniform error body `{code, message, details}` mapping service errors: `stale_version` → 409, `action_not_allowed` → 409, validation → 422, not found → 404, limits → 413.
 - A single process-wide lock serializes processing and review mutations.
-- Startup: ensure schema and run the idempotent seed (mockup allows automatic seeding; never resets data).
+- Startup: ensure schema and run the idempotent seed (mockup allows automatic seeding; never resets data), same behavior as the CLI (P1-09).
+- `idempotency_keys` table (key, endpoint, response_json, created_at) added in this ticket's schema bump, used by P5-02 and P5-04.
+- Serve the built frontend (`frontend/dist`) as static files from the same process, so `uv run python -m invoice_processing.api` is the whole app for an evaluator; the Vite dev server remains a developer-only path.
 - `GET /api/health` and `GET /api/settings/readiness` (mode availability, live settings present yes/no, inventory seeded, DB path). Never returns secret values.
 - Export the OpenAPI schema to `frontend/src/api/openapi.json` via a script for the typed client (P5-05).
 - `python -m invoice_processing.api` (or `uvicorn` command) documented in `docs/development.md`.

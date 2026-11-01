@@ -12,9 +12,10 @@ In `review.py`:
 
 - `approve(invoice_id, expected_version, reviewer, reason)` and `decline(...)`:
   - Allowed only when status is `awaiting_human_approval` and `expected_version` is current; otherwise `action_not_allowed` or `stale_version`.
-  - Re-runs the deterministic gate on the persisted version before recording; any blocker → refused.
-  - `approve` writes a `HumanReview` and calls the payment service; `decline` writes the review and sets `rejected` with the reason.
-- Extend `payments.pay` (P1-05): for totals > 10,000.00 it requires a `HumanReview(approve)` bound to the same version and policy version, inside the payment transaction. Gate `approved` alone is insufficient above the threshold.
+  - Writes the `HumanReview` row, then re-runs `policy.evaluate(invoice, findings, recommendation, human_review=review)` on the persisted version: any blocker or review finding → still refused (the review row is kept as audit of the attempt); otherwise the gate now returns `approved`.
+  - `approve` then calls the payment service; `decline` sets `rejected` with the reason.
+  - Also handles the `model_disagreement` wait from P1-04 (clean invoice the model rejected): same approve/decline actions.
+- `payments.pay` (P1-05) already requires the matching `HumanReview(approve)` row inside its transaction for totals > 10,000.00 and for `model_disagreement`; this ticket adds the tests that prove it.
 - Repeated `approve` on a paid invoice returns the existing receipt; no second payment.
 - Human review never holds a database transaction open while waiting.
 

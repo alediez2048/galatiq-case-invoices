@@ -119,7 +119,7 @@ Goal: the approved mockup becomes a working React + TypeScript app backed by Fas
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P5-01](P5-01-fastapi-app-skeleton.md) | FastAPI application skeleton | P1-07, P4-05 | todo |
+| [P5-01](P5-01-fastapi-app-skeleton.md) | FastAPI application skeleton | P1-07, P2-11, P3-08 (retry only) | todo |
 | [P5-02](P5-02-submission-and-progress-endpoints.md) | Submission and processing-progress endpoints | P2-01, P5-01 | todo |
 | [P5-03](P5-03-read-and-dashboard-endpoints.md) | Invoice, detail, and dashboard read endpoints | P5-01 | todo |
 | [P5-04](P5-04-review-action-endpoints.md) | Review action endpoints | P4-02 – P4-05, P5-01 | todo |
@@ -130,7 +130,7 @@ Goal: the approved mockup becomes a working React + TypeScript app backed by Fas
 | [P5-09](P5-09-needs-review-and-actions.md) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | todo |
 | [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | todo |
 
-Suggested order: P5-01 → P5-02, P5-03, P5-04, P5-05 in parallel → P5-06, P5-07, P5-08 in parallel → P5-09 → P5-10.
+Suggested order: P5-01 → P5-02, P5-03, P5-05 in parallel → P5-06, P5-07, P5-08 in parallel (these need only Phase 2, so they can run alongside Phases 3–4) → P5-04 and P5-09 after Phase 4 → P5-10.
 
 New tooling proposed (not yet user-confirmed): `openapi-typescript` for the typed client, Playwright and axe for browser and accessibility tests.
 
@@ -142,8 +142,8 @@ Goal: a reproducible, documented public submission. Exit criteria: clean-install
 | --- | --- | --- | --- |
 | [P6-01](P6-01-robustness-test-campaign.md) | Robustness test campaign | P2-11, P3-09, P4-07, P5-10 | todo |
 | [P6-02](P6-02-audit-trail-completeness.md) | Audit trail completeness and export | P4-07, P5-03 | todo |
-| [P6-03](P6-03-demo-setup-and-walkthrough.md) | Demo setup and evaluator walkthrough | P3-10, P5-10 | todo |
-| [P6-04](P6-04-submission-documentation.md) | Submission documentation and business-impact narrative | P6-01, P6-03 | todo |
+| [P6-03](P6-03-demo-setup-and-walkthrough.md) | Demo setup and evaluator walkthrough | P5-10 (offline half); P3-10 (live half) | todo |
+| [P6-04](P6-04-submission-documentation.md) | Submission documentation and business-impact narrative | P2-11, P6-03 offline half | todo |
 | [P6-05](P6-05-open-question-resolution.md) | Resolve or disclose open questions | — | todo |
 | [P6-06](P6-06-release-checks-and-publish.md) | Release checks and public GitHub submission | P6-01 – P6-05 | todo |
 
@@ -151,6 +151,21 @@ Suggested order: P6-05 can start now → P6-01 and P6-02 in parallel → P6-03 �
 
 Open decision in P6-04: README layout (solution section on top with the assignment text preserved below, recommended).
 
+## Cut line (decided 2026-11-01)
+
+If time runs short, **core** ships and **deferred** does not. Core is still a complete, demonstrable product: CLI + corpus + live Grok + corrections and high-value approval + a working UI + a public repo.
+
+| | Tickets |
+| --- | --- |
+| **Core** | All of P0, P1, P2 · P3-01 – P3-06, P3-09 (P3-10 when credentials exist) · P4-01, P4-02, P4-04, P4-05, P4-07 (without thread tests) · P5-01, P5-02, P5-03, P5-04, P5-05, P5-06, P5-07, P5-08, P5-09 (simplified: approve/decline and one correction form) · P6-03 offline half, P6-04, P6-05, P6-06 |
+| **Deferred** | P4-03 (identity corrections) · P4-06 (review CLI) · P5-10 axe and screenshot review (keep the Playwright happy-path tests) · P6-01 generated-variation fuzzing (keep corpus, replay, threshold, error-injection) · P6-02 audit export CLI (keep the completeness test) · thread-concurrency tests in P4-04 |
+
+Deferred tickets stay in the index with their status; their scope is not removed, only sequenced last.
+
+## Plan review (2026-11-01)
+
+An independent review of all 62 tickets produced 24 findings; every fixture value cited in the tickets was verified correct. Fixes applied in place, each marked with the date: run vs invoice status split and a `review` severity (P0-03), arithmetic rule (P0-07), duplicate detection excludes failed/retry/mode-switch runs and always creates a run (P1-07, P2-10, P3-08), gate takes a `human_review` input and model disagreement on a clean invoice waits for a human rather than rejecting (P1-04, P1-05, P3-06, P4-04), provisional identity for invoices without vendor/number (P1-02), budget counts top-level steps only (P3-04), `INVOICE #` pattern and email-header skip (P2-02, P2-03), mutable `version_status` (P4-01, P4-05), corrections allowed on rejected invoices (P4-02, P4-07), UI decoupled from Phase 4 (P5-01), offline/live walkthrough split (P6-03, P6-04), CLI auto-seeds like the API (P1-09), API idempotency table and sample sanitization (P5-01, P5-02).
+
 ## All open decisions
 
-Collected in [P6-05](P6-05-open-question-resolution.md): default CLI mode (P1-09), INV-1012 auto-pay (P2-11), corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics).
+Collected in [P6-05](P6-05-open-question-resolution.md): default CLI mode (P1-09), INV-1012 auto-pay (P2-11), corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics). Resolved 2026-11-01: model disagreement routes to human approval; scope cut line adopted; provider adapter stays on the official `xai_sdk`.

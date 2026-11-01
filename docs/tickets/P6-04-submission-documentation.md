@@ -1,6 +1,6 @@
 # P6-04 — Submission documentation and business-impact narrative
 
-Phase: 6 · Status: todo · Depends on: P6-01, P6-03 · Requirements: A10
+Phase: 6 · Status: todo · Depends on: P2-11, P6-03 (offline half); final numbers from P6-01 and P3-10 when available · Requirements: A10
 
 ## Context
 

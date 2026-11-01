@@ -15,6 +15,17 @@ Status: user-confirmed after two Matt Pocock grilling rounds. The user approved 
 3. **High-value approval:** otherwise-valid USD totals above 10,000 require explicit human approval after recommendation and critique. Eligible clean totals at or below 10,000 may auto-pay through the mock service. No human action can override hard blockers.
 4. **Live failure behavior:** failed Grok reasoning leaves the invoice unpaid with an actionable error and explicit retry. Offline simulation requires a separate selection/run and never silently replaces live processing.
 
+## Round 3 — Plan review (2026-11-01)
+
+After an independent review of the 62 implementation tickets, the user approved:
+
+1. **Model disagreement waits for a human.** When the deterministic checks find no blocker but the model's final recommendation is reject or review, the invoice enters `awaiting_human_approval` with a `model_disagreement` finding, reusing the approve/decline actions. It is not rejected outright; a human cannot override a real blocker this way.
+2. **Scope cut line.** The tickets index marks a core set that ships regardless and a deferred set (identity corrections, review CLI, accessibility audits, fuzzing, audit export, thread-concurrency tests) that ships only if time remains.
+3. **Provider adapter stays on the official `xai_sdk`**; the reasoning interface still allows a second adapter later.
+4. **Native execution for Phase 0**: the session implements the plan tasks directly with one fresh end-of-phase review.
+
+Design corrections adopted without needing a user decision: run status and invoice status are separate enums; findings have a `review` severity distinct from `blocker`; duplicate detection ignores failed runs and linked retry/mode-switch runs and always records a run; the policy gate accepts a version-bound human review as input; the per-invoice model budget counts top-level steps, not tool turns.
+
 ## Consequences and verification
 
 - Add a persisted human-approval waiting state and version-bound correction/approval operations.

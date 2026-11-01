@@ -17,7 +17,7 @@ Rules in `normalize.py`, each emitting a `NormalizationEvent` (raw, normalized, 
 - **OCR digit artifacts**: letter `O` → `0` only inside a token that is otherwise a valid number or year (`3,500.O0`, `2O26`) (`rule:ocr_digit`). Also verify the corrected amount against qty × price when available; if it disagrees, emit `ambiguous_normalization` → `needs_review`.
 - **Invoice-number identity key**: uppercase, remove separators, strip a leading `INV` (`INV 1012`, `INV-1012` → `1012`; `1002` → `1002`). Display value keeps the source text. Record `rule:invoice_number_format`.
 - **Vendor key**: case-fold and collapse whitespace only. `QuickShip Distributers` is not spell-corrected; `(formerly FastShip Ltd.)` does not create an alias.
-- Any change that a rule cannot fully justify is not applied and emits `ambiguous_normalization`.
+- Any change that a rule cannot fully justify is not applied and emits `ambiguous_normalization` (severity `review`).
 
 ## Acceptance criteria
 

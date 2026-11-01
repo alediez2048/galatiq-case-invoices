@@ -9,7 +9,8 @@ Phase: 5 · Status: todo · Depends on: P5-04, P5-08 · Requirements: P13, P14
 ## Scope
 
 - Queue view with three groups from `GET /api/review-queue`; actions rendered only from server-provided `AllowedActions`.
-- Correction form: pick a finding/field, select evidence in the source panel (stores its location), enter corrected value and reason, reviewer name (remembered locally per browser as a convenience). Shows before/after; on submit shows revalidation progress via the new run.
+- Correction form: pick a finding/field, select evidence in the source panel (stores its location), enter corrected value and reason, reviewer name (remembered locally per browser as a convenience). Shows before/after; the submit copy reads "Save correction and revalidate. Saving invalidates prior approval; an eligible invoice up to USD 10,000 may auto-pay." On submit shows revalidation progress via the new run.
+- Also surfaces the `model_disagreement` wait (clean invoice the model rejected) with the same approve/decline panel and the model's stated reasons.
 - Approval panel for `awaiting_human_approval`: agent recommendation and critique, reason field, Decline and Approve mock payment, both bound to the displayed version.
 - Unresolved blockers: explanation only (e.g. "EUR settlement remains blocked; human approval cannot override it.").
 - On `409` stale responses: replace the panel with the current record and a "This invoice changed since you opened it" notice; nothing is resubmitted automatically.

@@ -9,7 +9,7 @@ One invoice per submission. Selecting a file never starts processing. Stages upd
 ## Scope
 
 - `GET /api/samples`: list files in `data/invoices/` with a descriptive label per sample ("Clean invoice", "Stock mismatch", "Messy formatting", "Conflicting totals", "Unsupported currency", …) and invoice number. Labels describe inputs, never claim outcomes.
-- `POST /api/runs` with either a multipart upload or `{sample: name}`, plus required `mode` (`offline` | `live`) and a client-generated `Idempotency-Key` header. The same key returns the existing run instead of starting another.
+- `POST /api/runs` with either a multipart upload or `{sample: name}` (`name` must be a bare basename present in `data/invoices/`; anything else is 422), plus required `mode` (`offline` | `live`), optional `evaluation_date` (defaults to a workspace setting, itself defaulting to today), and a client-generated `Idempotency-Key` header. The same key returns the existing run instead of starting another. Duplicate submissions get a normal run (status `duplicate`, P1-07), so polling works the same.
   - Uploads stream to the gitignored `uploads/` directory with the 10 MiB cap enforced while streaming; filenames sanitized; stored by content hash.
   - Live mode refused with a readiness error if not configured.
   - Returns `202` with `run_id`; processing runs in a background worker under the P5-01 lock.

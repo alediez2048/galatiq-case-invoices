@@ -13,7 +13,7 @@ The review queue separates extraction corrections, eligible high-value approvals
 - Corrected-invoice submission: a new source for an existing, **unpaid** identity whose prior versions are all `rejected`, `needs_review`, or `failed`:
   - Recorded as a new version with `origin = source`, linked to the prior version.
   - Goes through full processing.
-  - Prior versions stay as history and are marked `superseded`.
+  - Prior versions stay as history with `version_status = superseded` (the one mutable column on `invoice_versions`, P4-01); `invoices.status` becomes the new version's outcome.
 
 ## Decision needed
 

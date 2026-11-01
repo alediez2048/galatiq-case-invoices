@@ -28,4 +28,4 @@ Fixtures in `tests/fixtures/review/` (threshold fixtures reused from P3-06):
 ## Acceptance criteria
 
 - [ ] All scenarios pass offline with the network guard, plus the live-failure scenario with the scripted fake.
-- [ ] No hard blocker can be cleared by any review action (property-style test over all blocker codes).
+- [ ] No blocker or review finding can be cleared by approve/decline (property-style test over all such codes); a correction may change only extracted values that the source supports, and the corrected version is re-validated from scratch rather than having findings removed.

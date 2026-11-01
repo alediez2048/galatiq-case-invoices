@@ -10,7 +10,7 @@ Live mode requires explicit configuration, credentials, and internet access. No 
 
 - `src/invoice_processing/settings.py`: live settings read only when `mode == "live"`:
   - `XAI_API_KEY` (required), `XAI_MODEL` (required, no hard-coded default; docs examples on 2026-11-01 use `grok-4.7`), `XAI_TIMEOUT_SECONDS` (default 30), `MODEL_CALL_BUDGET` (default 6).
-  - Optional `.env` loading for local use; `.env.example` committed with placeholder values only.
+  - Optional `.env` loading for local use; `.env.example` committed with a placeholder key and the model name verified in P3-10 (so an evaluator knows what to set), repeated in the README.
 - `get_provider("live")` (P1-03) now builds the xAI adapter (P3-02) instead of failing; missing key or model → clear configuration error before any invoice record is created.
 - CLI `--mode live` enabled; on start prints `Mode: live model (<model>) — invoice text will be sent to xAI`.
 - `python -m invoice_processing.readiness`: reports which live settings are present (never their values) without calling the network unless `--ping` is passed.

@@ -9,7 +9,8 @@ Failed live reasoning leaves the invoice unpaid with an actionable error and exp
 ## Scope
 
 - Any model error code from P3-02/P3-04 → run `failed` with that code, `recoverable = true`, and the stage reached. Deterministic findings already computed are kept.
-- `service.retry_run(run_id) -> ProcessingResult`: allowed only for recoverable failed runs; creates a new run in the **same mode** linked to the original (`retry_of`), reprocesses from the stored source, and respects duplicate/payment protections.
+- `service.retry_run(run_id) -> ProcessingResult`: allowed for recoverable failed runs, including `interrupted` ones from the P1-07 startup sweep; creates a new run in the **same mode** linked to the original (`retry_of`), which exempts it from duplicate detection; reprocesses from the stored source; payment uniqueness still applies, so a retry after a committed payment reveals the existing receipt rather than paying again.
+- A user-requested run of the same source in the other mode is recorded with `mode_switch_of` pointing at the latest run of that source, also exempt from duplicate detection, never inheriting the earlier recommendation or approval.
 - CLI: `python main.py --retry RUN_ID`. Prints the original failure and the new outcome.
 - Switching modes: running the same invoice with `--mode offline` creates a new run labeled offline; it never reuses live recommendations, and any payment it makes still counts against the same business identity.
 - Failure result includes a user message, the error code, and the next actions (`retry`, or `run offline as a separate simulation`).

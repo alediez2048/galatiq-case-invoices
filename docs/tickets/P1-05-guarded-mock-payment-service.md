@@ -13,7 +13,7 @@ Only the payment service may call the mock payment, and only after rechecking pe
 - `mock_payment(vendor, amount)` matching the assignment's behavior (returns `{"status": "success"}`), with `amount` as `Decimal` and currency passed alongside.
 - `pay(conn, invoice_id, version_id, run_id) -> PaymentResult`:
   1. Open `BEGIN IMMEDIATE` transaction.
-  2. Reread persisted gate result for this run/version; require `approved` and USD.
+  2. Reread persisted gate result for this run/version; require `approved` and USD. When the validated USD total is > 10,000.00 or the decision carries `model_disagreement`, additionally require a persisted `HumanReview(approve)` row bound to the same version and policy version (the row P4-04 writes); its absence raises even if the gate result says `approved`.
   3. If a payment already exists for the invoice identity, return it (no new receipt).
   4. Otherwise call `mock_payment`, insert the payment row with a generated receipt ID, decimal string amount, currency, version, and write a `payment_succeeded` audit event.
   5. Commit.

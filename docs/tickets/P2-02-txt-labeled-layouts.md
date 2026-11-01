@@ -12,7 +12,8 @@ P1-01 handles INV-1001's clean labels. The other labeled TXT fixtures vary:
 
 ## Scope
 
-- Label dictionary mapping canonical fields to known variants (`vendor` ← `Vendor`, `Vndr`, `FROM`; `invoice_number` ← `Invoice Number`, `Invoice`, `Inv #`, `INV NO`; `due_date` ← `Due Date`, `Due Dt`, `Due`; `total` ← `Total Amount`, `Total`, `Amt`, `TOTAL`, `Grand Total`; etc.). Each match that uses a non-canonical variant emits a `NormalizationEvent` with provenance `rule:label_alias`.
+- Email header block detection runs **before** label matching: a leading block of `From:` / `To:` / `Subject:` lines where `From:`/`To:` contain an `@` address is skipped entirely and kept as evidence only, so 1008's `From: billing@…` is never read as a vendor while 1012's `FROM:  QuickShip Distributers` still is.
+- Label dictionary mapping canonical fields to known variants (`vendor` ← `Vendor`, `Vndr`, `FROM`; `invoice_number` ← `Invoice Number`, `Invoice`, `Inv #`, `INV NO`, and the title form `INVOICE #<number>` as in 1010's `INVOICE #INV-1010`; `due_date` ← `Due Date`, `Due Dt`, `Due`, `DUE`; `total` ← `Total Amount`, `Total`, `Amt`, `TOTAL`, `Grand Total`; etc.). Each match that uses a non-canonical variant emits a `NormalizationEvent` with provenance `rule:label_alias`.
 - Item-line patterns: `qty: N  unit price: $X`, `qty N @ $X ea`, `- NAME xN $X each`.
 - Capture `Notes`/free text as evidence only. Urgent or payment-pressure wording emits `risk_signal_urgency` (info); it never changes business rules (see [constraints — security](../contraints.md#security-and-trust-boundaries)).
 - Email headers are ignored for invoice fields; the `From:` address is not treated as vendor identity.

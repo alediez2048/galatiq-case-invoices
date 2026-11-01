@@ -14,9 +14,9 @@ The key test: a correction must make the extracted value match what the source a
 
 - `submit_correction(invoice_id, expected_version, field, new_value, evidence_location, reason, reviewer) -> ProcessingResult`:
   1. Reject if `expected_version` ≠ current version (`stale_version`), returning the current record.
-  2. Reject if the invoice is paid (`already_paid`) or in a state with no correctable extraction issue.
+  2. Reject if the invoice is paid (`already_paid`). Corrections are allowed on `needs_review`, `rejected`, and `awaiting_human_approval` invoices, since a rejected invoice may carry a missing-field or stock blocker caused by misextraction; what makes a correction legitimate is the evidence check in step 3, not the current status.
   3. Evidence check (reuses the P3-05 deterministic verifier): the source text at `evidence_location` must support `new_value` under documented rules. Otherwise `correction_not_in_source` with the message "This value is not what the invoice says. Submit a corrected invoice from the vendor."
-  4. Create the new version, write the `Correction`, invalidate prior recommendations/approvals for payment purposes, and run a new processing run (validation → approval/critique → gate) on the new version in the invoice's original mode.
+  4. Create the new version, write the `Correction`, invalidate prior recommendations/approvals for payment purposes, and run a new processing run using the P1-07 `start="validation"` entry point (validation → approval/critique → gate → payment stage) on the new version in the invoice's original mode. A corrected invoice that is now clean and ≤ USD 10,000 may auto-pay; the UI copy must say so (P5-09).
 - Correctable fields: vendor, invoice number, dates, currency, item name, quantity, unit price, stated subtotal/tax/shipping/total, each only as extraction fixes.
 - Multiple fields in one request are allowed only if each has its own evidence; all-or-nothing.
 

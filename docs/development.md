@@ -57,3 +57,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.lock
 ## Verified on
 
 Python 3.12.14, uv 0.12.5, macOS 25.6.0 (2026-11-01). Update when re-verified.
+
+## Troubleshooting
+
+**`ModuleNotFoundError: No module named 'invoice_processing'` on macOS.** This happens when the files in `.venv/` have the macOS `hidden` flag set (seen when the repo lives in an iCloud-synced Desktop or Documents folder). Python 3.12.10 and later skip hidden `.pth` files, so the editable install silently drops off `sys.path`. Fix with `chflags -R nohidden .venv`, or keep the repo outside iCloud-synced folders. Pytest is unaffected because `pyproject.toml` sets `pythonpath = ["src", "."]`.

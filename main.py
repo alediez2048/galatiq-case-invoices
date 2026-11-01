@@ -3,6 +3,7 @@
 import argparse
 import os
 import socket
+import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
@@ -38,7 +39,7 @@ from invoice_processing.observability import (  # noqa: E402
 from invoice_processing.reasoning import ProviderUnavailable, get_provider  # noqa: E402
 from invoice_processing.seed import seed_inventory  # noqa: E402
 from invoice_processing.service import process_invoice  # noqa: E402
-from invoice_processing.storage import connect, init_schema  # noqa: E402
+from invoice_processing.storage import SchemaVersionError, connect, init_schema  # noqa: E402
 
 DEFAULT_MODE = "offline"  # provisional; see docs/tickets/P1-09
 
@@ -50,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--invoice-path",
         dest="invoice_path",
         required=True,
-        help="path to the invoice file (.txt, .json, .csv, .xml, .pdf)",
+        help="path to the invoice file (.txt; more formats in Phase 2)",
     )
     p.add_argument(
         "--mode",
@@ -114,12 +115,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     label = "offline simulation" if mode is ExecutionMode.offline else "live"
     print(f"Mode: {label}", file=sys.stderr)
-    _ensure_database(args.db)
-    events = configure_events(Path(args.events))
     try:
+        _ensure_database(args.db)
+        events = configure_events(Path(args.events))
         result = process_invoice(args.invoice_path, mode, args.db, evaluation_date, events)
     except intake.IntakeError as exc:
         print(f"error: {exc.code}: {exc}", file=sys.stderr)
+        return 2
+    except (SchemaVersionError, sqlite3.DatabaseError) as exc:
+        print(f"error: database {args.db!r} cannot be used: {exc}", file=sys.stderr)
         return 2
     write_result(result, Path(args.output) if args.output else None)
     print(format_summary(result), file=sys.stderr)

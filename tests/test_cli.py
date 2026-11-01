@@ -95,3 +95,27 @@ def test_install_network_guard_blocks_sockets(monkeypatch):
     main._install_network_guard()
     with pytest.raises(RuntimeError, match="network access blocked"):
         socket.create_connection(("example.com", 80))
+
+
+def test_stale_schema_database_fails_cleanly(tmp_path, capsys):
+    import sqlite3
+
+    db = tmp_path / "i.db"
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA user_version=2")
+    c.execute("CREATE TABLE t (x)")
+    c.commit()
+    c.close()
+    code = main.main(_args(tmp_path))
+    out, err = capsys.readouterr()
+    assert code == 2 and out == ""
+    assert "error:" in err and "older" in err
+    assert "Traceback" not in err
+
+
+def test_non_sqlite_database_fails_cleanly(tmp_path, capsys):
+    (tmp_path / "i.db").write_text("this is not a sqlite database, just text " * 20)
+    code = main.main(_args(tmp_path))
+    out, err = capsys.readouterr()
+    assert code == 2 and out == ""
+    assert "error:" in err and "Traceback" not in err

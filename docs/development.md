@@ -19,6 +19,16 @@ Creates `.venv/` with the package installed in editable mode plus the dev tools.
 uv run pytest
 ```
 
+## Seed the inventory
+
+```bash
+uv run python -m invoice_processing.seed --db inventory.db
+```
+
+Creates the database and schema if needed and inserts the required items (WidgetA 15, WidgetB 10, GadgetX 5, FakeItem 0). Re-running is safe: existing rows are never overwritten, and a stock value that differs from the seed is reported as a `WARNING` line and left as is.
+
+`--fresh` only creates a new database: it exits with code 2 and leaves the file untouched if the path already exists. Use it for repeatable demo databases.
+
 ## Lint and format
 
 ```bash

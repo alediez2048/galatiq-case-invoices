@@ -52,6 +52,13 @@ def test_redaction(tmp_path):
     assert json.loads(text)["nested"] == {}
 
 
+def test_hyphenated_header_dropped(tmp_path):
+    lg = configure_events(tmp_path / "e.jsonl")
+    log_event(lg, run_id="r", stage="s", event="e", headers={"x-api-key": "k"})
+    line = (tmp_path / "e.jsonl").read_text()
+    assert "x-api-key" not in line and json.loads(line)["headers"] == {}
+
+
 def test_business_keys_not_redacted(tmp_path):
     lg = configure_events(tmp_path / "e.jsonl")
     log_event(lg, run_id="r", stage="s", event="e", vendor_key="widgets inc.")

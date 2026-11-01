@@ -178,7 +178,17 @@ def test_redacted_key_matches_credentials(key):
 
 
 @pytest.mark.parametrize(
-    "key", ["vendor_key", "invoice_number_key", "source_hash", "receipt_id", "keyboard"]
+    "key",
+    [
+        "vendor_key",
+        "invoice_number_key",
+        "source_hash",
+        "receipt_id",
+        "keyboard",
+        "input_tokens",
+        "prompt_tokens",
+        "total_tokens",
+    ],
 )
 def test_redacted_key_keeps_business_fields(key):
     assert not ledger.REDACTED_KEY.search(key)

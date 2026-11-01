@@ -34,9 +34,12 @@ from invoice_processing.schemas import (
 # Credential-like names only; a bare "key" must be the whole name so that business
 # fields such as vendor_key or invoice_number_key are kept.
 REDACTED_KEY = re.compile(
-    r"^key$|(^|_)(api_?key|secret|token|password|passwd|authorization|credential)s?($|_)",
+    r"^key$"
+    r"|(api|access|private|auth)[_-]?(key|token)"  # also matches camelCase (apiKey, accessToken)
+    r"|(^|[_-])(token|(secret|password|passwd|authorization|credential|cookie|bearer)s?)($|[_-])",
     re.I,
 )
+# Plural "tokens" (usage counts such as input_tokens) is deliberately kept.
 
 
 def utcnow() -> str:

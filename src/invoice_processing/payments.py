@@ -24,9 +24,14 @@ class PaymentNotAuthorized(RuntimeError):
         self.reason = reason
 
 
-def mock_payment(vendor: str, amount: Decimal, currency: str) -> dict[str, str]:
+def mock_payment(
+    vendor: str, amount: Decimal, currency: str, idempotency_key: str
+) -> dict[str, str]:
     # stderr keeps stdout JSON-only.
-    print(f"Paying {vendor} {format_money(amount, currency)}", file=sys.stderr)
+    print(
+        f"Paying {vendor} {format_money(amount, currency)} (idempotency_key={idempotency_key})",
+        file=sys.stderr,
+    )
     return {"status": "success"}
 
 
@@ -44,6 +49,12 @@ def _result(row: sqlite3.Row, created: bool) -> PaymentResult:
 
 
 def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str) -> PaymentResult:
+    """Pay an approved invoice once.
+
+    mock_payment runs inside the write transaction; a crash between it and COMMIT rolls back
+    the record, and a replay calls mock_payment again with the same idempotency_key - a real
+    gateway must dedupe on it.
+    """
     with storage.write_transaction(conn):
         existing = conn.execute(
             "SELECT payment_id, receipt_id, amount, currency, created_at FROM payments "
@@ -86,13 +97,16 @@ def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str)
             if review is None or review.action != HumanReviewAction.approve:
                 raise PaymentNotAuthorized("human_approval_required")
 
+        amount = canonical_amount(total, "USD")
         vendor = invoice.vendor_name or ""
-        if mock_payment(vendor, total, "USD").get("status") != "success":
+        result = mock_payment(
+            vendor, Decimal(amount), "USD", idempotency_key=f"invoice:{invoice_id}"
+        )
+        if result.get("status") != "success":
             raise PaymentNotAuthorized("mock_payment_failed")
 
         payment_id = "pay-" + uuid.uuid4().hex
         receipt_id = "rcpt-" + uuid.uuid4().hex[:12]
-        amount = canonical_amount(total, "USD")
         now = ledger.utcnow()
         conn.execute(
             "INSERT INTO payments (payment_id, invoice_id, version, run_id, amount, currency, "

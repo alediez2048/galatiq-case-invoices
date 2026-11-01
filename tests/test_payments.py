@@ -72,7 +72,9 @@ def count_payments(conn):
 def calls(monkeypatch):
     recorded = []
     monkeypatch.setattr(
-        payments, "mock_payment", lambda *a: recorded.append(a) or {"status": "success"}
+        payments,
+        "mock_payment",
+        lambda *a, **k: recorded.append((*a, k["idempotency_key"])) or {"status": "success"},
     )
     return recorded
 
@@ -88,7 +90,7 @@ def test_pay_twice_same_receipt_one_call(conn, calls):
     assert first.receipt.paid_at.utcoffset() == UTC.utcoffset(None)
     assert first.receipt.paid_at == second.receipt.paid_at
     assert first.payment_id == second.payment_id
-    assert calls[0] == ("Widgets Inc.", Decimal("5000.00"), "USD")
+    assert calls[0] == ("Widgets Inc.", Decimal("5000.00"), "USD", f"invoice:{ids[0]}")
     events = [
         e for e in ledger.list_audit_events(conn, ids[2]) if e["event"] == "payment_succeeded"
     ]
@@ -145,13 +147,15 @@ def test_high_value_with_decline_review_raises(conn, calls):
     with pytest.raises(payments.PaymentNotAuthorized) as exc:
         payments.pay(conn, *ids)
     assert exc.value.reason == "human_approval_required"
+    assert count_payments(conn) == 0 and calls == []
 
 
 def test_high_value_with_stale_policy_review_raises(conn, calls):
     ids = approved_run(conn, total="10000.01")
     add_review(conn, ids[0], policy_version="old")
-    with pytest.raises(payments.PaymentNotAuthorized):
+    with pytest.raises(payments.PaymentNotAuthorized) as exc:
         payments.pay(conn, *ids)
+    assert exc.value.reason == "human_approval_required"
     assert count_payments(conn) == 0
 
 
@@ -199,12 +203,15 @@ def test_model_disagreement_with_review_pays(conn, calls):
 
 
 def test_mock_payment_failure_raises_and_leaves_nothing(conn, monkeypatch):
-    monkeypatch.setattr(payments, "mock_payment", lambda *a: {"status": "error"})
+    monkeypatch.setattr(payments, "mock_payment", lambda *a, **k: {"status": "error"})
     ids = approved_run(conn)
     with pytest.raises(payments.PaymentNotAuthorized) as exc:
         payments.pay(conn, *ids)
     assert exc.value.reason == "mock_payment_failed"
     assert count_payments(conn) == 0
+    assert not [
+        e for e in ledger.list_audit_events(conn, ids[2]) if e["event"] == "payment_succeeded"
+    ]
 
 
 def test_failure_inside_transaction_leaves_nothing(conn, calls, monkeypatch):
@@ -223,10 +230,13 @@ def test_failure_inside_transaction_leaves_nothing(conn, calls, monkeypatch):
 
 
 def test_mock_payment_prints_to_stderr_only(capsys):
-    assert payments.mock_payment("Widgets Inc.", Decimal("5000"), "USD") == {"status": "success"}
+    assert payments.mock_payment("Widgets Inc.", Decimal("5000"), "USD", "invoice:inv-1") == {
+        "status": "success"
+    }
     out, err = capsys.readouterr()
     assert out == ""
     assert "Paying Widgets Inc." in err and "USD 5,000.00" in err
+    assert "invoice:inv-1" in err
 
 
 def test_record_rejection_never_pays(conn, calls):
@@ -237,4 +247,63 @@ def test_record_rejection_never_pays(conn, calls):
     ]
     assert len(events) == 1 and events[0]["stage"] == "payment"
     assert events[0]["payload"] == {"codes": ["non_usd_currency"]}
+    assert calls == [] and count_payments(conn) == 0
+
+
+def test_idempotency_key_stable_across_rolled_back_attempt_and_retry(conn, calls, monkeypatch):
+    ids = approved_run(conn)
+    real = ledger.append_audit_event
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(payments.ledger, "append_audit_event", boom)
+    with pytest.raises(RuntimeError):
+        payments.pay(conn, *ids)
+    monkeypatch.setattr(payments.ledger, "append_audit_event", real)
+    assert payments.pay(conn, *ids).created
+    assert len(calls) == 2
+    assert calls[0][3] == calls[1][3] == f"invoice:{ids[0]}"
+    assert count_payments(conn) == 1
+
+
+def test_amount_is_quantized_before_paying(conn, calls):
+    ids = approved_run(conn, total="5000.004")
+    result = payments.pay(conn, *ids)
+    assert calls[0][1] == Decimal("5000.00")
+    assert result.receipt.amount == Decimal("5000.00")
+    assert conn.execute("SELECT amount FROM payments").fetchone()[0] == "5000.00"
+
+
+def test_second_approved_run_same_invoice_returns_first_receipt(conn, calls):
+    invoice_id, version_id, run_id = approved_run(conn)
+    first = payments.pay(conn, invoice_id, version_id, run_id)
+    source_id = conn.execute("SELECT source_id FROM runs WHERE run_id = ?", (run_id,)).fetchone()[0]
+    run2 = ledger.start_run(conn, ExecutionMode.offline, source_id, date(2026, 2, 1))
+    ledger.attach_run(conn, run2, invoice_id, version_id)
+    ledger.record_decision(
+        conn,
+        run2,
+        version_id,
+        ApprovalDecision(
+            initial_recommendation=Recommendation.approve,
+            final_decision=GateOutcome.approved,
+            policy_version=POLICY_VERSION,
+            mode=ExecutionMode.offline,
+        ),
+    )
+    second = payments.pay(conn, invoice_id, version_id, run2)
+    assert not second.created
+    assert second.receipt.receipt_id == first.receipt.receipt_id
+    assert len(calls) == 1 and count_payments(conn) == 1
+
+
+def test_pay_inside_open_transaction_raises(conn, calls):
+    ids = approved_run(conn)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(RuntimeError):
+            payments.pay(conn, *ids)
+    finally:
+        conn.execute("ROLLBACK")
     assert calls == [] and count_payments(conn) == 0

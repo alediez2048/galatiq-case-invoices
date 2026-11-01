@@ -85,3 +85,13 @@ def test_help_lists_every_option(capsys):
     out = capsys.readouterr().out
     for opt in ["--invoice_path", "--mode", "--db", "--output", "--events", "--evaluation-date"]:
         assert opt in out
+
+
+def test_install_network_guard_blocks_sockets(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket.socket, "connect", socket.socket.connect)
+    monkeypatch.setattr(socket, "create_connection", socket.create_connection)
+    main._install_network_guard()
+    with pytest.raises(RuntimeError, match="network access blocked"):
+        socket.create_connection(("example.com", 80))

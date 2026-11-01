@@ -1,6 +1,8 @@
 """CLI entry point: python main.py --invoice_path=data/invoices/invoice_1001.txt"""
 
 import argparse
+import os
+import socket
 import sys
 from datetime import date
 from pathlib import Path
@@ -10,6 +12,21 @@ from pathlib import Path
 _SRC = str(Path(__file__).resolve().parent / "src")
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
+
+
+def _install_network_guard() -> None:
+    """Block outbound sockets. TEST-ONLY: enabled by INVOICE_NETWORK_GUARD=1 so
+    subprocess e2e tests can prove offline mode makes no network calls."""
+
+    def blocked(*args, **kwargs):
+        raise RuntimeError("network access blocked in tests")
+
+    socket.socket.connect = blocked  # type: ignore[method-assign]
+    socket.create_connection = blocked  # type: ignore[assignment]
+
+
+if os.environ.get("INVOICE_NETWORK_GUARD") == "1":
+    _install_network_guard()
 
 from invoice_processing import intake  # noqa: E402
 from invoice_processing.codes import ExecutionMode, RunStatus  # noqa: E402

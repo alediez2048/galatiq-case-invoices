@@ -56,13 +56,14 @@ def process_invoice(
     source, raw = intake.read_source(path)  # IntakeError propagates; no run is created
     if events is None:
         events = observability.configure_events(None)
+    provider = get_provider(mode)  # config errors propagate before any run exists
     conn = connect(db_path)
     try:
         init_schema(conn)
         ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
         ledger.record_source(conn, source)
         run_id = ledger.start_run(conn, mode, source.source_id, evaluation_date)
-        deps = Deps(conn=conn, provider=get_provider(mode), events=events)
+        deps = Deps(conn=conn, provider=provider, events=events)
         state = InvoiceState(
             run_id=run_id,
             mode=mode,
@@ -71,16 +72,16 @@ def process_invoice(
             raw=raw,
             status=RunStatus.received,
         )
-        emit(
-            deps,
-            state,
-            "intake",
-            "received",
-            source_hash=source.content_hash,
-            original_name=source.original_name,
-            mode=mode.value,
-        )
         try:
+            emit(
+                deps,
+                state,
+                "intake",
+                "received",
+                source_hash=source.content_hash,
+                original_name=source.original_name,
+                mode=mode.value,
+            )
             prior = ledger.find_prior_outcome(conn, source.content_hash)
             if prior is not None:
                 ledger.finish_run(conn, run_id, RunStatus.duplicate, prior_run_id=prior.run_id)
@@ -112,16 +113,19 @@ def process_invoice(
             emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
             return _result(final)
         except Exception as e:  # BaseException (Ctrl-C) propagates; mark_interrupted_runs recovers
-            ledger.finish_run(
-                conn,
-                run_id,
-                RunStatus.failed,
-                error_code="unexpected_error",
-                error_message=type(e).__name__,
-            )
-            state["status"] = RunStatus.failed
+            current = ledger.get_run_status(conn, run_id)
+            if current not in TERMINAL_RUN_STATUSES:
+                ledger.finish_run(
+                    conn,
+                    run_id,
+                    RunStatus.failed,
+                    error_code="unexpected_error",
+                    error_message=type(e).__name__,
+                )
+                current = RunStatus.failed
+            state["status"] = current
             state["error_code"] = "unexpected_error"
             emit(deps, state, "service", "failed", error_type=type(e).__name__)
-            return _result(state)
+            return _result(state, invoice_id=state.get("invoice_id"))
     finally:
         conn.close()

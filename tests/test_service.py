@@ -156,3 +156,55 @@ def test_process_invoice_marks_interrupted_runs_first(tmp_path):
     row = c.execute("SELECT status, error_code FROM runs WHERE run_id = ?", (stale,)).fetchone()
     assert tuple(row) == ("failed", "interrupted")
     assert r.run_id != stale and r.status is RunStatus.paid_mock
+
+
+def test_live_mode_raises_and_creates_no_run(tmp_path):
+    from invoice_processing.reasoning import ProviderUnavailable
+
+    db = tmp_db(tmp_path)
+    with pytest.raises(ProviderUnavailable):
+        process_invoice(FIXTURE, ExecutionMode.live, db, EVAL)
+    assert count(db, "runs") == 0
+
+
+def test_error_after_terminal_keeps_run_status(tmp_path, monkeypatch):
+    db = tmp_db(tmp_path)
+
+    def boom(*a, **k):
+        raise RuntimeError("late failure")
+
+    monkeypatch.setattr(ledger, "set_invoice_status", boom)
+    r = process_invoice(FIXTURE, OFF, db, EVAL)
+    assert r.status is RunStatus.paid_mock and r.errors == ["unexpected_error"]
+    c = connect(db)
+    assert c.execute("SELECT status FROM runs").fetchone()[0] == "paid_mock"
+    assert count(db, "payments") == 1
+    events = ledger.list_audit_events(c, r.run_id)
+    assert any(e["stage"] == "service" and e["event"] == "failed" for e in events)
+
+
+def test_duplicate_of_non_paid_outcome_leaves_invoice_status(tmp_path, monkeypatch):
+    from invoice_processing import service
+
+    db = tmp_db(tmp_path)
+    big = tmp_path / "big.txt"
+    text = FIXTURE.read_text()
+    text = text.replace("qty: 10", "qty: 1000").replace("$5,000.00", "$255,000.00")
+    big.write_text(text)
+    first = process_invoice(big, OFF, db, EVAL)
+    assert first.status is RunStatus.rejected
+    c = connect(db)
+    before = c.execute("SELECT status FROM invoices").fetchone()[0]
+    assert before == "rejected"
+    c.close()
+
+    built = []
+    real_build = service.build_graph
+    monkeypatch.setattr(
+        service, "build_graph", lambda *a, **k: built.append(1) or real_build(*a, **k)
+    )
+    second = process_invoice(big, OFF, db, EVAL)
+    assert second.status is RunStatus.duplicate and second.prior_run_id == first.run_id
+    assert built == []
+    c = connect(db)
+    assert c.execute("SELECT status FROM invoices").fetchone()[0] == before

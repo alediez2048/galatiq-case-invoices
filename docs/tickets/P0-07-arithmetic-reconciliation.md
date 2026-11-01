@@ -1,6 +1,6 @@
 # P0-07 — Arithmetic reconciliation
 
-Phase: 0 · Status: todo · Depends on: P0-02, P0-03 · Requirements: P02
+Phase: 0 · Status: done · Depends on: P0-02, P0-03 · Requirements: P02
 
 ## Context
 

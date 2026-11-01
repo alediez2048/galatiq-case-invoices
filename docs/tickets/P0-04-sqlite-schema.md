@@ -1,6 +1,6 @@
 # P0-04 — SQLite schema and storage module
 
-Phase: 0 · Status: todo · Depends on: P0-01 · Requirements: A03, P05 (constraint only), P08 (tables only)
+Phase: 0 · Status: done · Depends on: P0-01 · Requirements: A03, P05 (constraint only), P08 (tables only)
 
 ## Context
 

@@ -1,6 +1,6 @@
 # P0-03 — Core Pydantic data contracts
 
-Phase: 0 · Status: todo · Depends on: P0-02 · Requirements: P04, P06, P08 (shape only)
+Phase: 0 · Status: done · Depends on: P0-02 · Requirements: P04, P06, P08 (shape only)
 
 ## Context
 

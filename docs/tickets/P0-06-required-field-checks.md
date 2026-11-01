@@ -1,6 +1,6 @@
 # P0-06 — Required-field and value-sign checks
 
-Phase: 0 · Status: todo · Depends on: P0-03 · Requirements: A03 (data integrity), P06
+Phase: 0 · Status: done · Depends on: P0-03 · Requirements: A03 (data integrity), P06
 
 ## Context
 

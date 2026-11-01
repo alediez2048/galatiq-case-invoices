@@ -1,6 +1,6 @@
 # P0-01 — Project scaffolding and tooling
 
-Phase: 0 · Status: todo · Depends on: — · Requirements: A10 (reproducible install)
+Phase: 0 · Status: done · Depends on: — · Requirements: A10 (reproducible install)
 
 ## Context
 

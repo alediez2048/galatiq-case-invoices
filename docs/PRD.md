@@ -80,8 +80,8 @@ Scope:
 
 Exit criteria:
 
-- [ ] `pip install` and seed script work from a clean clone.
-- [ ] Unit tests cover arithmetic, aggregation, and seed idempotence.
+- [x] `pip install` and seed script work from a clean clone. (Verified 2026-11-01 with `uv sync`; see `docs/development.md`.)
+- [x] Unit tests cover arithmetic, aggregation, and seed idempotence. (`tests/test_validation_arithmetic.py`, `tests/test_validation_inventory.py`, `tests/test_seed.py`; 75 tests total.)
 
 Covers: A03 (partial), P02, P03 (logic only).
 

@@ -1,6 +1,6 @@
 # P0-08 — Item aggregation and inventory comparison
 
-Phase: 0 · Status: todo · Depends on: P0-03, P0-05 · Requirements: A03, P03
+Phase: 0 · Status: done · Depends on: P0-03, P0-05 · Requirements: A03, P03
 
 ## Context
 

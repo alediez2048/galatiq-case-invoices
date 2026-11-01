@@ -1,6 +1,6 @@
 # P0-05 — Idempotent inventory seed
 
-Phase: 0 · Status: todo · Depends on: P0-04 · Requirements: A03
+Phase: 0 · Status: done · Depends on: P0-04 · Requirements: A03
 
 ## Context
 

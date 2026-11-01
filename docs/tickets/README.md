@@ -10,14 +10,14 @@ Goal: a scaffolded repository with contracts and storage in place. Exit criteria
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P0-01](P0-01-project-scaffolding.md) | Project scaffolding and tooling | — | todo |
-| [P0-02](P0-02-money-and-currency.md) | Money and currency primitives | P0-01 | todo |
-| [P0-03](P0-03-data-contracts.md) | Core Pydantic data contracts | P0-02 | todo |
-| [P0-04](P0-04-sqlite-schema.md) | SQLite schema and storage module | P0-01 | todo |
-| [P0-05](P0-05-inventory-seed.md) | Idempotent inventory seed | P0-04 | todo |
-| [P0-06](P0-06-required-field-checks.md) | Required-field and value-sign checks | P0-03 | todo |
-| [P0-07](P0-07-arithmetic-reconciliation.md) | Arithmetic reconciliation | P0-02, P0-03 | todo |
-| [P0-08](P0-08-aggregation-and-inventory-check.md) | Item aggregation and inventory comparison | P0-03, P0-05 | todo |
+| [P0-01](P0-01-project-scaffolding.md) | Project scaffolding and tooling | — | done |
+| [P0-02](P0-02-money-and-currency.md) | Money and currency primitives | P0-01 | done |
+| [P0-03](P0-03-data-contracts.md) | Core Pydantic data contracts | P0-02 | done |
+| [P0-04](P0-04-sqlite-schema.md) | SQLite schema and storage module | P0-01 | done |
+| [P0-05](P0-05-inventory-seed.md) | Idempotent inventory seed | P0-04 | done |
+| [P0-06](P0-06-required-field-checks.md) | Required-field and value-sign checks | P0-03 | done |
+| [P0-07](P0-07-arithmetic-reconciliation.md) | Arithmetic reconciliation | P0-02, P0-03 | done |
+| [P0-08](P0-08-aggregation-and-inventory-check.md) | Item aggregation and inventory comparison | P0-03, P0-05 | done |
 
 Suggested order: P0-01 → P0-02 and P0-04 in parallel → P0-03 and P0-05 → P0-06, P0-07, P0-08.
 

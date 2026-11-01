@@ -1,5 +1,6 @@
 """Pure validation checks over a NormalizedInvoice. No I/O except the *_against_db wrapper."""
 
+import sqlite3
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
@@ -7,12 +8,14 @@ from decimal import Decimal
 from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode
 from invoice_processing.money import compare, quantize
 from invoice_processing.schemas import (
+    AggregatedItem,
     ComputedTotals,
     EvidenceRef,
     LineItem,
     NormalizedInvoice,
     ValidationFinding,
 )
+from invoice_processing.storage import get_stock
 
 C = FindingCode
 
@@ -229,3 +232,49 @@ def reconcile_totals(invoice: NormalizedInvoice) -> tuple[ComputedTotals, list[V
         line_totals=line_totals, subtotal=subtotal, tax=tax, shipping=shipping, total=total
     )
     return computed, findings
+
+
+def aggregate_quantities(lines: list[LineItem]) -> dict[str, AggregatedItem]:
+    """Total quantity per exact item name. Alias and case rules belong to normalization."""
+    aggregated: dict[str, AggregatedItem] = {}
+    for index, line in enumerate(lines):
+        if line.item is None or line.quantity is None:
+            continue
+        entry = aggregated.get(line.item)
+        if entry is None:
+            aggregated[line.item] = AggregatedItem(
+                item=line.item, quantity=line.quantity, line_indexes=[index]
+            )
+        else:
+            entry.quantity += line.quantity
+            entry.line_indexes.append(index)
+    return aggregated
+
+
+def check_inventory(
+    aggregated: dict[str, AggregatedItem], stock: dict[str, int | None]
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for item, entry in aggregated.items():
+        available = stock.get(item)
+        requested = str(entry.quantity)
+        if available is None:
+            findings.append(_finding(C.unknown_item, item=item, observed=requested))
+        elif available == 0:
+            findings.append(_finding(C.zero_stock, item=item, expected="0", observed=requested))
+        elif entry.quantity > available:
+            findings.append(
+                _finding(
+                    C.quantity_exceeds_stock,
+                    item=item,
+                    expected=str(available),
+                    observed=requested,
+                )
+            )
+    return findings
+
+
+def check_inventory_against_db(
+    conn: sqlite3.Connection, aggregated: dict[str, AggregatedItem]
+) -> list[ValidationFinding]:
+    return check_inventory(aggregated, get_stock(conn, aggregated))

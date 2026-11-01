@@ -12,6 +12,7 @@ from invoice_processing.codes import (
     ExecutionMode,
     FindingCode,
     GateOutcome,
+    HumanReviewAction,
     Recommendation,
     RunStatus,
     Severity,
@@ -154,6 +155,48 @@ class MockReceipt(Contract):
     paid_at: datetime
 
 
+class ApprovalRecommendation(Contract):
+    recommendation: Recommendation
+    reasons: list[str]
+    cited_codes: list[FindingCode]
+    summary: str
+    mode: ExecutionMode
+    provider: str
+    model: str
+
+
+class Critique(Contract):
+    agrees: bool
+    omissions: list[FindingCode]
+    high_value: bool
+    revised_recommendation: Recommendation | None
+    summary: str
+    mode: ExecutionMode
+    provider: str
+    model: str
+
+
+class GateResult(Contract):
+    outcome: GateOutcome
+    rule_ids: list[str]
+    findings: list[ValidationFinding]  # only the findings the gate adds
+
+
+class HumanReview(Contract):
+    invoice_id: str
+    version: int
+    action: HumanReviewAction
+    reviewer: str
+    reason: str
+    policy_version: str
+
+
+class PaymentResult(Contract):
+    payment_id: str
+    receipt: MockReceipt
+    created: bool
+
+
 class ProcessingResult(Contract):
     run_id: str
     invoice_id: str | None = None
@@ -164,6 +207,9 @@ class ProcessingResult(Contract):
     receipt: MockReceipt | None = None
     timings_ms: dict[str, int] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
+    source_hash: str | None = None
+    prior_run_id: str | None = None
+    evaluation_date: date | None = None
 
 
 class AggregatedItem(Contract):

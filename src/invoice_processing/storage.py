@@ -8,7 +8,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SchemaVersionError(RuntimeError):
@@ -59,6 +59,7 @@ _DDL = (
         error_code TEXT,
         error_message TEXT,
         retry_of TEXT REFERENCES runs(run_id),
+        prior_run_id TEXT REFERENCES runs(run_id),
         evaluation_date TEXT,
         started_at TEXT NOT NULL,
         finished_at TEXT)""",
@@ -170,6 +171,16 @@ def write_transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
+
+
+@contextmanager
+def atomic(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """Join the caller's open transaction, or open one if none is active."""
+    if conn.in_transaction:
+        yield conn
+    else:
+        with write_transaction(conn):
+            yield conn
 
 
 def get_stock(conn: sqlite3.Connection, items: Iterable[str]) -> dict[str, int | None]:

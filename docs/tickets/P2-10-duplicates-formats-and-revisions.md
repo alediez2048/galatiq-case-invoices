@@ -29,3 +29,12 @@ Choosing which version wins (needs a human; Phase 4 adds corrections, not versio
 - [ ] 1004 → `paid_mock`; 1004 revised → `needs_review` / `revision_after_payment`; one payment of 1,890.00.
 - [ ] Reverse order: 1004 revised → `paid_mock` (5,940.00); 1004 → `needs_review` / `revision_after_payment`.
 - [ ] Changing a filename or reformatting whitespace does not change the semantic hash.
+
+## Known Phase 1 behaviour
+
+- A revised version under an already-paid identity currently returns the existing receipt with
+  status `paid_mock` (`payments.pay()` step 1 finds the existing payment). P2-10 must route it to
+  `needs_review` (`revision_after_payment`). The `paid` audit event carries `created: false` so
+  this case is visible in the trail.
+- `ledger.record_version` reuses the first source's payload when the semantic hash matches, so
+  non-hashed fields (vendor display name, tax, shipping) come from the first file.

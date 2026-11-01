@@ -1,3 +1,4 @@
+import socket
 from pathlib import Path
 
 import pytest
@@ -16,3 +17,12 @@ def conn(db_path):
     storage.init_schema(c)
     yield c
     c.close()
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    def blocked(*args, **kwargs):
+        raise RuntimeError("network access blocked in tests")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)

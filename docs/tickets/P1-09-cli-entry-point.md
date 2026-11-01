@@ -1,6 +1,8 @@
 # P1-09 — CLI entry point
 
-Phase: 1 · Status: todo · Depends on: P1-07, P1-08 · Requirements: A09
+Phase: 1 · Status: done · Depends on: P1-07, P1-08 · Requirements: A09
+
+> Implemented with default mode `offline` pending user confirmation of the open decision below.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # P1-02 — Ledger writes and audit events
 
-Phase: 1 · Status: todo · Depends on: P0-04, P0-03 · Requirements: P05 (exact file), P06, P08
+Phase: 1 · Status: done · Depends on: P0-04, P0-03 · Requirements: P05 (exact file), P06, P08
 
 ## Context
 

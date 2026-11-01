@@ -157,3 +157,23 @@ def test_write_transaction_refuses_nesting(conn):
             with storage.write_transaction(conn):
                 pass
     assert not conn.in_transaction
+
+
+def test_runs_have_prior_run_id(conn):
+    assert "prior_run_id" in {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}
+
+
+def test_atomic_joins_open_transaction(conn):
+    with storage.write_transaction(conn):
+        with storage.atomic(conn):
+            conn.execute("INSERT INTO inventory VALUES ('X', 1)")
+        assert conn.in_transaction
+    assert not conn.in_transaction
+
+
+def test_atomic_opens_and_rolls_back_alone(conn):
+    with pytest.raises(RuntimeError):
+        with storage.atomic(conn):
+            conn.execute("INSERT INTO inventory VALUES ('X', 1)")
+            raise RuntimeError
+    assert conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0] == 0

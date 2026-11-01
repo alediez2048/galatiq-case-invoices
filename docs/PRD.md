@@ -99,9 +99,9 @@ Scope:
 
 Exit criteria:
 
-- [ ] `python main.py --invoice_path=data/invoices/invoice_1001.txt` yields `paid_mock` with a USD 5,000.00 receipt.
-- [ ] Rerunning the same file returns the existing outcome; no second payment.
-- [ ] Offline test fails on any attempted network access.
+- [x] `python main.py --invoice_path=data/invoices/invoice_1001.txt` yields `paid_mock` with a USD 5,000.00 receipt. (tests/test_e2e.py::test_e2e_inv_1001_paid)
+- [x] Rerunning the same file returns the existing outcome; no second payment. (tests/test_e2e.py::test_e2e_rerun_duplicate, tests/test_e2e.py::test_e2e_restart_same_db)
+- [x] Offline test fails on any attempted network access. (tests/conftest.py::no_network, tests/test_e2e.py::test_e2e_inv_1001_paid (subprocess guard), tests/test_cli.py::test_install_network_guard_blocks_sockets)
 
 Covers: A05, A07 (structure), A08, A09, P05 (exact-file case), P06 (states).
 

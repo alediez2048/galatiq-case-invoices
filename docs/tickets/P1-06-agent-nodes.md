@@ -1,6 +1,6 @@
 # P1-06 — Ingestion, validation, approval, and payment agent nodes
 
-Phase: 1 · Status: todo · Depends on: P1-01, P1-03, P1-04, P1-05, P0-06, P0-07, P0-08 · Requirements: A04, A07
+Phase: 1 · Status: done · Depends on: P1-01, P1-03, P1-04, P1-05, P0-06, P0-07, P0-08 · Requirements: A04, A07
 
 ## Context
 

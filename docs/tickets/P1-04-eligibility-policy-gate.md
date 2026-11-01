@@ -1,6 +1,6 @@
 # P1-04 — Deterministic eligibility policy gate
 
-Phase: 1 · Status: todo · Depends on: P0-03, P0-02 · Requirements: A04 (rules), P06, P14 (routing only)
+Phase: 1 · Status: done · Depends on: P0-03, P0-02 · Requirements: A04 (rules), P06, P14 (routing only)
 
 ## Context
 

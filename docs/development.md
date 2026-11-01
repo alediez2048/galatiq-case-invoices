@@ -19,6 +19,21 @@ Creates `.venv/` with the package installed in editable mode plus the dev tools.
 uv run pytest
 ```
 
+## Run
+
+```bash
+python main.py --invoice_path=data/invoices/invoice_1001.txt
+```
+
+Prints only the result JSON to stdout; the mode banner, the one-time `Initialized ... and seeded inventory` notice, and a one-line summary go to stderr. A missing or empty `inventory.db` is created and seeded automatically. Exit codes: 0 processed, 1 the run failed, 2 usage error (bad file, bad date, live mode unavailable).
+
+```bash
+python main.py --invoice_path=data/invoices/invoice_1001.txt | python -m json.tool
+python main.py --invoice_path=data/invoices/invoice_1001.txt --mode=offline --db=demo.db --output=result.json
+```
+
+Options: `--mode {offline,live}` (live is unavailable until Phase 3), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
+
 ## Seed the inventory
 
 ```bash

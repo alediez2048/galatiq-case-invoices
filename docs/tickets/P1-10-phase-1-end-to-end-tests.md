@@ -1,6 +1,6 @@
 # P1-10 — Phase 1 end-to-end and offline-network tests
 
-Phase: 1 · Status: todo · Depends on: P1-09 · Requirements: A08, P10
+Phase: 1 · Status: done · Depends on: P1-09 · Requirements: A08, P10
 
 ## Context
 

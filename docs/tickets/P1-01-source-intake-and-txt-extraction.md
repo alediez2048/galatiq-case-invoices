@@ -1,6 +1,6 @@
 # P1-01 — Source intake and clean TXT extraction
 
-Phase: 1 · Status: todo · Depends on: P0-03 · Requirements: A01 (TXT only), A02, P04 (minimal)
+Phase: 1 · Status: done · Depends on: P0-03 · Requirements: A01 (TXT only), A02, P04 (minimal)
 
 ## Context
 

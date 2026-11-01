@@ -46,6 +46,7 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 deps.conn, invoice_id, invoice, source.source_id
             )
             run_id = state["run_id"]
+            ledger.record_findings(deps.conn, run_id, version_id, findings)
             ledger.attach_run(deps.conn, run_id, invoice_id, version_id)
             ledger.update_run_status(deps.conn, run_id, RunStatus.extracted)
             update = {

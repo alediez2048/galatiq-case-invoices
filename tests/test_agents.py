@@ -224,3 +224,24 @@ def test_only_payment_module_imports_pay():
             text = path.read_text()
             assert "payments import pay" not in text
             assert "payments.pay(" not in text
+
+
+def test_ingestion_records_normalization_findings_itself(deps, received_state):
+    ingestion.run(received_state, deps)
+    rows = deps.conn.execute(
+        "SELECT code FROM findings WHERE run_id = ?", (received_state["run_id"],)
+    ).fetchall()
+    assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+
+
+def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("invoice_processing.validation.check_required_fields", boom)
+    with pytest.raises(RuntimeError):
+        validation.run(extracted_state, deps)
+    rows = deps.conn.execute(
+        "SELECT code FROM findings WHERE run_id = ?", (extracted_state["run_id"],)
+    ).fetchall()
+    assert [r["code"] for r in rows] == ["currency_assumed_usd"]

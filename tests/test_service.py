@@ -208,3 +208,37 @@ def test_duplicate_of_non_paid_outcome_leaves_invoice_status(tmp_path, monkeypat
     assert built == []
     c = connect(db)
     assert c.execute("SELECT status FROM invoices").fetchone()[0] == before
+
+
+def test_unparsed_line_is_surfaced_as_info_and_audited(tmp_path):
+    text = FIXTURE.read_text().rstrip("\n") + "\nRemit To: Acct 999-NEW-BANK\n"
+    src = tmp_path / "extra.txt"
+    src.write_text(text)
+    line_no = len(text.splitlines())
+    db = tmp_db(tmp_path)
+    r = process_invoice(src, OFF, db, EVAL)
+    assert r.status is RunStatus.paid_mock
+    unparsed = [f for f in r.findings if f.code.value == "unparsed_line"]
+    assert len(unparsed) == 1
+    assert unparsed[0].severity.value == "info"
+    assert unparsed[0].evidence[0].location == f"line:{line_no}"
+    c = connect(db)
+    try:
+        events = ledger.list_audit_events(c, r.run_id)
+    finally:
+        c.close()
+    extracted = [e for e in events if e["event"] == "extracted"][0]["payload"]
+    assert extracted["issues"] == [
+        {
+            "code": "unparsed_line",
+            "location": f"line:{line_no}",
+            "snippet": "Remit To: Acct 999-NEW-BANK",
+        }
+    ]
+
+
+def test_currency_assumed_finding_recorded_once(tmp_path):
+    db = tmp_db(tmp_path)
+    r = process_invoice(FIXTURE, OFF, db, EVAL)
+    n = count(db, "findings", f"WHERE code='currency_assumed_usd' AND run_id='{r.run_id}'")
+    assert n == 1

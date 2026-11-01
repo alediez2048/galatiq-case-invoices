@@ -2,10 +2,11 @@
 
 from invoice_processing import ledger
 from invoice_processing.agents.state import Deps, InvoiceState, emit
-from invoice_processing.codes import RunStatus
+from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode, RunStatus
 from invoice_processing.normalize import normalize
 from invoice_processing.observability import stage_timer
 from invoice_processing.parsers.txt import ExtractionError, parse_txt
+from invoice_processing.schemas import ValidationFinding
 
 STAGE = "ingestion"
 
@@ -20,6 +21,23 @@ def run(state: InvoiceState, deps: Deps) -> dict:
             update: dict = {"status": RunStatus.failed, "error_code": e.code}
         else:
             invoice, findings = normalize(draft)
+            issues = [
+                {"code": i.code, "location": ref.location, "snippet": ref.snippet}
+                for i in draft.issues
+                for ref in i.evidence
+            ]
+            findings = [
+                *findings,
+                *(
+                    ValidationFinding(
+                        code=FindingCode.unparsed_line,
+                        severity=DEFAULT_SEVERITY[FindingCode.unparsed_line],
+                        evidence=list(i.evidence),
+                    )
+                    for i in draft.issues
+                    if i.code == "unparsed_line"
+                ),
+            ]
             source = state["source"]
             invoice_id = ledger.upsert_invoice(
                 deps.conn, invoice.vendor_key, invoice.invoice_number_key, source.content_hash
@@ -46,5 +64,6 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 source_hash=source.content_hash,
                 version=version,
                 codes=[f.code for f in findings],
+                issues=issues,
             )
     return {**update, "timings_ms": {**timings, STAGE: t["duration_ms"]}}

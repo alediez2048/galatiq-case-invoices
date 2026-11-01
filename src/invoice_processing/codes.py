@@ -120,6 +120,7 @@ class FindingCode(StrEnum):
     currency_assumed_usd = "currency_assumed_usd"
     model_disagreement = "model_disagreement"
     non_usd_currency = "non_usd_currency"
+    unparsed_line = "unparsed_line"
 
 
 C = FindingCode
@@ -149,12 +150,13 @@ FINDING_DESCRIPTIONS: dict[FindingCode, str] = {
     C.zero_stock: "Item is in inventory with zero stock.",
     C.quantity_exceeds_stock: "Requested quantity exceeds available stock.",
     C.currency_assumed_usd: "Currency was missing and USD was assumed.",
-    C.model_disagreement: "The critique disagreed with the initial recommendation.",
+    C.model_disagreement: "The final recommendation was not approve on an otherwise clean invoice.",
     C.non_usd_currency: "Invoice currency is not USD.",
+    C.unparsed_line: "A source line matched no known field and was ignored.",
 }
 
 _WARNINGS = {C.due_date_past, C.arithmetic_unverifiable, C.model_disagreement}
-_INFO = {C.rounding_tolerated, C.currency_assumed_usd}
+_INFO = {C.rounding_tolerated, C.currency_assumed_usd, C.unparsed_line}
 _REVIEW = {C.non_usd_currency}
 
 DEFAULT_SEVERITY: dict[FindingCode, Severity] = {

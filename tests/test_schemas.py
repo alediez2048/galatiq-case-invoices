@@ -100,6 +100,53 @@ SAMPLES = [
         policy_version="p1",
         mode="offline",
     ),
+    schemas.ApprovalRecommendation(
+        recommendation="review",
+        reasons=["r"],
+        cited_codes=["zero_stock"],
+        summary="s",
+        mode="offline",
+        provider="stub",
+        model="stub-1",
+    ),
+    schemas.Critique(
+        agrees=False,
+        omissions=["unknown_item"],
+        high_value=True,
+        revised_recommendation="reject",
+        summary="s",
+        mode="live",
+        provider="p",
+        model="m",
+    ),
+    schemas.GateResult(
+        outcome="needs_review",
+        rule_ids=["R1"],
+        findings=[
+            schemas.ValidationFinding(code="non_usd_currency", severity="review", field="currency")
+        ],
+    ),
+    schemas.HumanReview(
+        invoice_id="i", version=1, action="approve", reviewer="a", reason="ok", policy_version="p1"
+    ),
+    schemas.PaymentResult(
+        payment_id="pay",
+        receipt=schemas.MockReceipt(
+            receipt_id="r",
+            amount=Decimal("5.00"),
+            currency="USD",
+            paid_at=datetime(2026, 1, 31, tzinfo=UTC),
+        ),
+        created=True,
+    ),
+    schemas.ProcessingResult(
+        run_id="r",
+        status="paid_mock",
+        mode="offline",
+        source_hash="h",
+        prior_run_id="r0",
+        evaluation_date=date(2026, 1, 31),
+    ),
 ]
 
 

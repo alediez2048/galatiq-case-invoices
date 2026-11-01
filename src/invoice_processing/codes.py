@@ -43,6 +43,31 @@ class RunStatus(StrEnum):
     duplicate = "duplicate"
 
 
+TERMINAL_RUN_STATUSES: frozenset[RunStatus] = frozenset(
+    {
+        RunStatus.paid_mock,
+        RunStatus.rejected,
+        RunStatus.needs_review,
+        RunStatus.awaiting_human_approval,
+        RunStatus.failed,
+        RunStatus.duplicate,
+    }
+)
+BUSINESS_OUTCOMES: frozenset[RunStatus] = frozenset(
+    {
+        RunStatus.paid_mock,
+        RunStatus.rejected,
+        RunStatus.needs_review,
+        RunStatus.awaiting_human_approval,
+    }
+)
+
+
+class HumanReviewAction(StrEnum):
+    approve = "approve"
+    decline = "decline"
+
+
 class InvoiceStatus(StrEnum):
     """Current business state of one invoice identity. A duplicate run never changes it."""
 
@@ -92,6 +117,9 @@ class FindingCode(StrEnum):
     unknown_item = "unknown_item"
     zero_stock = "zero_stock"
     quantity_exceeds_stock = "quantity_exceeds_stock"
+    currency_assumed_usd = "currency_assumed_usd"
+    model_disagreement = "model_disagreement"
+    non_usd_currency = "non_usd_currency"
 
 
 C = FindingCode
@@ -120,10 +148,14 @@ FINDING_DESCRIPTIONS: dict[FindingCode, str] = {
     C.unknown_item: "Item is not in the inventory database.",
     C.zero_stock: "Item is in inventory with zero stock.",
     C.quantity_exceeds_stock: "Requested quantity exceeds available stock.",
+    C.currency_assumed_usd: "Currency was missing and USD was assumed.",
+    C.model_disagreement: "The critique disagreed with the initial recommendation.",
+    C.non_usd_currency: "Invoice currency is not USD.",
 }
 
-_WARNINGS = {C.due_date_past, C.arithmetic_unverifiable}
-_INFO = {C.rounding_tolerated}
+_WARNINGS = {C.due_date_past, C.arithmetic_unverifiable, C.model_disagreement}
+_INFO = {C.rounding_tolerated, C.currency_assumed_usd}
+_REVIEW = {C.non_usd_currency}
 
 DEFAULT_SEVERITY: dict[FindingCode, Severity] = {
     code: (
@@ -131,6 +163,8 @@ DEFAULT_SEVERITY: dict[FindingCode, Severity] = {
         if code in _WARNINGS
         else Severity.info
         if code in _INFO
+        else Severity.review
+        if code in _REVIEW
         else Severity.blocker
     )
     for code in FindingCode

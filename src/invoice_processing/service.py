@@ -1,8 +1,11 @@
 """Shared processing service: one entry point used by the CLI and tests."""
 
+import contextlib
 import logging
 from datetime import date
 from pathlib import Path
+
+import langsmith
 
 from invoice_processing import intake, ledger, observability
 from invoice_processing.agents.state import Deps, InvoiceState, emit
@@ -94,7 +97,15 @@ def process_invoice(
                     prior_run_id=prior.run_id,
                 )
 
-            final: InvoiceState = build_graph(deps).invoke(state)
+            # Offline mode must open no socket and upload no invoice data: force
+            # LangSmith tracing off even if LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 are set.
+            trace_off = (
+                langsmith.tracing_context(enabled=False)
+                if mode is ExecutionMode.offline
+                else contextlib.nullcontext()
+            )
+            with trace_off:
+                final: InvoiceState = build_graph(deps).invoke(state)
             status = final["status"]
             error_code = final.get("error_code")
             if status not in TERMINAL_RUN_STATUSES:

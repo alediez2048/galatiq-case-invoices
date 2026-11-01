@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 INVOICE = "data/invoices/invoice_1001.txt"
 
 
-def run_cli(*args, db, events):
+def run_cli(*args, db, events, extra_env=None):
     proc = subprocess.run(
         [
             sys.executable,
@@ -23,11 +23,12 @@ def run_cli(*args, db, events):
             "--evaluation-date=2026-01-20",
         ],
         cwd=REPO_ROOT,
-        env={**os.environ, "PYTHONPATH": "src", "INVOICE_NETWORK_GUARD": "1"},
+        env={**os.environ, "PYTHONPATH": "src", "INVOICE_NETWORK_GUARD": "1", **(extra_env or {})},
         capture_output=True,
         text=True,
         timeout=60,
     )
+    assert "network access blocked" not in proc.stderr, proc.stderr
     out = json.loads(proc.stdout) if proc.stdout.strip() else None
     return proc, out
 
@@ -117,3 +118,16 @@ def test_e2e_never_touches_repo_db(tmp_path):
     assert proc.returncode == 0, proc.stderr
     after = repo_db.stat().st_mtime if repo_db.exists() else None
     assert before == after
+
+
+def test_e2e_tracing_env_does_not_reach_network(tmp_path):
+    db, ev = _paths(tmp_path)
+    env = {
+        "LANGSMITH_TRACING": "true",
+        "LANGCHAIN_TRACING_V2": "true",
+        "LANGSMITH_API_KEY": "dummy",
+    }
+    proc, out = run_cli(f"--invoice_path={INVOICE}", db=db, events=ev, extra_env=env)
+    assert proc.returncode == 0, proc.stderr
+    assert out["status"] == "paid_mock"
+    assert "network access blocked" not in proc.stderr

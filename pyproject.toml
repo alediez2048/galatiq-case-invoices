@@ -1,0 +1,30 @@
+[project]
+name = "invoice-processing"
+version = "0.1.0"
+description = "Galatiq case: multi-agent invoice processing prototype"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.9"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/invoice_processing"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["README.md", "docs", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

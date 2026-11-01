@@ -2,9 +2,17 @@
 
 from collections.abc import Iterable
 from datetime import date
+from decimal import Decimal
 
 from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode
-from invoice_processing.schemas import EvidenceRef, LineItem, NormalizedInvoice, ValidationFinding
+from invoice_processing.money import compare, quantize
+from invoice_processing.schemas import (
+    ComputedTotals,
+    EvidenceRef,
+    LineItem,
+    NormalizedInvoice,
+    ValidationFinding,
+)
 
 C = FindingCode
 
@@ -123,3 +131,101 @@ def check_due_date(invoice: NormalizedInvoice, evaluation_date: date) -> list[Va
             observed=invoice.due_date.isoformat(),
         )
     ]
+
+
+def _compare_amount(
+    findings: list[ValidationFinding],
+    code: FindingCode,
+    *,
+    stated: Decimal,
+    computed: Decimal,
+    currency: str,
+    field: str,
+    item: str | None = None,
+) -> None:
+    """Append a mismatch blocker, or rounding_tolerated for a non-zero difference within 0.01."""
+    diff = compare(stated, computed, currency)
+    if diff.difference == 0:
+        return
+    finding_code = C.rounding_tolerated if diff.within_tolerance else code
+    findings.append(
+        _finding(
+            finding_code,
+            field=field,
+            item=item,
+            expected=str(quantize(computed, currency)),
+            observed=str(quantize(stated, currency)),
+        )
+    )
+
+
+def reconcile_totals(invoice: NormalizedInvoice) -> tuple[ComputedTotals, list[ValidationFinding]]:
+    """Recompute line totals, subtotal, tax, and total. Stated values are never modified.
+
+    Absent tax and shipping count as zero. The computed subtotal (not the stated one) feeds the
+    total check. A line without quantity or unit price makes subtotal and total unverifiable.
+    """
+    currency = invoice.currency or "USD"
+    stated = invoice.stated
+    findings: list[ValidationFinding] = []
+    line_totals: list[Decimal | None] = []
+
+    for index, line in enumerate(invoice.lines):
+        label = _line_label(line, index)
+        if line.quantity is None or line.unit_price is None:
+            line_totals.append(None)
+            findings.append(
+                _finding(C.arithmetic_unverifiable, field=f"lines[{index}]", item=label)
+            )
+            continue
+        line_total = quantize(line.quantity * line.unit_price, currency)
+        line_totals.append(line_total)
+        if line.line_total is not None:
+            _compare_amount(
+                findings,
+                C.line_total_mismatch,
+                stated=line.line_total,
+                computed=line_total,
+                currency=currency,
+                field=f"lines[{index}].line_total",
+                item=label,
+            )
+
+    tax = stated.tax if stated.tax is not None else Decimal(0)
+    shipping = stated.shipping if stated.shipping is not None else Decimal(0)
+    if any(t is None for t in line_totals):
+        return ComputedTotals(line_totals=line_totals, tax=tax, shipping=shipping), findings
+
+    subtotal = quantize(sum((t for t in line_totals if t is not None), Decimal(0)), currency)
+    if stated.subtotal is not None:
+        _compare_amount(
+            findings,
+            C.subtotal_mismatch,
+            stated=stated.subtotal,
+            computed=subtotal,
+            currency=currency,
+            field="subtotal",
+        )
+    if stated.tax_rate is not None and stated.tax is not None:
+        _compare_amount(
+            findings,
+            C.tax_mismatch,
+            stated=stated.tax,
+            computed=quantize(subtotal * stated.tax_rate, currency),
+            currency=currency,
+            field="tax",
+        )
+    total = quantize(subtotal + tax + shipping, currency)
+    if stated.total is not None:
+        _compare_amount(
+            findings,
+            C.total_mismatch,
+            stated=stated.total,
+            computed=total,
+            currency=currency,
+            field="total",
+        )
+    computed = ComputedTotals(
+        line_totals=line_totals, subtotal=subtotal, tax=tax, shipping=shipping, total=total
+    )
+    return computed, findings

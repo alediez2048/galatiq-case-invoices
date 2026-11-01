@@ -245,3 +245,29 @@ def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monk
         "SELECT code FROM findings WHERE run_id = ?", (extracted_state["run_id"],)
     ).fetchall()
     assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+
+
+def test_pay_node_paid_event_reports_created(deps, approved_state):
+    payment.pay_node(approved_state, deps)
+    first = [
+        e
+        for e in ledger.list_audit_events(deps.conn, approved_state["run_id"])
+        if e["event"] == "paid"
+    ][0]
+    assert first["payload"]["created"] is True
+    # A second run for the same (already paid) identity gets the existing receipt back.
+    source = approved_state["source"]
+    run2 = ledger.start_run(deps.conn, ExecutionMode.offline, source.source_id, EVAL_DATE)
+    ledger.attach_run(deps.conn, run2, approved_state["invoice_id"], approved_state["version_id"])
+    for s in (
+        RunStatus.extracted,
+        RunStatus.validated,
+        RunStatus.approval_pending,
+        RunStatus.approved,
+    ):
+        ledger.update_run_status(deps.conn, run2, s)
+    update = payment.pay_node({**approved_state, "run_id": run2}, deps)
+    assert update["status"] == RunStatus.paid_mock
+    second = [e for e in ledger.list_audit_events(deps.conn, run2) if e["event"] == "paid"][0]
+    assert second["payload"]["created"] is False
+    assert deps.conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1

@@ -34,6 +34,7 @@ def pay_node(state: InvoiceState, deps: Deps) -> dict:
                 receipt_id=receipt.receipt_id,
                 amount=str(receipt.amount),
                 currency=receipt.currency,
+                created=result.created,
             )
     return {**update, "timings_ms": {**timings, PAY_STAGE: t["duration_ms"]}}
 

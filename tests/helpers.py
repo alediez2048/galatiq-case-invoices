@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal
 
-from invoice_processing.codes import FindingCode
+from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode, Severity
 from invoice_processing.schemas import LineItem, NormalizedInvoice, StatedTotals, ValidationFinding
 
 
@@ -116,3 +116,7 @@ def inv_1010() -> NormalizedInvoice:
 
 def codes(findings: list[ValidationFinding]) -> list[FindingCode]:
     return [f.code for f in findings]
+
+
+def finding(code: FindingCode, severity: Severity | None = None) -> ValidationFinding:
+    return ValidationFinding(code=code, severity=severity or DEFAULT_SEVERITY[code])

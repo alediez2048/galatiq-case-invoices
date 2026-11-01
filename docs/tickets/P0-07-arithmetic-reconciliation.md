@@ -13,9 +13,9 @@ Pure function `reconcile_totals(invoice) -> (ComputedTotals, list[ValidationFind
 - Line total = quantity × unit price; compare with any stated line total (`line_total_mismatch`).
 - Subtotal = sum of line totals; compare with stated subtotal (`subtotal_mismatch`).
 - Tax: when a rate and a stated tax amount are both present, compare (`tax_mismatch`).
-- Expected total = subtotal + tax + shipping; compare with stated total (`total_mismatch`).
+- Expected total = **computed** subtotal (sum of line totals, not the stated subtotal) + tax + shipping; compare with stated total (`total_mismatch`). Absent tax and absent shipping count as 0 for this check (most fixtures state neither); an absent stated subtotal simply skips the subtotal comparison. (Clarified 2026-11-01: the earlier "missing inputs skip the comparison" wording would have skipped the total check for 19 of 20 fixtures.)
 - Differences of exactly ≤ 0.01 emit `rounding_tolerated` (info) with the difference; larger ones are blockers with expected and observed values.
-- Missing inputs skip the dependent comparison and emit `arithmetic_unverifiable` (warning) naming what was missing; nothing is filled in.
+- Only a line missing quantity or unit price makes arithmetic unverifiable: emit `arithmetic_unverifiable` (warning) for that line and skip the subtotal/total comparisons; nothing is filled in.
 - Stated values are never overwritten; computed values are returned separately.
 
 ## Out of scope

@@ -15,10 +15,12 @@ Phase: 0 · Status: todo · Depends on: P0-02 · Requirements: P04, P06, P08 (sh
 - `InvoiceDraft`: raw vendor, invoice number, dates, currency, stated subtotal/tax/shipping/total, raw line items (description, quantity, unit price, line total — all optional and allowed to be invalid), extraction issues, evidence refs. No validation that would discard values.
 - `NormalizationEvent`: field, raw value, normalized value, evidence, provenance (`rule:<name>` or `model:<provider>`).
 - `NormalizedInvoice`: canonical vendor key, invoice number, optional revision, normalized dates, currency, canonical line items, stated totals, computed totals, normalization events. Money fields use the P0-02 type.
-- `ValidationFinding`: stable `code`, `severity` (`info` | `warning` | `blocker`), field/item, expected, observed, evidence, resolution status.
+- `ValidationFinding`: stable `code`, `severity` (`info` | `warning` | `review` | `blocker`), field/item, expected, observed, evidence, resolution status. `review` routes to `needs_review`; `blocker` routes to `rejected`; precedence in the gate is blocker > review > high-value threshold (added 2026-11-01 from plan review).
 - `ApprovalDecision`: initial and final recommendation, critique summary, reasons, policy version, execution mode (`live` | `offline`), provider/model when live.
 - `ProcessingResult`: run ID, invoice ID, status, findings, decision, optional mock receipt, timings, errors.
-- `InvoiceStatus` enum: `received`, `extracted`, `validated`, `approval_pending`, `approved`, `awaiting_human_approval`, `paid_mock`, `rejected`, `needs_review`, `failed`, `duplicate`.
+- Two status enums (revised 2026-11-01 during plan review; the system design conflated them):
+  - `RunStatus` — lifecycle of one processing attempt: `received`, `extracted`, `validated`, `approval_pending`, `approved`, `awaiting_human_approval`, `paid_mock`, `rejected`, `needs_review`, `failed`, `duplicate`.
+  - `InvoiceStatus` — current business state of one invoice identity: `processing`, `paid_mock`, `rejected`, `needs_review`, `awaiting_human_approval`, `failed`, `superseded`. A `duplicate` run never changes the invoice's status; `superseded` is set by a corrected submission (P4-05).
 - `FindingCode` enum seeded with the codes Phase 0 checks emit (see P0-06, P0-07, P0-08); later phases add more. Codes are stable identifiers, never prose.
 
 ## Out of scope

@@ -10,7 +10,7 @@ Nothing is installed yet. The [technology stack](../techstack.md) selects Python
 
 - `pyproject.toml` for package `invoice_processing` under `src/` (layout per [techstack — proposed repository layout](../techstack.md#proposed-repository-layout)), `requires-python = ">=3.12"`.
 - Runtime dependency for this phase: `pydantic`. Dev dependencies: `pytest`, `ruff`.
-- Choose and document the lock workflow (e.g. `pip-tools` → `requirements.lock` / `requirements-dev.lock`, or another tool); commit the lock files.
+- Lock workflow (decided 2026-11-01): `uv` with a committed `uv.lock`; `uv sync` installs the project editable plus the dev group; `uv export --format requirements-txt > requirements.lock` for pip-only users. Build backend `hatchling` so the `src/` package is importable and `python -m invoice_processing.<module>` works.
 - Empty package skeleton: `src/invoice_processing/__init__.py`, `tests/` with a trivial passing test.
 - Ruff config with a small documented rule set; Pytest config (`testpaths`, `pythonpath`).
 - `.gitignore`: `.venv/`, `*.db`, `*.db-journal`, `*.db-wal`, `*.db-shm`, `uploads/`, `output/`, `*.jsonl`, `.env`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `node_modules/`.

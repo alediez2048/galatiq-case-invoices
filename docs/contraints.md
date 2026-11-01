@@ -1,6 +1,6 @@
 # Constraints, assumptions, and open decisions
 
-Status: proposed baseline. Filename follows the requested `contraints.md` spelling.
+Status: baseline updated with [user-approved decisions](decisions.md). Filename follows the requested `contraints.md` spelling.
 
 Related: [requirements](requirements.md), [system design](systemsdesign.md), [stack](techstack.md).
 
@@ -18,15 +18,15 @@ Related: [requirements](requirements.md), [system design](systemsdesign.md), [st
 
 The assignment asks for API-backed LLM reasoning while also prohibiting external API dependencies at runtime. These cannot both describe a live hosted-model call during an offline run.
 
-Proposed approach:
+Agreed project interpretation (not evaluator confirmation):
 
-- Default `offline` mode uses local parsers, deterministic validation, and a clearly labeled simulated reasoning adapter. No model SDK initialization or network calls occur in this mode.
-- Opt-in `live` mode uses Grok through the same typed reasoning interface, with tool calling and schema validation. It requires explicit configuration, credentials, and internet access.
-- Never silently switch a failed live run to simulation. Record provider failure or require an explicit rerun in offline mode.
+- Explicitly selected `offline` mode uses local parsers, deterministic validation, and a clearly labeled simulated reasoning adapter. No model SDK initialization or network calls occur in this mode.
+- The primary demonstration uses real Grok in `live` mode through the typed reasoning interface, with tool calling and schema validation. It requires explicit configuration, credentials, and internet access. No hosted-model transmission begins merely by opening the app.
+- Never silently switch a failed live run to simulation. Leave the invoice unpaid in a recoverable error state and offer an explicit retry. Switching to offline mode creates a separately labeled run and never inherits live approval.
 - Simulation demonstrates workflow, contracts, and safeguards; it is not evidence of actual LLM reasoning or actual model self-correction.
 - A local model could satisfy real inference without external APIs, but adds hardware, download, model-quality, and setup constraints. Defer selecting one until offline real inference is confirmed as necessary.
 
-Open decision: confirm with the evaluator whether an offline simulator plus optional tested live integration satisfies the brief. Until clarified, treat this as an evaluation risk, not a resolved requirement.
+Open decision: confirm with the evaluator whether an offline simulator plus primary tested live integration satisfies the brief. Until clarified, treat this as an evaluation risk, not a resolved requirement.
 
 ## Dataset and business limitations
 
@@ -47,7 +47,7 @@ Open decision: confirm with the evaluator whether an offline simulator plus opti
 
 These are implementation defaults to test and adjust, not assignment mandates:
 
-- Single operator, one local process, sequential batch processing. No enterprise concurrency or multi-tenant guarantees.
+- Single local operator; React frontend and FastAPI backend are separate development processes, with a shared Python processing service for API and CLI. Serialize processing work for the initial implementation. No enterprise concurrency or multi-tenant guarantees. Reviewer identity is recorded for local audit purposes, not represented as enterprise authentication.
 - Maximum 10 MiB per input, 25 PDF pages, and 200 invoice lines. Reject oversized inputs with a useful reason.
 - One extraction-repair retry and one approval revision after critique; no unbounded agent conversations.
 - Live model request timeout of 30 seconds; at most two transport attempts for transient failures. Never retry payment as a model tool.
@@ -62,17 +62,21 @@ Invoice text is untrusted data. Requests embedded in documents cannot change bus
 
 Only the payment service may invoke the mock payment function after rechecking persisted approval and validation state. Neither model output nor UI state alone authorizes payment. Store concise decision explanations and evidence, not hidden chain-of-thought or secrets.
 
+Corrections must match evidence in the immutable original source. Every correction invalidates approval and requires fresh validation and agent review. A source error requires a corrected invoice, not an operator adjustment to make the numbers pass. Human approval is mandatory for otherwise-valid USD totals above 10,000 and cannot override stock, arithmetic, currency, or duplicate-payment blockers. Payment must reject approvals for stale versions.
+
+A mode change never creates a second payment entitlement: duplicate protection remains across runs and modes. Use an explicitly separate demo database when independent offline and live demonstrations need separate mock receipts.
+
 ## Scope and delivery constraints
 
-Deadline, available engineering hours, target evaluator machine, API availability, and model budget remain unknown. Start with a complete CLI flow, then fixture coverage and reliability, then UI. Avoid a separate web API, distributed queues, vector database, cloud services, and generalized ERP integrations in the MVP.
+Deadline, available engineering hours, target evaluator machine, API availability, and model budget remain unknown. Start with a complete CLI flow, then fixture coverage and reliability, then UI. React + TypeScript and FastAPI are now in scope to preserve the approved UI. Controlled human corrections and high-value approval are also in scope. Avoid distributed queues, vector databases, cloud hosting, and generalized ERP integrations in the MVP.
 
-The original README remains the assignment source. The four design documents describe planned behavior, not delivered functionality. Matt Pocock's project-workflow skill configuration is a separate setup task; it has not been installed or configured by creating these documents.
+The original README remains the assignment source. The design documents describe planned behavior. The existing HTML prototype demonstrates appearance and sample interactions only; it does not implement the newly approved backend or human-review workflow. Matt Pocock's project-workflow skill configuration is a separate setup task; it has not been installed or configured by creating these documents.
 
 ## Decisions to revisit before implementation or submission
 
 1. Offline simulator acceptance versus mandatory real offline inference.
 2. Available Grok credentials, current supported model, and permitted live testing budget.
-3. Deadline and whether human review actions fit the remaining scope.
+3. Deadline and delivery sequencing for the agreed frontend/API and controlled human-review scope.
 4. Whether to support EUR settlement or retain review-only handling.
 5. PDF extraction results against the actual committed files, including generator/source differences.
 6. Any evaluator clarification on revision handling and simplified inventory semantics.

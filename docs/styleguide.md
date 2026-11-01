@@ -8,7 +8,7 @@ Related: [system design](systemsdesign.md), [technology stack](techstack.md).
 
 Dark and technical: pure black backgrounds, white typography, and one green accent. A green wave mesh is the main hero visual, with thin grid lines framing the content.
 
-The reference site is reported to use Webflow. This describes the reference site, not a requirement to change the project's proposed Streamlit implementation.
+The reference site is reported to use Webflow. This describes the reference site, not a requirement to change the project's approved React + TypeScript frontend and FastAPI backend.
 
 ## Colors
 

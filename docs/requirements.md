@@ -1,6 +1,6 @@
 # Project requirements
 
-Status: proposed implementation baseline; application not yet implemented.
+Status: implementation baseline updated after two user-approved grilling rounds. Backend functionality is not yet implemented; the HTML mockup is a visual prototype. See [agreed decisions](decisions.md).
 
 ## Sources and interpretation
 
@@ -25,7 +25,7 @@ Build a runnable local multi-agent invoice-processing prototype. An accounts-pay
 | A05 | Pay approved invoices through a mock function; log rejection reasons. | Approved eligible invoice receives a mock receipt; rejected invoice never invokes payment. |
 | A06 | Use Grok as preferred reasoning engine; another model is acceptable without a key. | A real provider integration supports structured outputs and tool calls. Simulator-only tests are not evidence of actual LLM operation. |
 | A07 | Use multi-agent orchestration, tools, structured outputs, and self-correction. | Distinct ingestion, validation, approval, and payment responsibilities; bounded repair and critique paths are observable. |
-| A08 | Run locally with no external APIs required at runtime. | Default offline mode completes without credentials or network access. See unresolved interpretation in constraints. |
+| A08 | Run locally with no external APIs required at runtime. | Explicit offline mode completes without credentials or network access. See unresolved interpretation in constraints. |
 | A09 | Expose the assignment's command-line interface and structured logs/results. | `python main.py --invoice_path=data/invoices/invoice_1001.txt` runs after documented setup. |
 | A10 | Submit a working prototype through a public GitHub repository. | Reproducible install, seed, run, test, and demo instructions; publicly accessible submission URL. |
 
@@ -40,23 +40,28 @@ Python is preferred by the assignment. No particular orchestration framework or 
 | P03 | Aggregate repeated canonical items before stock checks. | INV-1013 totals WidgetA=22, WidgetB=18, GadgetX=9, all exceeding seed stock. |
 | P04 | Preserve normalization and evidence. | Log raw and corrected values for known item aliases, date typos, and numeric OCR artifacts. Ambiguous changes require review. |
 | P05 | Prevent duplicate mock payments across reruns, formats, and revisions. | Persistent invoice identity and payment uniqueness; altered revisions after payment are blocked for review. |
-| P06 | Distinguish business rejection, unresolved review, and technical failure. | `rejected`, `needs_review`, `failed`, `duplicate`, and `paid_mock` are distinct outcomes. |
+| P06 | Distinguish business rejection, unresolved review, and technical failure. | `rejected`, `needs_review`, `awaiting_human_approval`, `failed`, `duplicate`, and `paid_mock` are distinct outcomes. |
 | P07 | Provide a local operator UI. | Select/upload invoice, inspect extracted fields and findings, view decision and receipt, filter results, and see execution mode. |
 | P08 | Produce an audit trail. | Persist source hash, run identity, evidence, tool outcomes, normalization, checks, critique summary, policy version, mode, and payment result. Never log credentials or private model reasoning. |
 | P09 | Bound model and parser work. | File/page limits, model timeouts, retry limits, malformed-output handling, and safe terminal failure. |
 | P10 | Provide fixture-driven regression tests. | All supplied inputs accounted for, expected failures asserted, and payment safety tested independently of model wording. |
+| P11 | Demonstrate real Grok reasoning as the primary demo. | Verify actual structured outputs, tool calls, and critique with the provider. Offline simulation remains a separate, explicitly selected mode. |
+| P12 | Preserve the approved visual mockup in a React + TypeScript UI backed by FastAPI. | Dashboard, invoice evidence, workflow progress, and review interactions meet the visual baseline; CLI and API share the Python processing service. |
+| P13 | Support controlled reviewer corrections and approval. | Record source evidence, reviewer, reason, time, old/new values, and version; revalidate changes; bind approval to the current validated version. |
+| P14 | Enforce mandatory human approval above USD 10,000. | Valid 10,000.00 may auto-pay; valid 10,000.01 stays unpaid until explicit human approval. Hard blockers remain non-overridable. |
+| P15 | Expose recoverable model failures without fallback. | Failed live reasoning leaves the invoice unpaid; explicit retry is available. Offline selection creates a separately labeled run. |
 
-## Proposed business policy
+## Business policy
 
 - Positive whole-number quantities; positive invoice total; nonnegative prices, tax, and shipping. Credit notes are outside MVP scope.
 - Required payment fields: vendor, invoice identity, due date, currency, total, and complete valid line items. Missing fields block payment.
 - Exact arithmetic uses decimal values rounded to the currency's minor unit. A discrepancy greater than one cent blocks payment; any tolerated rounding difference is recorded.
 - Aggregate quantities per canonical item within an invoice. Inventory is a fixed validation snapshot, not decremented by invoice payment.
 - Unknown items, zero stock, overstock requests, and inconsistent totals block payment. A vendor name or urgent wording is not proof of fraud.
-- Adopt greater than USD 10,000 as the proposed high-value threshold. It triggers an additional critique and explicit policy checks, not automatic rejection. Exactly USD 10,000 is below that rule.
+- Otherwise-valid invoices greater than USD 10,000 require explicit human approval after the agent recommendation and critique. They wait unpaid in `awaiting_human_approval`. Clean, eligible invoices at or below USD 10,000 may proceed automatically to mock payment. The threshold is checked against the final validated USD total, including tax and shipping; a human cannot override a hard blocker.
 - USD-only mock settlement for MVP. Missing currency may use a prominently recorded USD dataset assumption; explicit EUR is preserved and routed to review, never converted implicitly.
 - Existing absolute past due dates generate warnings rather than automatic rejection. Relative dates such as “yesterday” stay unresolved without a trustworthy reference date.
-- Human resolution is a later enhancement. MVP review status is a terminal unresolved outcome and cannot bypass hard validation failures.
+- Reviewers may correct extraction mistakes supported by the original source, with a required reason and an immutable before/after audit record. Each correction invalidates earlier approval and reruns validation and the approval/critique workflow. Errors in the vendor document require a corrected invoice; the operator must not rewrite the original source. Unsupported EUR settlement and previously paid invoices remain blocked.
 
 ## Sample acceptance matrix
 
@@ -90,9 +95,12 @@ Completion requires:
 
 1. A clean-install offline run covering every supplied file, with failures explained rather than swallowed.
 2. A tested approved-to-payment path and rejected/review/duplicate-to-no-payment paths, including restarts.
-3. Separate unit, integration, and model-provider verification; untested live integration explicitly disclosed.
-4. A usable local UI and the required CLI sharing the same business logic.
-5. Documentation of architecture, setup, assumptions, limitations, and example results in the public fork.
-6. Explicit resolution or disclosure of the offline/LLM interpretation before submission.
+3. Separate unit, integration, and real Grok-provider verification. A simulated run cannot satisfy the primary live-demo requirement; unavailable credentials are a delivery blocker, not an excuse to relabel simulation.
+4. A React + TypeScript UI preserving the approved mockup, a FastAPI backend, and the required CLI sharing the same Python business logic.
+5. Verified correction/revalidation, high-value approval, stale-approval rejection, and live-provider failure paths.
+6. Documentation of architecture, setup, assumptions, limitations, and example results in the public fork.
+7. Explicit resolution or disclosure of the offline/LLM interpretation before submission.
 
-Optional after core completion: human review actions, measured performance metrics, illustrative savings with visible assumptions, additional adversarial fixtures, and real local-model execution. No deadline or implementation-hour budget has yet been supplied.
+Additional acceptance fixtures must include otherwise-valid totals of USD 10,000.00 and USD 10,000.01, an evidence-backed extraction mistake, an actual source-document error, a correction after approval, repeated/stale approval requests, and a live-provider failure. Supplied high-value invoices also have blockers, so they alone cannot demonstrate the eligible human-approval path.
+
+Optional after core completion: measured performance metrics, illustrative savings with visible assumptions, additional adversarial fixtures, and real local-model execution. No deadline or implementation-hour budget has yet been supplied.

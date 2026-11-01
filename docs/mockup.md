@@ -2,7 +2,7 @@
 
 **Visual prototype:** [Open the interactive HTML mockup](mockups/index.html). The HTML includes the dashboard, invoice details, filters, review view, and a labeled sample-processing animation. It uses illustrative data and has no backend.
 
-Status: proposed end experience. This is a Markdown wireframe and interaction specification, not a running UI or a record of processed invoices. All screen values below are illustrative, grounded in the supplied fixtures where identified.
+Status: end-experience specification updated with [agreed decisions](decisions.md). The existing HTML prototype still shows the earlier sample-only, read-only review flow; the correction and approval behavior below is planned, not implemented there. This is a Markdown wireframe and interaction specification, not a running UI or a record of processed invoices. All screen values below are illustrative, grounded in the supplied fixtures where identified.
 
 References: [requirements](requirements.md), [constraints](contraints.md), [system design](systemsdesign.md), [technology stack](techstack.md), [style guide](styleguide.md).
 
@@ -26,6 +26,8 @@ This is an operational application with Galatiq's visual language. Keep the bran
 - Header uses a text wordmark until an approved logo asset is available. It identifies the case-study app without implying a deployed Galatiq product.
 
 ## Navigation and application frame
+
+The approved mockup remains the visual baseline for React + TypeScript. FastAPI supplies real workflow data. The wireframes below retain offline sample labels as illustrative examples; the primary demonstration must use real Grok and display “Live model.” Mode is selected explicitly before processing.
 
 Three primary views: **Overview**, **Invoices**, and **Needs review**. An invoice opens a detail view with its evidence and history. A compact settings panel contains execution mode and readiness information.
 
@@ -86,7 +88,7 @@ Setup readiness appears only when actionable: missing inventory setup, unsupport
 │ Selected: invoice_1001.txt                                      [Remove]    │
 │ Mode: Offline simulation                                                    │
 │ Local checks and simulated agent decisions. No external model calls.        │
-│ Eligible invoices receive a mock payment automatically. No money moves.     │
+│ Eligible invoices up to USD 10,000 can auto-pay. No real money moves.     │
 │                                                                             │
 │ [Cancel]                                              [Process invoice]     │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -229,11 +231,25 @@ For PDF inputs, show a page preview when supported. For TXT, CSV, JSON, and XML,
 │                                                                             │
 │ [View invoice]                                      [Download result JSON]  │
 │                                                                             │
-│ Review resolution is not available in this prototype.                       │
+│ EUR settlement remains blocked; human approval cannot override it.          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The MVP review queue explains unresolved decisions and exposes evidence; it has no approval/rejection controls. Missing information and ambiguous corrections may also appear here.
+The review queue separates extraction corrections, eligible high-value approvals, and unresolved blockers. Reviewers can correct extraction mistakes with source evidence and a mandatory reason, then save a new version and rerun validation and agent review. Preserve original bytes and every old/new value. Errors actually present in the vendor invoice require a corrected source submission.
+
+For otherwise-valid USD totals above 10,000, show the agent recommendation and critique with **Approve mock payment** and **Decline** actions. Require a review reason and bind the action to the displayed validated version. At or below the threshold, eligible clean invoices may auto-pay. Stale versions and hard blockers disable payment approval and are also rejected server-side.
+
+```text
+CORRECT EXTRACTION                         AWAITING HUMAN APPROVAL
+Original source | Extracted value           USD 10,000.01 · All checks passed
+Evidence        | Corrected value           Agent recommendation + critique
+Reason [required________________]          Review reason [required________]
+[Save correction and revalidate]           [Decline] [Approve mock payment]
+
+Saving invalidates prior approval.         Payment waits for this action.
+```
+
+These controls are additions to the approved visual baseline; they are not yet present in the HTML mockup.
 
 For a revised invoice whose original was already paid, use specific copy: “Earlier version already mock paid. Revised version blocked from additional payment.” Show the prior receipt. Do not use the blanket “no payment has been made” wording for that case.
 
@@ -261,7 +277,7 @@ For a revised invoice whose original was already paid, use specific copy: “Ear
 - Long vendor names wrap or truncate with an accessible full label. Tables have clear headers and sensible reading order.
 - Use short `0.2s ease` transitions for simple state changes. Respect reduced motion and avoid mandatory animated decoration.
 - Error messages appear next to the relevant field or action. Announce asynchronous completion/failure without repeatedly interrupting screen readers.
-- Downloads expose persisted results, not transient UI state. Routine view changes and Streamlit reruns must never initiate processing or payment.
+- Downloads expose persisted results, not transient UI state. Routine view changes and browser refreshes must never initiate processing or payment.
 
 ## Responsive layout proposal
 
@@ -280,21 +296,24 @@ On small screens, show the outcome and primary reason before the source preview.
 
 Each step describes an expected demo outcome to implement and verify, not an already-tested result.
 
-1. Open the empty workspace in offline simulation and select the clean invoice sample.
+1. Explicitly select configured live Grok mode for the primary demo and select the clean invoice sample. Repeat separately in offline simulation to demonstrate no-network reproducibility.
 2. Process INV-1001; inspect inventory checks, approval critique, and the USD 5,000 mock receipt.
 3. Process INV-1002; see GadgetX 20 requested versus 5 available and payment not attempted.
 4. Process INV-1012; inspect evidence-backed formatting corrections without presenting invented confidence percentages.
 5. Process INV-1013; inspect aggregated stock shortages and the USD 50 total discrepancy.
 6. Process INV-1014; see explicit EUR currency and the unresolved review status.
 7. Resubmit INV-1001; confirm that the existing receipt is reused and mock-paid totals do not increase.
-8. Return to the overview and distinguish unique invoices from processing attempts.
+8. Use an added otherwise-valid USD 10,000.01 fixture to demonstrate the human-approval wait, then approve the current version. Compare with a valid USD 10,000.00 automatic path.
+9. Correct an evidence-backed extraction error, supply a reason, and inspect approval invalidation and revalidation. Verify stale approval cannot proceed.
+10. Demonstrate a live-provider failure: invoice stays unpaid, retry is explicit, and no offline result is substituted.
+11. Return to the overview and distinguish unique invoices from processing attempts.
 
 Use fresh, explicitly initialized demo data for a repeatable walkthrough. Do not silently reset the user's existing local ledger.
 
 ## MVP boundary and implementation handoff
 
-Build the frame, upload/sample selection, real stage progress, invoice list/detail, result download, and read-only review queue first. The UI calls the shared processing service described in [system design](systemsdesign.md); it must not duplicate business rules.
+Build the frame, upload/sample selection, real stage progress, invoice list/detail, result download, and actionable review queue, including correction/revalidation and mandatory high-value approval. React calls FastAPI, which delegates to the shared processing service described in [system design](systemsdesign.md); it must not duplicate business rules.
 
-Later extensions could add audited human review actions, richer invoice-version comparison, batch submission, and measured business-impact analysis. These are outside the current mockup's required interactive scope.
+Later extensions could add richer invoice-version comparison, batch submission, and measured business-impact analysis. These are outside the current mockup's required interactive scope.
 
 Before considering the experience complete, visually inspect empty, loading, successful, rejected, review, duplicate, and error states at desktop and narrow widths. Replace every illustrative value with actual persisted data, verify mock/live labeling, and confirm that all visible controls perform the promised action.

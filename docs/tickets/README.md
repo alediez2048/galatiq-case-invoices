@@ -1,0 +1,156 @@
+# Tickets
+
+Work items derived from the [PRD](../PRD.md). One file per ticket, named `P<phase>-<number>-<slug>.md`. Requirement IDs (A01, P02, …) refer to [requirements.md](../requirements.md).
+
+Status values: `todo`, `in progress`, `blocked`, `done`. Update the status line in the ticket file and in the index below together.
+
+## Phase 0 — Foundations
+
+Goal: a scaffolded repository with contracts and storage in place. Exit criteria: `pip install` and the seed script work from a clean clone; unit tests cover arithmetic, aggregation, and seed idempotence.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P0-01](P0-01-project-scaffolding.md) | Project scaffolding and tooling | — | todo |
+| [P0-02](P0-02-money-and-currency.md) | Money and currency primitives | P0-01 | todo |
+| [P0-03](P0-03-data-contracts.md) | Core Pydantic data contracts | P0-02 | todo |
+| [P0-04](P0-04-sqlite-schema.md) | SQLite schema and storage module | P0-01 | todo |
+| [P0-05](P0-05-inventory-seed.md) | Idempotent inventory seed | P0-04 | todo |
+| [P0-06](P0-06-required-field-checks.md) | Required-field and value-sign checks | P0-03 | todo |
+| [P0-07](P0-07-arithmetic-reconciliation.md) | Arithmetic reconciliation | P0-02, P0-03 | todo |
+| [P0-08](P0-08-aggregation-and-inventory-check.md) | Item aggregation and inventory comparison | P0-03, P0-05 | todo |
+
+Suggested order: P0-01 → P0-02 and P0-04 in parallel → P0-03 and P0-05 → P0-06, P0-07, P0-08.
+
+Phase 0 is done when every ticket above is `done` and the phase exit criteria are verified from a fresh clone.
+
+## Phase 1 — Walking skeleton (offline, one invoice)
+
+Goal: INV-1001 TXT flows through the CLI to a persisted mock receipt in offline mode. Exit criteria: `paid_mock` with a USD 5,000.00 receipt; rerunning does not pay twice; offline mode makes no network calls.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P1-01](P1-01-source-intake-and-txt-extraction.md) | Source intake and clean TXT extraction | P0-03 | todo |
+| [P1-02](P1-02-ledger-writes.md) | Ledger writes and audit events | P0-03, P0-04 | todo |
+| [P1-03](P1-03-reasoning-interface-and-offline-simulator.md) | Reasoning interface and offline simulator | P0-03 | todo |
+| [P1-04](P1-04-eligibility-policy-gate.md) | Deterministic eligibility policy gate | P0-02, P0-03 | todo |
+| [P1-05](P1-05-guarded-mock-payment-service.md) | Guarded, idempotent mock payment service | P0-04, P1-02, P1-04 | todo |
+| [P1-06](P1-06-agent-nodes.md) | Ingestion, validation, approval, and payment agent nodes | P1-01, P1-03, P1-04, P1-05, P0-06–P0-08 | todo |
+| [P1-07](P1-07-workflow-and-processing-service.md) | LangGraph workflow and shared processing service | P1-02, P1-06 | todo |
+| [P1-08](P1-08-structured-logging-and-results.md) | Structured logging and result output | P0-01, P0-03 | todo |
+| [P1-09](P1-09-cli-entry-point.md) | CLI entry point | P1-07, P1-08 | todo |
+| [P1-10](P1-10-phase-1-end-to-end-tests.md) | Phase 1 end-to-end and offline-network tests | P1-09 | todo |
+
+Suggested order: P1-01, P1-02, P1-03, P1-04, P1-08 in parallel → P1-05 → P1-06 → P1-07 → P1-09 → P1-10.
+
+Open decision in P1-09: default mode when `--mode` is omitted (recommended: `offline`, clearly labeled).
+
+Pulled forward from Phase 2: the recorded USD assumption for invoices without a stated currency (P1-01), because INV-1001 states none and would otherwise be blocked.
+
+## Phase 2 — Full corpus and data integrity
+
+Goal: every supplied fixture produces its expected outcome in offline mode. Exit criteria: all 20 files have asserted outcomes; INV-1013 aggregates 22/18/9 and reports the USD 50.00 discrepancy; alternate formats and revisions yield at most one payment per identity; INV-1014 stays EUR and unpaid.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P2-01](P2-01-input-limits-and-unsupported-documents.md) | Input limits and unsupported documents | P1-01 | todo |
+| [P2-02](P2-02-txt-labeled-layouts.md) | TXT extraction: labeled layouts, label typos, email bodies | P1-01 | todo |
+| [P2-03](P2-03-txt-table-layouts.md) | TXT extraction: column tables and footer totals | P2-02 | todo |
+| [P2-04](P2-04-json-parser.md) | JSON parser | P1-01 | todo |
+| [P2-05](P2-05-csv-parsers.md) | CSV parsers (field/value and row-table layouts) | P1-01 | todo |
+| [P2-06](P2-06-xml-parser.md) | Hardened XML parser | P1-01 | todo |
+| [P2-07](P2-07-pdf-text-extraction.md) | PDF text extraction | P2-01, P2-03 | todo |
+| [P2-08](P2-08-normalization-rules.md) | Evidence-backed normalization: items, OCR artifacts, identity | P2-02, P2-03 | todo |
+| [P2-09](P2-09-dates-currency-and-terms.md) | Dates, currency, and payment terms | P2-08 | todo |
+| [P2-10](P2-10-duplicates-formats-and-revisions.md) | Duplicates, alternate formats, and revisions | P1-02, P2-04, P2-07, P2-08, P2-09 | todo |
+| [P2-11](P2-11-fixture-acceptance-suite.md) | Fixture acceptance suite | P2-01 – P2-10 | todo |
+
+Suggested order: P2-01, P2-02, P2-04, P2-05, P2-06 in parallel → P2-03 → P2-07 and P2-08 → P2-09 → P2-10 → P2-11.
+
+Open decision in P2-11: whether INV-1012 (all corrections rule-backed, USD 9,975.00) should auto-pay or always stop at `needs_review`.
+
+Refines Phase 1: P2-10 narrows the P1-02 semantic hash to payable content only, because 1011 PDF omits the subtotal/tax lines its TXT twin states.
+
+## Phase 3 — Live Grok reasoning
+
+Goal: the primary demo runs on real Grok with tool use, structured outputs, and observable self-correction. Exit criteria: explicitly invoked live smoke test passes; controlled tests cover malformed output, budget exhaustion, timeout, and provider failure without payment; payment safety holds regardless of model wording.
+
+Prerequisite: xAI credentials, a confirmed model, and a live-testing budget. Only P3-10 needs them; P3-01 – P3-09 are built and tested against a scripted fake client.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P3-01](P3-01-live-mode-configuration.md) | Live mode configuration and credentials | P1-03, P1-09 | todo |
+| [P3-02](P3-02-xai-reasoning-adapter.md) | xAI reasoning adapter | P1-03, P3-01 | todo |
+| [P3-03](P3-03-tool-registry-and-dispatcher.md) | Whitelisted tool registry and dispatcher | P0-08, P1-02, P1-06 | todo |
+| [P3-04](P3-04-model-call-budget.md) | Bounded agent loops and per-invoice model budget | P1-07, P3-02, P3-03 | todo |
+| [P3-05](P3-05-extraction-assist-and-repair.md) | Model-assisted extraction with one repair retry | P2-08, P3-02 – P3-04 | todo |
+| [P3-06](P3-06-live-approval-and-critique.md) | Live approval recommendation and critique loop | P1-04, P3-02 – P3-04 | todo |
+| [P3-07](P3-07-untrusted-input-safeguards.md) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | todo |
+| [P3-08](P3-08-live-failure-and-explicit-retry.md) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | todo |
+| [P3-09](P3-09-scripted-provider-contract-tests.md) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | todo |
+| [P3-10](P3-10-live-smoke-test-and-verification.md) | Live Grok smoke test and verification record | P3-01 – P3-09 | blocked |
+
+Suggested order: P3-01 and P3-03 in parallel → P3-02 → P3-04 → P3-05, P3-06, P3-08 in parallel → P3-07 → P3-09 → P3-10.
+
+Pulled forward from Phase 4: the valid USD 10,000.00 / 10,000.01 threshold fixtures (P3-06), needed to show high-value critique.
+
+SDK details in P3-02 were read from xAI docs on 2026-11-01 and must be re-verified against the installed version.
+
+## Phase 4 — Human review workflow (service layer)
+
+Goal: corrections and high-value approvals work end to end through the shared service, before any UI. Exit criteria: 10,000.00 auto-pays and 10,000.01 waits for explicit approval; human approval cannot override any hard blocker; stale approval after a correction cannot reach payment.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P4-01](P4-01-versioning-and-review-contracts.md) | Invoice versioning and review contracts | P0-04, P2-10 | todo |
+| [P4-02](P4-02-evidence-backed-corrections.md) | Evidence-backed correction and revalidation | P1-07, P3-05, P4-01 | todo |
+| [P4-03](P4-03-identity-corrections-and-duplicate-safety.md) | Identity corrections and duplicate safety | P2-10, P4-02 | todo |
+| [P4-04](P4-04-human-approval-for-high-value.md) | Human approval for high-value invoices | P1-05, P3-06, P4-01 | todo |
+| [P4-05](P4-05-review-queue-and-corrected-submissions.md) | Review queue and corrected-invoice submissions | P4-02, P4-04 | todo |
+| [P4-06](P4-06-review-cli.md) | Review CLI | P4-02 – P4-05 | todo |
+| [P4-07](P4-07-review-acceptance-tests.md) | Review workflow acceptance fixtures and tests | P4-01 – P4-06 | todo |
+
+Suggested order: P4-01 → P4-02 and P4-04 in parallel → P4-03 and P4-05 → P4-06 → P4-07.
+
+Open decision in P4-05: how a corrected vendor invoice supersedes unpaid prior versions instead of hitting `version_conflict`.
+
+## Phase 5 — API and operator UI
+
+Goal: the approved mockup becomes a working React + TypeScript app backed by FastAPI. Exit criteria: every state visually checked at desktop and narrow widths with real data; browser coverage for correction, approval, and stale/repeated actions; frontend typecheck and build pass with local-only assets.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P5-01](P5-01-fastapi-app-skeleton.md) | FastAPI application skeleton | P1-07, P4-05 | todo |
+| [P5-02](P5-02-submission-and-progress-endpoints.md) | Submission and processing-progress endpoints | P2-01, P5-01 | todo |
+| [P5-03](P5-03-read-and-dashboard-endpoints.md) | Invoice, detail, and dashboard read endpoints | P5-01 | todo |
+| [P5-04](P5-04-review-action-endpoints.md) | Review action endpoints | P4-02 – P4-05, P5-01 | todo |
+| [P5-05](P5-05-frontend-scaffold-and-app-frame.md) | Frontend scaffold, design tokens, and app frame | P5-01 | todo |
+| [P5-06](P5-06-overview-and-invoice-list.md) | Empty workspace, overview, and invoice list | P5-03, P5-05 | todo |
+| [P5-07](P5-07-add-invoice-and-processing.md) | Add invoice and processing views | P5-02, P5-05 | todo |
+| [P5-08](P5-08-invoice-detail-and-states.md) | Invoice detail and outcome states | P5-03, P5-05 | todo |
+| [P5-09](P5-09-needs-review-and-actions.md) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | todo |
+| [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | todo |
+
+Suggested order: P5-01 → P5-02, P5-03, P5-04, P5-05 in parallel → P5-06, P5-07, P5-08 in parallel → P5-09 → P5-10.
+
+New tooling proposed (not yet user-confirmed): `openapi-typescript` for the typed client, Playwright and axe for browser and accessibility tests.
+
+## Phase 6 — Hardening and submission
+
+Goal: a reproducible, documented public submission. Exit criteria: clean-install offline run covers every supplied file; live demo verified separately; the public repository URL reproduces the documented results.
+
+| Ticket | Title | Depends on | Status |
+| --- | --- | --- | --- |
+| [P6-01](P6-01-robustness-test-campaign.md) | Robustness test campaign | P2-11, P3-09, P4-07, P5-10 | todo |
+| [P6-02](P6-02-audit-trail-completeness.md) | Audit trail completeness and export | P4-07, P5-03 | todo |
+| [P6-03](P6-03-demo-setup-and-walkthrough.md) | Demo setup and evaluator walkthrough | P3-10, P5-10 | todo |
+| [P6-04](P6-04-submission-documentation.md) | Submission documentation and business-impact narrative | P6-01, P6-03 | todo |
+| [P6-05](P6-05-open-question-resolution.md) | Resolve or disclose open questions | — | todo |
+| [P6-06](P6-06-release-checks-and-publish.md) | Release checks and public GitHub submission | P6-01 – P6-05 | todo |
+
+Suggested order: P6-05 can start now → P6-01 and P6-02 in parallel → P6-03 → P6-04 → P6-06.
+
+Open decision in P6-04: README layout (solution section on top with the assignment text preserved below, recommended).
+
+## All open decisions
+
+Collected in [P6-05](P6-05-open-question-resolution.md): default CLI mode (P1-09), INV-1012 auto-pay (P2-11), corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics).

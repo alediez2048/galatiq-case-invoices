@@ -31,7 +31,12 @@ from invoice_processing.schemas import (
     ValidationFinding,
 )
 
-REDACTED_KEY = re.compile(r"key|secret|token|password|authorization", re.I)
+# Credential-like names only; a bare "key" must be the whole name so that business
+# fields such as vendor_key or invoice_number_key are kept.
+REDACTED_KEY = re.compile(
+    r"^key$|(^|_)(api_?key|secret|token|password|passwd|authorization|credential)s?($|_)",
+    re.I,
+)
 
 
 def utcnow() -> str:
@@ -300,8 +305,13 @@ def get_human_review(
     return None if row is None else HumanReview(**dict(row))
 
 
-def _redact(payload: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in payload.items() if not REDACTED_KEY.search(str(k))}
+def redact(value: Any) -> Any:
+    """Recursively drop credential-like keys from dicts (including dicts inside lists)."""
+    if isinstance(value, dict):
+        return {k: redact(v) for k, v in value.items() if not REDACTED_KEY.search(str(k))}
+    if isinstance(value, list | tuple):
+        return [redact(v) for v in value]
+    return value
 
 
 def append_audit_event(
@@ -313,7 +323,7 @@ def append_audit_event(
     invoice_id: str | None = None,
     version_id: str | None = None,
 ) -> None:
-    body = json.dumps(_redact(payload), sort_keys=True, default=str)
+    body = json.dumps(redact(payload), sort_keys=True, default=str)
     with storage.atomic(conn):
         conn.execute(
             "INSERT INTO audit_events (run_id, invoice_id, version_id, stage, event, "

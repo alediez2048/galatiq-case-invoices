@@ -149,6 +149,41 @@ def test_audit_payload_redacts_secret_keys(conn, rid):
     assert list_audit_events(conn, rid)[0]["payload"] == {"ok": 1}
 
 
+def test_audit_payload_redacts_nested_keys(conn, rid):
+    append_audit_event(conn, rid, "x", "y", {"headers": {"authorization": "x"}, "ok": 1})
+    assert list_audit_events(conn, rid)[0]["payload"] == {"headers": {}, "ok": 1}
+
+
+def test_redact_recurses_into_lists():
+    out = ledger.redact({"items": [{"token": "t", "n": 1}, 5]})
+    assert out == {"items": [{"n": 1}, 5]}
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "api_key",
+        "API_KEY",
+        "auth_token",
+        "token",
+        "secret",
+        "client_secret",
+        "password",
+        "authorization",
+        "xai_api_key",
+    ],
+)
+def test_redacted_key_matches_credentials(key):
+    assert ledger.REDACTED_KEY.search(key)
+
+
+@pytest.mark.parametrize(
+    "key", ["vendor_key", "invoice_number_key", "source_hash", "receipt_id", "keyboard"]
+)
+def test_redacted_key_keeps_business_fields(key):
+    assert not ledger.REDACTED_KEY.search(key)
+
+
 def test_find_prior_outcome_skips_failed_runs(conn, sid):
     r1 = start_run(conn, ExecutionMode.offline, sid, EVAL)
     finish_run(conn, r1, RunStatus.failed, "x")

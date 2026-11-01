@@ -169,3 +169,20 @@ An independent review of all 62 tickets produced 24 findings; every fixture valu
 ## All open decisions
 
 Collected in [P6-05](P6-05-open-question-resolution.md): default CLI mode (P1-09), INV-1012 auto-pay (P2-11), corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics). Resolved 2026-11-01: model disagreement routes to human approval; scope cut line adopted; provider adapter stays on the official `xai_sdk`.
+
+## Phase 1 carry-overs (recorded 2026-11-01)
+
+Deferred findings from the Phase 1 reviews, each assigned to the ticket that should absorb it.
+
+| Target | Item |
+| --- | --- |
+| P2-01 | `intake.read_source` does not wrap `OSError` (permission errors, races). |
+| P2-02 | A repeated label (second `Vendor:`) silently overwrites the first; raise an extraction issue. |
+| P2-08 | Unparseable header values cite all draft evidence instead of their own line; `parse_amount` accepts misplaced commas (`1,2,3`). |
+| P2-10 | A revised version under an already-paid identity returns the old receipt as `paid_mock` (see the note in the P2-10 ticket); `record_version` reuses the first source's payload on a hash match; repeat of an older version doesn't move `current_version`; add `find_prior_outcome` tests for `retry_of`, latest-of-several, ignoring `duplicate`; `mark_interrupted_runs` must leave terminal runs alone (test). |
+| P2-11 | Repo-db e2e test compares mtime only; e2e setup runs don't assert first-run status; `None` total and combined high-value + disagreement gate cases. |
+| Phase 2 deps | Declare `langsmith>=0.14,<1` in `pyproject.toml` (imported directly by `service.py`, currently only transitive via langgraph). |
+| P3-01 / P3-07 | Disable or hide LangSmith tracing inputs in live mode too (raw invoice bytes); redaction misses some camelCase names (`clientSecret`, `sessionToken`) — close before any API key exists; network guard leaves `socket.connect_ex`/`getaddrinfo` unpatched; reasoning protocol attrs as `ClassVar`, exact-threshold critique test; approval-node revision path untested. |
+| P4-04 | Gate's human-review match ignores `invoice_id` (ledger query filters by it and `pay` rechecks — make it explicit); approval-node human-review path untested. |
+| P5 | `mark_interrupted_runs(utcnow())` would fail a concurrent process's live run — add a grace window before FastAPI concurrency; observability: caller `ts=` overrides the timestamp, `write_result` treats a `str` path as a stream, tests leave the events logger configured. |
+| P6 | Payment: reserve-then-execute (pending row) before any real gateway, positive-amount guard, empty vendor name; service exception path drops `invoice_id`/findings/timings and leaves `invoices.status` intermediate; `attach_run`/`set_invoice_status` no-op on unknown ids; CLI tracebacks for unexpected errors (unwritable `--output`); `atomic` join test strength; audit polish (stale status on recommendation/critique events, generic `waiting` event, `error_message` never set, cwd-relative pay-guard test). |

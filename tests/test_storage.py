@@ -71,6 +71,7 @@ def _minimal_invoice_rows(conn):
 
 def test_one_payment_per_invoice_identity(conn):
     _minimal_invoice_rows(conn)
+    _version_row(conn)
     row = ("p1", "i1", 1, "r1", "5000.00", "USD", "rcpt-1", "success", "2026-01-31T00:00:00Z")
     conn.execute("INSERT INTO payments VALUES (?,?,?,?,?,?,?,?,?)", row)
     with pytest.raises(sqlite3.IntegrityError):
@@ -100,3 +101,59 @@ def test_get_stock(conn):
 def test_get_stock_is_parameterized(conn):
     conn.execute("INSERT INTO inventory VALUES ('WidgetA', 15)")
     assert storage.get_stock(conn, ["WidgetA' OR '1'='1"]) == {"WidgetA' OR '1'='1": None}
+
+
+def test_older_schema_version_is_refused(db_path):
+    c = storage.connect(db_path)
+    c.execute(f"PRAGMA user_version = {storage.SCHEMA_VERSION - 1}")
+    with pytest.raises(storage.SchemaVersionError, match="older"):
+        storage.init_schema(c)
+
+
+def _version_row(conn):
+    conn.execute(
+        "INSERT INTO invoice_versions VALUES ('v1','i1',1,NULL,'extracted','s1','sh','{}',?)",
+        ("2026-01-31T00:00:00Z",),
+    )
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_human_review_must_reference_existing_version(conn, version):
+    _minimal_invoice_rows(conn)
+    _version_row(conn)
+    insert = (
+        "INSERT INTO human_reviews (invoice_id, version, action, reviewer, reason,"
+        " policy_version, created_at) VALUES ('i1', ?, 'approve', 'vp', 'ok', 'p1', 'now')"
+    )
+    if version == 1:
+        conn.execute(insert, (version,))
+    else:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(insert, (version,))
+
+
+def test_payment_must_reference_existing_version(conn):
+    _minimal_invoice_rows(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO payments VALUES ('p1','i1',1,'r1','5000.00','USD','rcpt-1','success','n')"
+        )
+
+
+def test_decision_final_decision_is_queryable_and_checked(conn):
+    _minimal_invoice_rows(conn)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(decisions)")}
+    assert "final_decision" in cols
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO decisions (run_id, payload_json, final_decision, policy_version, mode,"
+            " created_at) VALUES ('r1','{}','maybe','p1','offline','now')"
+        )
+
+
+def test_write_transaction_refuses_nesting(conn):
+    with storage.write_transaction(conn):
+        with pytest.raises(RuntimeError, match="outermost"):
+            with storage.write_transaction(conn):
+                pass
+    assert not conn.in_transaction

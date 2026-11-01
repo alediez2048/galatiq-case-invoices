@@ -66,3 +66,8 @@ def test_against_db_does_not_change_stock(conn):
     )
     assert len(f) == 3
     assert storage.get_stock(conn, seed.SEED_ITEMS) == seed.SEED_ITEMS
+
+
+def test_blank_item_names_are_not_aggregated():
+
+    assert validation.aggregate_quantities([line("", "1", "1.00"), line("  ", "2", "1.00")]) == {}

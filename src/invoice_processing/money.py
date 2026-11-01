@@ -51,8 +51,20 @@ class MoneyDifference:
 
 
 def compare(stated: Decimal, computed: Decimal, currency: str) -> MoneyDifference:
-    difference = quantize(stated - computed, currency)
+    """Exact, unrounded difference. Rounding first would hide sub-cent gaps and stretch the
+    tolerance (0.014 would round to 0.01 and pass)."""
+    if currency not in MINOR_UNITS:
+        raise UnsupportedCurrencyError(f"unsupported currency: {currency!r}")
+    difference = stated - computed
     return MoneyDifference(difference=difference, within_tolerance=abs(difference) <= ONE_CENT)
+
+
+def canonical_amount(amount: Decimal, currency: str) -> str:
+    """The one string form of an amount ("5000.00", never "5E+3" or "5000").
+
+    Anything that hashes or compares money across formats (semantic hash, duplicates) uses this.
+    """
+    return f"{quantize(amount, currency):f}"
 
 
 def format_money(amount: Decimal, currency: str) -> str:

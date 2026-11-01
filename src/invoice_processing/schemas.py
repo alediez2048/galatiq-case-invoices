@@ -8,7 +8,15 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from invoice_processing.codes import ExecutionMode, FindingCode, RunStatus, Severity, SourceFormat
+from invoice_processing.codes import (
+    ExecutionMode,
+    FindingCode,
+    GateOutcome,
+    Recommendation,
+    RunStatus,
+    Severity,
+    SourceFormat,
+)
 from invoice_processing.money import DecimalStr
 
 
@@ -86,6 +94,7 @@ class LineItem(Contract):
 class StatedTotals(Contract):
     subtotal: DecimalStr | None = None
     tax_rate: DecimalStr | None = None
+    """A fraction (0.07), not a percent. Normalization converts "TAX (7%)" to 0.07."""
     tax: DecimalStr | None = None
     shipping: DecimalStr | None = None
     total: DecimalStr | None = None
@@ -127,10 +136,10 @@ class ValidationFinding(Contract):
 
 
 class ApprovalDecision(Contract):
-    initial_recommendation: str
+    initial_recommendation: Recommendation
     critique_summary: str | None = None
-    revised_recommendation: str | None = None
-    final_decision: str
+    revised_recommendation: Recommendation | None = None
+    final_decision: GateOutcome
     reasons: list[str] = Field(default_factory=list)
     policy_version: str
     mode: ExecutionMode

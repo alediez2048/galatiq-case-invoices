@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from invoice_processing import validation
 from invoice_processing.codes import FindingCode as C
 from invoice_processing.codes import Severity
@@ -74,3 +76,26 @@ def test_stated_values_untouched():
     inv = inv_1013()
     validation.reconcile_totals(inv)
     assert inv.stated.total == Decimal("22562.80")
+
+
+@pytest.mark.parametrize("currency", ["GBP", "usd", "   "])
+def test_unsupported_currency_is_unverifiable_not_an_exception(currency):
+
+    inv = invoice(lines=[line("WidgetA", "1", "10.00")], currency=currency, total="10.00")
+    computed, findings = validation.reconcile_totals(inv)
+    assert [f.code for f in findings] == [C.arithmetic_unverifiable]
+    assert computed.total is None
+
+
+def test_out_of_range_magnitude_is_unverifiable_not_an_exception():
+
+    inv = invoice(lines=[line("WidgetA", "1e20", "1e10")], total="10.00")
+    _, findings = validation.reconcile_totals(inv)
+    assert C.arithmetic_unverifiable in [f.code for f in findings]
+
+
+def test_sub_cent_difference_is_recorded_as_tolerated():
+
+    inv = invoice(lines=[line("WidgetA", "1", "100.00")], total="100.004")
+    _, findings = validation.reconcile_totals(inv)
+    assert [(f.code, f.observed) for f in findings] == [(C.rounding_tolerated, "100.004")]

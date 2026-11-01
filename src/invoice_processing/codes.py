@@ -10,6 +10,23 @@ class Severity(StrEnum):
     blocker = "blocker"  # routes to rejected
 
 
+class Recommendation(StrEnum):
+    """What a reasoning step proposes. Never authorizes payment by itself."""
+
+    approve = "approve"
+    reject = "reject"
+    review = "review"
+
+
+class GateOutcome(StrEnum):
+    """Result of the deterministic policy gate (P1-04)."""
+
+    approved = "approved"
+    rejected = "rejected"
+    needs_review = "needs_review"
+    awaiting_human_approval = "awaiting_human_approval"
+
+
 class RunStatus(StrEnum):
     """Lifecycle of one processing attempt."""
 

@@ -8,7 +8,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SchemaVersionError(RuntimeError):
@@ -74,6 +74,8 @@ _DDL = (
         run_id TEXT NOT NULL UNIQUE REFERENCES runs(run_id),
         version_id TEXT REFERENCES invoice_versions(version_id),
         payload_json TEXT NOT NULL,
+        final_decision TEXT NOT NULL CHECK (final_decision IN
+            ('approved', 'rejected', 'needs_review', 'awaiting_human_approval')),
         policy_version TEXT NOT NULL,
         mode TEXT NOT NULL,
         created_at TEXT NOT NULL)""",
@@ -88,7 +90,9 @@ _DDL = (
         evidence_location TEXT NOT NULL,
         reviewer TEXT NOT NULL,
         reason TEXT NOT NULL,
-        created_at TEXT NOT NULL)""",
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (invoice_id, from_version) REFERENCES invoice_versions(invoice_id, version),
+        FOREIGN KEY (invoice_id, to_version) REFERENCES invoice_versions(invoice_id, version))""",
     """CREATE TABLE IF NOT EXISTS human_reviews (
         review_id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_id TEXT NOT NULL REFERENCES invoices(invoice_id),
@@ -97,7 +101,8 @@ _DDL = (
         reviewer TEXT NOT NULL,
         reason TEXT NOT NULL,
         policy_version TEXT NOT NULL,
-        created_at TEXT NOT NULL)""",
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (invoice_id, version) REFERENCES invoice_versions(invoice_id, version))""",
     """CREATE TABLE IF NOT EXISTS payments (
         payment_id TEXT PRIMARY KEY,
         invoice_id TEXT NOT NULL UNIQUE REFERENCES invoices(invoice_id),
@@ -107,12 +112,13 @@ _DDL = (
         currency TEXT NOT NULL,
         receipt_id TEXT NOT NULL UNIQUE,
         status TEXT NOT NULL,
-        created_at TEXT NOT NULL)""",
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (invoice_id, version) REFERENCES invoice_versions(invoice_id, version))""",
     """CREATE TABLE IF NOT EXISTS audit_events (
         event_id INTEGER PRIMARY KEY AUTOINCREMENT,
         run_id TEXT REFERENCES runs(run_id),
         invoice_id TEXT REFERENCES invoices(invoice_id),
-        version_id TEXT,
+        version_id TEXT REFERENCES invoice_versions(version_id),
         stage TEXT NOT NULL,
         event TEXT NOT NULL,
         actor TEXT,
@@ -136,6 +142,13 @@ def init_schema(conn: sqlite3.Connection) -> None:
         raise SchemaVersionError(
             f"database schema version {version} is newer than supported {SCHEMA_VERSION}"
         )
+    if 0 < version < SCHEMA_VERSION:
+        # CREATE TABLE IF NOT EXISTS never alters an existing table, so accepting an older
+        # database would fail later with "no such column". There are no migrations yet.
+        raise SchemaVersionError(
+            f"database schema version {version} is older than {SCHEMA_VERSION}; "
+            "recreate the database (e.g. seed --fresh to a new path)"
+        )
     with write_transaction(conn):
         for statement in _DDL:
             conn.execute(statement)
@@ -145,13 +158,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 @contextmanager
 def write_transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """One atomic write. Only the outermost caller opens it; helpers that write take an open
+    transaction from their caller instead of nesting another one."""
+    if conn.in_transaction:
+        raise RuntimeError("write_transaction is for the outermost caller only; already open")
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn
+        conn.execute("COMMIT")
     except BaseException:
-        conn.execute("ROLLBACK")
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
         raise
-    conn.execute("COMMIT")
 
 
 def get_stock(conn: sqlite3.Connection, items: Iterable[str]) -> dict[str, int | None]:

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -79,3 +79,40 @@ def test_finding_round_trip():
 def test_extra_fields_rejected():
     with pytest.raises(ValidationError):
         schemas.EvidenceRef(source_id="s", location="line:1", bogus=1)
+
+
+SAMPLES = [
+    schemas.EvidenceRef(source_id="s", location="line:1"),
+    schemas.ExtractionIssue(code="unreadable", message="m"),
+    schemas.DraftLine(raw_name="WidgetA", quantity_raw="1"),
+    schemas.LineItem(item="WidgetA", quantity=Decimal("1"), unit_price=Decimal("1.00")),
+    schemas.StatedTotals(tax_rate=Decimal("0.07"), total=Decimal("10.70")),
+    schemas.ComputedTotals(line_totals=[Decimal("10.00"), None], total=Decimal("10.70")),
+    schemas.MockReceipt(
+        receipt_id="r",
+        amount=Decimal("5000.00"),
+        currency="USD",
+        paid_at=datetime(2026, 1, 31, tzinfo=UTC),
+    ),
+    schemas.ApprovalDecision(
+        initial_recommendation="approve",
+        final_decision="approved",
+        policy_version="p1",
+        mode="offline",
+    ),
+]
+
+
+@pytest.mark.parametrize("sample", SAMPLES, ids=lambda s: type(s).__name__)
+def test_every_contract_round_trips(sample):
+    model = type(sample)
+    assert model.model_json_schema()["title"] == model.__name__
+    assert model.model_validate_json(sample.model_dump_json()) == sample
+
+
+def test_approval_decision_rejects_unknown_recommendation_or_outcome():
+    base = dict(policy_version="p1", mode="offline")
+    with pytest.raises(ValidationError):
+        schemas.ApprovalDecision(initial_recommendation="aprove", final_decision="approved", **base)
+    with pytest.raises(ValidationError):
+        schemas.ApprovalDecision(initial_recommendation="approve", final_decision="paid", **base)

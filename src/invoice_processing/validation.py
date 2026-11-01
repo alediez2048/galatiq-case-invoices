@@ -3,10 +3,10 @@
 import sqlite3
 from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode
-from invoice_processing.money import compare, quantize
+from invoice_processing.money import MINOR_UNITS, compare, quantize
 from invoice_processing.schemas import (
     AggregatedItem,
     ComputedTotals,
@@ -157,7 +157,8 @@ def _compare_amount(
             field=field,
             item=item,
             expected=str(quantize(computed, currency)),
-            observed=str(quantize(stated, currency)),
+            # The stated value as written, so a sub-cent difference stays visible.
+            observed=str(stated),
         )
     )
 
@@ -168,7 +169,23 @@ def reconcile_totals(invoice: NormalizedInvoice) -> tuple[ComputedTotals, list[V
     Absent tax and shipping count as zero. The computed subtotal (not the stated one) feeds the
     total check. A line without quantity or unit price makes subtotal and total unverifiable.
     """
-    currency = invoice.currency or "USD"
+    # A missing currency is already a blocker (missing_currency); USD here only lets the
+    # arithmetic still be checked. The recorded USD assumption itself is normalization's job.
+    currency = invoice.currency if invoice.currency is not None else "USD"
+    if currency not in MINOR_UNITS:
+        # Unsupported or unnormalized currency: the currency check routes it; arithmetic
+        # cannot be rounded to an unknown minor unit, so it is reported, not raised.
+        return ComputedTotals(), [_finding(C.arithmetic_unverifiable, field="currency")]
+    try:
+        return _reconcile(invoice, currency)
+    except InvalidOperation:
+        # Magnitudes beyond decimal precision (e.g. 1e20 x 1e10) cannot be verified exactly.
+        return ComputedTotals(), [_finding(C.arithmetic_unverifiable, field="lines")]
+
+
+def _reconcile(
+    invoice: NormalizedInvoice, currency: str
+) -> tuple[ComputedTotals, list[ValidationFinding]]:
     stated = invoice.stated
     findings: list[ValidationFinding] = []
     line_totals: list[Decimal | None] = []
@@ -238,7 +255,7 @@ def aggregate_quantities(lines: list[LineItem]) -> dict[str, AggregatedItem]:
     """Total quantity per exact item name. Alias and case rules belong to normalization."""
     aggregated: dict[str, AggregatedItem] = {}
     for index, line in enumerate(lines):
-        if line.item is None or line.quantity is None:
+        if _blank(line.item) or line.quantity is None:
             continue
         entry = aggregated.get(line.item)
         if entry is None:

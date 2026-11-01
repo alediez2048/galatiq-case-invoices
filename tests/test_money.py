@@ -71,3 +71,16 @@ def test_decimal_str_round_trip_and_float_rejection():
     assert _M.model_validate_json(m.model_dump_json()).amount == Decimal("22512.80")
     with pytest.raises(ValidationError):
         _M(amount=22512.8)
+
+
+def test_compare_uses_unrounded_difference():
+    # A sub-cent difference is still a difference, and 0.014 exceeds the one-cent tolerance.
+    assert compare(Decimal("100.004"), Decimal("100.00"), "USD").difference == Decimal("0.004")
+    assert compare(Decimal("100.014"), Decimal("100.00"), "USD").within_tolerance is False
+
+
+@pytest.mark.parametrize("raw", ["5E+3", "5000", "5000.0", "5000.00", "5000.004"])
+def test_canonical_amount_renders_one_form(raw):
+    from invoice_processing.money import canonical_amount
+
+    assert canonical_amount(Decimal(raw), "USD") == "5000.00"

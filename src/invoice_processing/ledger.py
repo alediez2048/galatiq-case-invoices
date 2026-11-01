@@ -240,6 +240,11 @@ def finish_run(
         raise transitions.IllegalTransition(f"finish_run needs a terminal status, got {status}")
     with storage.atomic(conn):
         current = get_run_status(conn, run_id)
+        finished = conn.execute(
+            "SELECT finished_at FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()[0]
+        if finished is not None:
+            raise transitions.IllegalTransition(f"run {run_id} is already finished")
         if current != status:  # same status just finalizes (agent nodes already advanced it)
             transitions.check(current, status)
         conn.execute(

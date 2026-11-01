@@ -303,3 +303,12 @@ def test_findings_and_decision_roundtrip(conn, rid):
     ledger.record_decision(conn, rid, None, decision)
     assert conn.execute("SELECT code FROM findings").fetchone()[0] == "zero_stock"
     assert conn.execute("SELECT final_decision FROM decisions").fetchone()[0] == "rejected"
+
+
+def test_finish_run_twice_raises_and_keeps_first_finalization(conn, rid):
+    finish_run(conn, rid, RunStatus.failed, "first")
+    before = conn.execute("SELECT * FROM runs WHERE run_id=?", (rid,)).fetchone()
+    with pytest.raises(IllegalTransition):
+        finish_run(conn, rid, RunStatus.failed, "second")
+    after = conn.execute("SELECT * FROM runs WHERE run_id=?", (rid,)).fetchone()
+    assert tuple(before) == tuple(after)

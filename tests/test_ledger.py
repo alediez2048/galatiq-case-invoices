@@ -171,6 +171,16 @@ def test_redact_recurses_into_lists():
         "password",
         "authorization",
         "xai_api_key",
+        "x-api-key",
+        "api-key",
+        "auth-token",
+        "access_key",
+        "private_key",
+        "cookie",
+        "bearer",
+        "apiKey",
+        "accessToken",
+        "authToken",
     ],
 )
 def test_redacted_key_matches_credentials(key):

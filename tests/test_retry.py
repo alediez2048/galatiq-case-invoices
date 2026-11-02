@@ -504,3 +504,41 @@ def test_cli_retry_already_paid_prints_receipt(tmp_path, capsys, monkeypatch):
     assert code == 2 and out == ""
     assert f"already_paid (receipt {paid['receipt']['receipt_id']})" in err
     assert n_payments(tmp_path / "cli.db") == 1
+
+
+def test_cli_retry_defaults_to_the_original_runs_evaluation_date(tmp_path, capsys, monkeypatch):
+    from invoice_processing.reasoning import xai
+
+    clients = iter(
+        [FakeXaiClient([UNAVAILABLE, UNAVAILABLE]), FakeXaiClient([Parsed(rec()), Parsed(crit())])]
+    )
+    monkeypatch.setattr(xai, "real_client_factory", lambda settings: next(clients))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    assert main.main(_cli_args(tmp_path, "--mode=live")) == 1
+    failed = json.loads(capsys.readouterr().out)
+    no_date = [a for a in _cli_args(tmp_path) if not a.startswith("--evaluation-date")]
+    assert main.main([*no_date, f"--retry={failed['run_id']}"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "paid_mock"
+    assert run_row(tmp_path / "cli.db", result["run_id"])["evaluation_date"] == "2026-01-31"
+
+
+def test_cli_retry_evaluation_date_flag_still_wins(tmp_path, capsys, monkeypatch):
+    from invoice_processing.reasoning import xai
+
+    clients = iter(
+        [FakeXaiClient([UNAVAILABLE, UNAVAILABLE]), FakeXaiClient([Parsed(rec()), Parsed(crit())])]
+    )
+    monkeypatch.setattr(xai, "real_client_factory", lambda settings: next(clients))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    assert main.main(_cli_args(tmp_path, "--mode=live")) == 1
+    failed = json.loads(capsys.readouterr().out)
+    no_date = [a for a in _cli_args(tmp_path) if not a.startswith("--evaluation-date")]
+    args = [*no_date, "--evaluation-date=2026-01-30", f"--retry={failed['run_id']}"]
+    assert main.main(args) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert run_row(tmp_path / "cli.db", result["run_id"])["evaluation_date"] == "2026-01-30"

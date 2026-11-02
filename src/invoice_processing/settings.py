@@ -4,6 +4,7 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from invoice_processing.reasoning.errors import ProviderUnavailable
 
@@ -32,14 +33,17 @@ class LiveSettings:
 
 
 def load_dotenv_file() -> None:
-    """Load `.env` (searched upward from the cwd) without overriding set variables.
+    """Load `./.env` (the current directory only, never a parent's) without overriding
+    variables that are already set.
 
     The single place `.env` is read; tests replace it so a developer's real key never
     reaches the suite.
     """
-    from dotenv import find_dotenv, load_dotenv
+    from dotenv import load_dotenv
 
-    load_dotenv(find_dotenv(usecwd=True), override=False)
+    path = Path.cwd() / ".env"
+    if path.is_file():
+        load_dotenv(path, override=False)
 
 
 def load_live_settings(env: Mapping[str, str] | None = None) -> LiveSettings:

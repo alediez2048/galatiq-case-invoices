@@ -15,7 +15,7 @@ Default tests run offline with controlled reasoning responses; actual provider v
   - Timeout → retry → success; timeout ×2 → `failed` recoverable.
   - Tool loop runaway → `model_tool_loop_exceeded`.
   - Budget exhaustion → `model_budget_exhausted`.
-  - Unauthorized tool request → `tool_rejected`, run continues.
+  - Unauthorized tool request → the model gets a `tool_rejected` result, the audit records a `tool_call` event with `ok=false`, and the run continues.
 - Parity test: for every supplied fixture, live mode with a "reasonable" scripted fake yields the same final status as the P2-11 offline expectation.
 - All tests run with the P1-10 network guard.
 

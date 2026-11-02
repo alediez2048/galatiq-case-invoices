@@ -259,11 +259,13 @@ class RunSummary:
     status: RunStatus
     error_code: str | None
     content_hash: str
+    evaluation_date: date | None
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
     row = conn.execute(
-        "SELECT r.run_id, r.mode, r.status, r.error_code, s.content_hash FROM runs r "
+        "SELECT r.run_id, r.mode, r.status, r.error_code, r.evaluation_date, s.content_hash "
+        "FROM runs r "
         "JOIN sources s ON s.source_id = r.source_id WHERE r.run_id = ?",
         (run_id,),
     ).fetchone()
@@ -275,6 +277,7 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
         RunStatus(row["status"]),
         row["error_code"],
         row["content_hash"],
+        date.fromisoformat(row["evaluation_date"]) if row["evaluation_date"] else None,
     )
 
 

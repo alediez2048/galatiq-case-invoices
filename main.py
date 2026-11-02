@@ -93,7 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--evaluation-date",
         default=None,
-        help="date used for due-date checks, YYYY-MM-DD (default: today)",
+        help="date used for due-date checks, YYYY-MM-DD (default: today; for --retry, the "
+        "original run's date)",
     )
     p.add_argument(
         "--retry",
@@ -132,9 +133,7 @@ def _ensure_database(path: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        evaluation_date = (
-            date.fromisoformat(args.evaluation_date) if args.evaluation_date else date.today()
-        )
+        given = date.fromisoformat(args.evaluation_date) if args.evaluation_date else None
     except ValueError:
         print(
             f"error: invalid --evaluation-date {args.evaluation_date!r}; use YYYY-MM-DD",
@@ -142,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     if args.retry is not None:
-        return _retry(args, evaluation_date)
+        return _retry(args, given)
+    evaluation_date = given or date.today()
     mode = ExecutionMode(args.mode)
     try:
         provider = get_provider(mode)
@@ -170,8 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     return _finish(result, args)
 
 
-def _retry(args: argparse.Namespace, evaluation_date: date) -> int:
-    """--retry RUN_ID: the run's original mode is used; its provider loads only then."""
+def _retry(args: argparse.Namespace, evaluation_date: date | None) -> int:
+    """--retry RUN_ID: the run's original mode is used; its provider loads only then. The
+    original run's evaluation date applies unless --evaluation-date is given."""
     if not Path(args.db).exists():  # nothing to retry; do not create a database
         print("error: retry refused: unknown_run", file=sys.stderr)
         return 2
@@ -182,7 +183,12 @@ def _retry(args: argparse.Namespace, evaluation_date: date) -> int:
         _print_mode_banner(target.mode, provider)
         events = configure_events(Path(args.events))
         result = retry_run(
-            args.retry, args.invoice_path, args.db, evaluation_date, events, provider=provider
+            args.retry,
+            args.invoice_path,
+            args.db,
+            evaluation_date or target.evaluation_date or date.today(),
+            events,
+            provider=provider,
         )
     except RetryRefused as exc:
         receipt = f" (receipt {exc.receipt_id})" if exc.receipt_id else ""

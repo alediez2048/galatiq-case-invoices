@@ -35,6 +35,10 @@ export interface Wire {
   StockLine: S["StockLine"];
   SourceContent: S["SourceContent"];
   ErrorBody: S["ErrorBody"];
+  AllowedActions: S["AllowedActions"];
+  FieldChange: S["FieldChange"];
+  CorrectionBody: S["CorrectionBody"];
+  ProcessingResult: S["ProcessingResult"];
 }
 
 export type ExecutionMode = S["ExecutionMode"];
@@ -63,6 +67,14 @@ export type ProcessingResult = Omit<S["ProcessingResult"], "errors" | "findings"
   findings: ValidationFinding[];
 };
 export type ApiErrorBody = Wire["ErrorBody"];
+
+/** codes.ReviewAction / codes.ReviewRefusal (P5-04). */
+export type ReviewAction = S["ReviewAction"];
+export type ReviewRefusal = S["ReviewRefusal"];
+/** schemas.AllowedActions: the only source of which review controls may be rendered. */
+export type ReviewAllowedActions = Omit<S["AllowedActions"], "refused"> & {
+  refused: Partial<Record<ReviewAction, ReviewRefusal>>;
+};
 
 /** Every outcome the status component can show (invoice outcomes plus run-only states). */
 export type Outcome =
@@ -288,7 +300,10 @@ export interface RunSummary {
   events: StageEvent[];
 }
 
-/** Derived from the backend's allowed_actions list (populated by P5-04). */
+/**
+ * Booleans for the detail page: `retry` from the run-level `allowed_actions` list, the rest
+ * from the review actions (`review_actions.allowed`, P5-04).
+ */
 export interface AllowedActions {
   add_corrected_invoice: boolean;
   correct_extraction: boolean;
@@ -325,6 +340,8 @@ export interface InvoiceDetail {
   /** Newest first. */
   runs: RunSummary[];
   allowed_actions: AllowedActions;
+  /** The server's review actions for the current version (null when not reported). */
+  review_actions: ReviewAllowedActions | null;
 }
 
 export interface SourceLine {

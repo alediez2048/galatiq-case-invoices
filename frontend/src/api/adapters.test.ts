@@ -51,6 +51,26 @@ describe("adapters over real API responses", () => {
     expect(d.latest_result?.status).toBe("paid_mock");
     expect(d.runs[0]?.events.map((e) => e.event)).toEqual(run1001.events.map((e) => e.event));
     expect(d.allowed_actions.retry).toBe(false);
+    // Paid: the server allows no review action, so the detail page offers none.
+    expect(d.review_actions?.allowed).toEqual([]);
+    expect(Object.values(d.allowed_actions).some(Boolean)).toBe(false);
+  });
+
+  it("derives the detail-page action flags from the server's review actions", () => {
+    const w = real.detail["1001"]!;
+    const d = toInvoiceDetail({
+      ...w,
+      outcome: "rejected",
+      allowed_actions: ["retry"],
+      review_actions: { invoice_id: w.invoice_id, status: "rejected", current_version: 1, allowed: ["correct", "submit_corrected"], refused: {} },
+    });
+    expect(d.allowed_actions).toEqual({
+      add_corrected_invoice: true,
+      correct_extraction: true,
+      approve_payment: false,
+      decline_payment: false,
+      retry: true,
+    });
   });
 
   it.each(["1001", "1011pdf", "1007"])(

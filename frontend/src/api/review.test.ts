@@ -3,6 +3,10 @@ import { detailHighValue, actionsFor } from "../test/reviewFixtures";
 import * as wire from "../test/wire";
 import { ApiError } from "./client";
 import { classifyReviewError, reviewApi, STALE_NOTICE } from "./review";
+// Recorded from the real backend by scripts/export_ui_fixtures.py.
+import realCorrection from "../test/real/review-correction.json";
+import realRefused from "../test/real/review-refused-422.json";
+import realStale from "../test/real/review-stale-409.json";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -50,6 +54,51 @@ describe("review API client", () => {
     expect((form.get("file") as File).name).toBe("fixed.txt");
     expect((init?.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
     expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-2");
+  });
+});
+
+describe("review API client over real P5-04 bodies", () => {
+  it("posts a correction to /corrections and returns the revalidation run's result", async () => {
+    const fetchMock = stubFetch(ok(realCorrection));
+    const body = {
+      expected_version: 1,
+      changes: [{ field: "lines[0].line_total", new_value: "3500.00", evidence_location: "line:9" }],
+      reason: "OCR misread the line total",
+      reviewer: "Ana",
+    };
+    const out = await reviewApi.correct(realCorrection.invoice_id, body, "key-3");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`/api/invoices/${realCorrection.invoice_id}/corrections`);
+    expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-3");
+    expect(JSON.parse(String(init?.body))).toEqual(body);
+    expect(out.run_id).toBe(realCorrection.run_id);
+    expect(out).toMatchObject({ status: "rejected", version: 2 });
+  });
+
+  it("classifies the real stale-version 409 with the current record and actions", async () => {
+    stubFetch(ok(realStale, 409));
+    const error = await reviewApi
+      .correct("inv", { expected_version: 1, changes: [], reason: "r", reviewer: "Ana" }, "k")
+      .catch((e: unknown) => e);
+    const f = classifyReviewError(error);
+    expect(f.kind).toBe("conflict");
+    if (f.kind !== "conflict") return;
+    expect(f.code).toBe("stale_version");
+    expect(f.message).toBe(STALE_NOTICE);
+    expect(f.invoice?.current_version).toBe(2);
+    expect(f.invoice?.review_actions).toEqual(f.actions);
+    expect(f.actions).toMatchObject({ current_version: 2, allowed: ["correct", "submit_corrected"] });
+    expect(f.invoice?.corrections).toHaveLength(1);
+  });
+
+  it("classifies the real 422 refusal with its guidance message", () => {
+    const f = classifyReviewError(new ApiError(422, realRefused));
+    expect(f).toEqual({
+      kind: "refused",
+      code: "correction_not_in_source",
+      message: "This value is not what the invoice says. Submit a corrected invoice from the vendor.",
+    });
+    expect(realRefused.message).toBe(f.message); // client copy matches the server's
   });
 });
 

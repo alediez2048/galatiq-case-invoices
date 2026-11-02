@@ -75,10 +75,24 @@ function run(r: RunSummary): Wire["RunSummary"] {
   return { ...r, events: events(r.events) };
 }
 
+/**
+ * The review actions a view-model detail implies: its own `review_actions`, otherwise built
+ * from the detail-page booleans (null when none is set, as for a backend that sent none).
+ */
+function reviewActions(d: InvoiceDetail): Wire["AllowedActions"] | null {
+  if (d.review_actions) return d.review_actions as Wire["AllowedActions"];
+  const a = d.allowed_actions;
+  const allowed = [
+    a.correct_extraction && "correct",
+    a.approve_payment && "approve",
+    a.decline_payment && "decline",
+    a.add_corrected_invoice && "submit_corrected",
+  ].filter((x): x is Wire["AllowedActions"]["allowed"][number] => typeof x === "string");
+  if (allowed.length === 0) return null;
+  return { invoice_id: d.invoice_id, status: d.status, current_version: d.current_version, allowed, refused: {} };
+}
+
 export function detail(d: InvoiceDetail): Wire["InvoiceDetail"] {
-  const actions = Object.entries(d.allowed_actions)
-    .filter(([, on]) => on)
-    .map(([name]) => name);
   return {
     invoice_id: d.invoice_id,
     outcome: d.status,
@@ -146,7 +160,8 @@ export function detail(d: InvoiceDetail): Wire["InvoiceDetail"] {
     human_reviews: d.human_reviews,
     // View models are newest first; the API sends oldest first.
     runs: [...d.runs].reverse().map(run),
-    allowed_actions: actions,
+    allowed_actions: d.allowed_actions.retry ? ["retry"] : [],
+    review_actions: reviewActions(d),
   };
 }
 

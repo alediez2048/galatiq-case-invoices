@@ -12,6 +12,9 @@ import {
   sourceExtractionMistake,
 } from "../test/reviewFixtures";
 import * as wire from "../test/wire";
+// Recorded from the real backend by scripts/export_ui_fixtures.py (P5-04 bodies).
+import realCorrection from "../test/real/review-correction.json";
+import realRefused from "../test/real/review-refused-422.json";
 
 interface Posted {
   path: string;
@@ -79,6 +82,23 @@ describe("Needs review queue (P5-09)", () => {
     expect(within(panel).queryByRole("button", { name: "Approve mock payment" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: /Correct an extracted value/ })).toBeNull();
     expect(within(panel).queryByRole("link", { name: "Add corrected invoice" })).toBeNull();
+  });
+
+  it("prefers the loaded record's review actions over the queue row", async () => {
+    const user = userEvent.setup();
+    const row = queueItem(detailHighValue, []); // approve, decline and correct
+    const loaded = {
+      ...detailHighValue,
+      review_actions: { ...actionsFor(detailHighValue.invoice_id, "awaiting_human_approval", 1), allowed: ["decline" as const] },
+    };
+    renderApp("/review", {
+      "GET /api/review-queue": () => queueWith({ awaiting_human_approval: [row] }),
+      "GET /api/invoices/:id": () => wire.detail(loaded),
+    });
+    const panel = await openItem(user, "HV-10001");
+    expect(await within(panel).findByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Approve mock payment" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: /Correct an extracted value/ })).toBeNull();
   });
 
   it("renders no review control at all when nothing is allowed", async () => {
@@ -267,7 +287,8 @@ describe("Correction form (P5-09)", () => {
 
   it("submits a correction with evidence, bound to the displayed version, and opens the revalidation run", async () => {
     const user = userEvent.setup();
-    const { posts, route } = recorder(() => json({ run_id: "run-ct-2", status: "received", mode: "offline", idempotent_replay: false }, 202));
+    // The real success body: the revalidation run's ProcessingResult (200).
+    const { posts, route } = recorder(() => json({ ...realCorrection, run_id: "run-ct-2" }, 200));
     const { router } = renderApp("/review", {
       ...routes(route),
       "GET /api/runs/:id": () => json({ code: "not_found", message: "x" }, 404),
@@ -322,9 +343,7 @@ describe("Correction form (P5-09)", () => {
 
   it("shows the refusal message for a 422 and stays on the form", async () => {
     const user = userEvent.setup();
-    const { router } = renderApp("/review", routes(() =>
-      json({ code: "correction_not_in_source", message: "server copy" }, 422),
-    ));
+    const { router } = renderApp("/review", routes(() => json(realRefused, 422)));
     const panel = await openItem(user, "CT-3001");
     const form = await within(panel).findByRole("form", { name: /Correct extraction/ });
     await user.type(within(form).getByLabelText("Corrected value"), "3150.00");

@@ -128,8 +128,8 @@ function QueueTable({
 type Conflict = Extract<ReviewFailure, { kind: "conflict" }>;
 
 function Outcome({ decision, response }: { decision: Decision; response: ReviewActionResponse }) {
-  const receipt = response.receipt ?? response.result?.receipt ?? null;
-  const status = response.result?.status ?? response.status;
+  const receipt = response.receipt ?? null;
+  const status = response.status;
   const text =
     status === "paid_mock"
       ? `Mock payment approved${receipt ? `. Receipt ${receipt.receipt_id} · ${formatMoney(receipt.amount, receipt.currency)}` : ""}.`
@@ -172,7 +172,8 @@ function ReviewPanel({
   const { reload } = fetched;
 
   const detail = current?.detail ?? fetched.data;
-  const actions = current?.actions ?? item.actions;
+  // Freshest first: a 409's actions, then the loaded record's, then the queue row's.
+  const actions = current?.actions ?? detail?.review_actions ?? item.actions;
 
   // A 409: replace the panel with the current record; nothing is resubmitted.
   const onConflict = useCallback(

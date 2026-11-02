@@ -1,14 +1,14 @@
 /**
- * Review queue and review action client (P5-09 against the P5-04 contract).
+ * Review queue and review action client (P5-09 on the P5-04 endpoints).
  *
- * HAND-WRITTEN TYPES. The P5-04 endpoints are not in `openapi.json` yet, so the request
- * and response shapes below mirror the Python contracts in
- * `src/invoice_processing/schemas.py` (FieldChange, CorrectionRequest, AllowedActions,
- * QueueItem, ReviewQueue) and `codes.py` (ReviewAction, ReviewRefusal, QueueGroup).
+ * Generated types (schema.d.ts, from openapi.json) for every shape the backend already
+ * serves: ReviewAction, ReviewRefusal, AllowedActions, FieldChange, CorrectionBody and the
+ * ProcessingResult a review action returns.
  *
- * TODO(P5-04): once the endpoints land, export the OpenAPI schema, run `npm run gen:api`,
- * and replace every hand-written wire type here with `components["schemas"][...]` aliases
- * in types.ts. Keep the function signatures; only the type sources should change.
+ * TODO(P5-04 stage 2): the review queue, approve / decline and the corrected-submission
+ * endpoints are not served yet. QueueItem, ReviewQueue, ReviewDecisionBody and
+ * CorrectedSubmissionInput below are HAND-WRITTEN mirrors of schemas.py until they are;
+ * then replace them with `Wire[...]` aliases. Keep the function signatures.
  */
 import { toInvoiceDetail } from "./adapters";
 import { ApiError, request } from "./client";
@@ -17,30 +17,14 @@ import type {
   FindingCode,
   InvoiceDetail,
   InvoiceStatus,
-  ProcessingResult,
-  RunStatus,
+  ReviewAllowedActions,
+  ReviewRefusal,
   Wire,
 } from "./types";
 
-// ---- Contracts (mirrors of schemas.py / codes.py) -------------------------------------
+export type { ReviewAction, ReviewAllowedActions, ReviewRefusal } from "./types";
 
-/** codes.ReviewAction */
-export type ReviewAction = "correct" | "approve" | "decline" | "submit_corrected";
-
-/** codes.ReviewRefusal */
-export type ReviewRefusal =
-  | "unknown_invoice"
-  | "stale_version"
-  | "action_not_allowed"
-  | "already_paid"
-  | "field_not_correctable"
-  | "identity_correction_deferred"
-  | "invalid_value"
-  | "correction_not_in_source"
-  | "evidence_location_mismatch"
-  | "evidence_unavailable"
-  | "source_text_unavailable"
-  | "corrected_identity_mismatch";
+// ---- Contracts --------------------------------------------------------------------------
 
 /** codes.QueueGroup, in display order. */
 export const QUEUE_GROUPS = [
@@ -50,16 +34,7 @@ export const QUEUE_GROUPS = [
 ] as const;
 export type QueueGroup = (typeof QUEUE_GROUPS)[number];
 
-/** schemas.AllowedActions: the only source of which review controls may be rendered. */
-export interface ReviewAllowedActions {
-  invoice_id: string;
-  status: InvoiceStatus;
-  current_version: number | null;
-  allowed: ReviewAction[];
-  refused: Partial<Record<ReviewAction, ReviewRefusal>>;
-}
-
-/** schemas.QueueItem */
+/** schemas.QueueItem (hand-written until GET /api/review-queue is served). */
 export interface QueueItem {
   invoice_id: string;
   vendor_name: string | null;
@@ -79,21 +54,12 @@ export interface ReviewQueue {
 }
 
 /** schemas.FieldChange. `field` matches schemas.CORRECTABLE_FIELD. */
-export interface FieldChange {
-  field: string;
-  new_value: string;
-  evidence_location: string;
-}
+export type FieldChange = Wire["FieldChange"];
 
 /** POST /api/invoices/{id}/corrections body (CorrectionRequest without invoice_id: it is in the path). */
-export interface CorrectionBody {
-  expected_version: number;
-  changes: FieldChange[];
-  reason: string;
-  reviewer: string;
-}
+export type CorrectionBody = Wire["CorrectionBody"];
 
-/** POST /api/invoices/{id}/approve and /decline body. */
+/** POST /api/invoices/{id}/approve and /decline body (hand-written until served). */
 export interface ReviewDecisionBody {
   expected_version: number;
   reason: string;
@@ -110,22 +76,15 @@ export interface CorrectedSubmissionInput {
 }
 
 /**
- * Success body of every review action. Assumed to be either a RunAccepted-like body
- * (`{run_id, status, mode, idempotent_replay}`) or a ProcessingResult (Decision 19); both
- * carry `run_id` and `status`, which is all the UI relies on. `result` is read when the
- * body is (or wraps) a ProcessingResult.
+ * Success body of a review action: the ProcessingResult of the run the action created
+ * (status 200; the run has finished). A repeated Idempotency-Key returns the same body.
  */
-export interface ReviewActionResponse {
-  run_id: string;
-  status: RunStatus;
-  invoice_id?: string | null;
-  version?: number | null;
-  idempotent_replay?: boolean;
-  receipt?: ProcessingResult["receipt"];
-  result?: ProcessingResult | null;
-}
+export type ReviewActionResponse = Wire["ProcessingResult"];
 
-/** 409 body `details` (P5-04: "409 responses include the current invoice detail"). */
+/**
+ * `details` of a refused review action (P5-04). `current` is always present for a known
+ * invoice; `invoice` (the GET /api/invoices/{id} body) only on a 409.
+ */
 export interface ReviewConflictDetails {
   /** ReviewRefused.current */
   current?: ReviewAllowedActions | null;

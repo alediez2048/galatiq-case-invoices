@@ -213,6 +213,7 @@ export function detailFixture(overrides: Partial<InvoiceDetail> = {}): InvoiceDe
       decline_payment: false,
       retry: false,
     },
+    review_actions: null,
     ...overrides,
   };
 }

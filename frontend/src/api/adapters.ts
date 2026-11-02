@@ -11,6 +11,7 @@ import type {
   Overview,
   ProcessingResult,
   Readiness,
+  ReviewAllowedActions,
   RunCreated,
   RunProgress,
   RunSummary,
@@ -235,17 +236,16 @@ function toRunSummary(w: Wire["RunSummary"]): RunSummary {
   };
 }
 
-const ACTIONS: (keyof AllowedActions)[] = [
-  "add_corrected_invoice",
-  "correct_extraction",
-  "approve_payment",
-  "decline_payment",
-  "retry",
-];
-
-export function toAllowedActions(list: string[]): AllowedActions {
-  const set = new Set(list);
-  return Object.fromEntries(ACTIONS.map((a) => [a, set.has(a)])) as unknown as AllowedActions;
+/** Detail-page booleans: `retry` is run-level; the rest come from the review actions. */
+export function toAllowedActions(list: string[], review: ReviewAllowedActions | null): AllowedActions {
+  const allowed = new Set(review?.allowed ?? []);
+  return {
+    add_corrected_invoice: allowed.has("submit_corrected"),
+    correct_extraction: allowed.has("correct"),
+    approve_payment: allowed.has("approve"),
+    decline_payment: allowed.has("decline"),
+    retry: list.includes("retry"),
+  };
 }
 
 /** Positive aggregated shortfall as a decimal string, using exact integer arithmetic. */
@@ -315,7 +315,8 @@ export function toInvoiceDetail(w: Wire["InvoiceDetail"]): InvoiceDetail {
     human_reviews: w.human_reviews,
     // The API returns runs oldest first; the UI shows newest first.
     runs: w.runs.map(toRunSummary).reverse(),
-    allowed_actions: toAllowedActions(w.allowed_actions),
+    allowed_actions: toAllowedActions(w.allowed_actions, w.review_actions ?? null),
+    review_actions: w.review_actions ?? null,
   };
 }
 

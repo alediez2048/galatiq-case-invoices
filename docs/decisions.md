@@ -26,6 +26,42 @@ After an independent review of the 62 implementation tickets, the user approved:
 
 Design corrections adopted without needing a user decision: run status and invoice status are separate enums; findings have a `review` severity distinct from `blocker`; duplicate detection ignores failed runs and linked retry/mode-switch runs and always records a run; the policy gate accepts a version-bound human review as input; the per-invoice model budget counts top-level steps, not tool turns.
 
+## Round 4 — Open-question resolution (2026-11-01, user session)
+
+Source for every item below: user, 2026-11-01 session. Tracked by [P6-05](tickets/P6-05-open-question-resolution.md).
+
+<a id="d-cli-mode"></a>
+1. **Default CLI mode is `offline`** (P6-05 row 7). When `--mode` is omitted the CLI runs offline and labels it. Recorded in the tickets index (P1-09).
+<a id="d-inv1012"></a>
+2. **INV-1012 auto-pays as `paid_mock`** (row 8). All corrections are rule-backed and the total is USD 9,975.00, below the 10,000 threshold. Asserted in `tests/test_acceptance.py` for both `invoice_1012.txt` and `invoice_1012.pdf`.
+<a id="d-pdf"></a>
+3. **PDF extraction matches the generator source** (row 5, resolved by P2-07). `pdfplumber` output for the three committed PDFs (1011, 1012, 1013) matches the generator content. Extracted text is committed as snapshots in `tests/fixtures/pdf_text/` and asserted in `tests/test_parser_pdf.py`, so a dependency change that alters extraction is caught. Caveat: 1011 PDF carries only a total (no subtotal or tax), unlike 1011 TXT; this is handled as absent, not zero.
+<a id="d-process"></a>
+4. **Process: subagent-driven execution per phase; merge straight to main, no pull requests.** This is a working-method choice, not a product decision.
+<a id="d-speedups"></a>
+5. **Scope speed-ups for Phases 3–6.** Apply the cut line; lighter review for mechanical work; bundle tickets; run phases back to back. The user will supply the xAI key later, so only the live smoke test P3-10 waits on it. This partly addresses row 2 (credentials will exist); the model choice and the live-testing budget are still to be confirmed at that point (see [limitations](limitations.md#l-live-credentials)).
+<a id="d-inv1007"></a>
+6. **Data finding: INV-1007's stated total is 110.00 short.** Stated total 15,525.00 versus subtotal 14,750.00 plus 6% tax = 15,635.00. It is rejected for `quantity_exceeds_stock` and `total_mismatch` (see the correction note in [requirements](requirements.md) and `test_invoice_1007` in `tests/test_acceptance.py`). The earlier wording that its arithmetic passes was wrong; the outcome (rejected) is unchanged.
+
+Decisions from earlier rounds that close ticket rows: model disagreement waits for a human (round 3, item 1; row 11), scope cut line (round 3, item 2; row 12), provider adapter stays on `xai_sdk` (round 3, item 3; row 13).
+
+## Round 5 — Answers to the P6-05 questions (2026-11-01, user session)
+
+The user answered: "best practice" for Q1, Q2, Q4, Q5 and Q7; Q6 confirmed as proposed. Q3 (deadline, evaluator machine) stays open.
+
+<a id="d-dual-mode"></a>
+1. **Offline and live modes (Q1).** Ship both, clearly labeled. `offline` stays the default: deterministic, no network, reproducible on any machine, with the reasoning step marked "simulated". `live` (explicit `--mode live` plus an xAI key) is the primary agent demo on real Grok. Both share the same parsers, validation, gate and payment service, so a mode never changes business rules. The README states this interpretation up front.
+<a id="d-live-model-budget"></a>
+2. **Model and live-testing budget (Q2).** The model is never hard-coded: `XAI_MODEL` names it, and the live smoke test (P3-10) records the exact model id, SDK version, calls and token usage in `docs/verification/`. Use the current Grok 4 flagship available to the key at that time. Spend is bounded three ways: ≤ 6 top-level model steps per invoice (enforced in code), one smoke run of about 11 invoices per verification, and a spending limit set in the xAI console before the first live run (recommended USD 10 for P3-10 plus demo rehearsals). The verification record estimates the cost of each run.
+<a id="d-eur"></a>
+3. **EUR and other non-USD currencies (Q4).** Review-only. The amount and currency are preserved, never converted, and the invoice ends `needs_review` (`unsupported_currency`, `non_usd_currency`). Rationale: no trusted exchange-rate source and no non-USD settlement path exist, and silently converting money is the riskier error. A human cannot pay it in this prototype.
+<a id="d-revisions-inventory"></a>
+4. **Revisions and inventory (Q5).** A changed version of an already-paid identity is held for review (`revision_after_payment`) and never paid again; a changed version of an unpaid identity is a `version_conflict` until the corrected-submission flow (P4-05) supersedes it. Inventory is checked per item against current stock, with repeated lines aggregated; there is no reservation and paying does not decrement stock. This is a documented prototype simplification: a production system would reserve stock on approval and decrement it on payment inside the same transaction.
+<a id="d-supersede"></a>
+5. **Corrected submissions (Q6, confirmed as proposed).** A corrected invoice supersedes earlier versions only when none of them is paid, approved or awaiting human approval, and only through an explicit "Add corrected invoice" action with a required reason. A plain upload under the same identity stays a `version_conflict`. P4-05 implements this.
+<a id="d-readme"></a>
+6. **README layout (Q7).** Solution first, assignment preserved: a short summary, quickstart (install, seed, run one invoice, run all samples), the offline/live modes, architecture overview, results table, decisions and limitations links, then the original assignment text unchanged under an "Original assignment" heading at the end. P6-04 implements this.
+
 ## Consequences and verification
 
 - Add a persisted human-approval waiting state and version-bound correction/approval operations.
@@ -38,7 +74,7 @@ Design corrections adopted without needing a user decision: run status and invoi
 
 ## Remaining open details
 
-Deadline, credentials/model choice, live-testing budget, evaluator clarification, exact dependency versions, detailed API contracts, and target machine verification remain open. The decisions above settle the two requested rounds, not every implementation detail.
+Still open and disclosed in [limitations](limitations.md), with drafted questions in [P6-05](tickets/P6-05-open-question-resolution.md#questions-to-send-needs-user-approval): offline-versus-LLM interpretation, Grok model and live-testing budget, deadline and target machine, EUR settlement, evaluator view on revisions and inventory semantics, the corrected-submission supersede rule, and README layout. Exact dependency versions and detailed API contracts are settled in the tickets as they are built, not here.
 
 ## Documents updated
 

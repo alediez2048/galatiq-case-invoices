@@ -1,0 +1,86 @@
+/*
+ * Design tokens from docs/styleguide.md (exact values). Project adaptations that the
+ * style guide leaves open are marked "adaptation" and come from docs/mockups/index.html.
+ */
+:root {
+  /* Colors */
+  --color-bg: #000000;
+  --color-bg-alt: #070707;
+  --color-text: #ffffff;
+  --color-text-intro: #cfcfcf;
+  --color-text-muted: rgba(255, 255, 255, 0.6);
+  --color-grid: #202020;
+  --color-accent: #009a6c;
+  --color-dark-grey: #575757;
+  --color-pill-fill: rgba(23, 145, 106, 0.13);
+  --color-card-fill: rgba(255, 255, 255, 0.1);
+  --color-card-border: rgba(255, 255, 255, 0.1);
+
+  /* Gradients and glow (reference values; assignment is a project decision) */
+  --gradient-fade-end: rgb(18, 59, 41);
+  --gradient-radial-from: rgba(23, 145, 106, 0.6);
+  --gradient-radial-to: rgba(7, 43, 31, 0.6);
+  --glow-green: rgba(0, 154, 108, 0.15);
+  --shadow-glow: 9px 7px 20px var(--glow-green), -9px -7px 20px var(--glow-green);
+
+  /* Adaptations from the approved mockup */
+  --color-surface-raised: #0c0c0c;
+  --color-control-border: #303030;
+  --color-accent-hover: #087d5b;
+  --color-focus: #62dab4;
+  --color-warning-text: #d6c9a3;
+  --color-warning-border: #514936;
+  --color-warning-fill: #15130e;
+  --color-danger-text: #e0c4c4;
+  --color-danger-border: #5a3a3a;
+  --color-danger-fill: #171111;
+  --color-success-text: #9ce4c8;
+  --color-success-border: #174b37;
+  --color-success-fill: #062318;
+
+  /* Typography */
+  --font-family: Aventa, Arial, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+  --text-h1: 2.75rem;
+  --text-h2: 2.25rem;
+  --text-card-title: 1.75rem;
+  --text-stat: 2.625rem;
+  --text-intro: 1.125rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+  --text-button: 1rem;
+  --text-footer: 0.875rem;
+  --leading-heading: 1.2;
+  --leading-body: 1.4;
+  --leading-stat: 1;
+
+  /* Spacing scale (rem) */
+  --space-1: 0.25rem;
+  --space-2: 0.375rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 2.5rem;
+  --space-9: 3.75rem;
+  --space-10: 5rem;
+  --space-11: 6.25rem;
+
+  /* Radii */
+  --radius-menu: 0.25rem;
+  --radius-pill: 6px;
+  --radius-photo: 0.375rem;
+  --radius-card: 0.75rem;
+  --radius-logo: 1.625rem;
+
+  /* Motion */
+  --transition: 0.2s ease;
+  --transition-fast: 0.15s ease;
+  --transition-slow: 0.4s ease;
+
+  /* Layout (mockup proposal: up to 1,280px with 2rem outer spacing) */
+  --content-max: 1280px;
+  --header-height: 82px;
+  --sidebar-width: 210px;
+}

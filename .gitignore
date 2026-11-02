@@ -15,3 +15,7 @@ node_modules/
 dist/
 .DS_Store
 .superpowers/
+
+# Frontend (explicit; also covered by the generic patterns above)
+frontend/node_modules/
+frontend/dist/

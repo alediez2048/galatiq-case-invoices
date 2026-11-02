@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Python 3.12, managed by [uv](https://docs.astral.sh/uv/) (`.python-version` pins 3.12).
-- Node.js 22 is reserved for the Phase 5 frontend; not needed yet.
+- Node.js 22 and npm 10 for the Phase 5 frontend (`frontend/`).
 
 ## Setup
 
@@ -97,3 +97,21 @@ Python 3.12.14, uv 0.12.5, macOS 25.6.0 (2026-11-01). Update when re-verified.
 ## Troubleshooting
 
 **`ModuleNotFoundError: No module named 'invoice_processing'` on macOS.** This happens when the files in `.venv/` have the macOS `hidden` flag set (seen when the repo lives in an iCloud-synced Desktop or Documents folder). Python 3.12.10 and later skip hidden `.pth` files, so the editable install silently drops off `sys.path`. Fix with `chflags -R nohidden .venv`, or keep the repo outside iCloud-synced folders. Pytest is unaffected because `pyproject.toml` sets `pythonpath = ["src", "."]`.
+
+## Frontend
+
+React + TypeScript (strict) with Vite, in `frontend/`. `package-lock.json` is committed; use `npm ci`.
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://127.0.0.1:5173, proxies /api to FastAPI on 127.0.0.1:8000 (API_PORT overrides)
+npm run typecheck
+npm run lint
+npm test           # Vitest + Testing Library, fixture data only
+npm run build      # dist/, then checks the bundle references no external origin and no test fixtures
+```
+
+`VITE_MOCK_API=1 npm run dev` serves the UI against the test fixtures without a backend (dev server only; `import.meta.env.DEV` removes it from builds, and `npm run build` fails if fixture data leaks into `dist/`).
+
+The API types in `frontend/src/api/types.ts` are hand-written from the P5-02/P5-03 tickets and `schemas.py`; replace them with `openapi-typescript` output from `frontend/src/api/openapi.json` once the backend exports it. No fonts, CDNs or analytics are loaded at runtime; the font stack is `Aventa, Arial, sans-serif` with no bundled Aventa.

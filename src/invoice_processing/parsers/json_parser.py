@@ -96,9 +96,10 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
 
     for key in dict.fromkeys(duplicates):
         issue(
-            "duplicate_field", f"Key '{key}' appears more than once; the first value is used.", key
+            "duplicate_field",
+            f"Key '{key}' appears more than once; the first value is used.",
+            f"$.{key}",
         )
-        draft.issues[-1].evidence[0].location = f"$.{key}"
 
     for field, keys in _TOP_FIELDS.items():
         for key in keys:

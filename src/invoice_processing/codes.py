@@ -157,6 +157,9 @@ class FindingCode(StrEnum):
     duplicate_field = "duplicate_field"
     malformed_row = "malformed_row"
     inconsistent_row_header = "inconsistent_row_header"
+    model_proposal_unsupported = "model_proposal_unsupported"
+    model_parser_disagreement = "model_parser_disagreement"
+    risk_signal_embedded_instructions = "risk_signal_embedded_instructions"
 
 
 C = FindingCode
@@ -204,6 +207,9 @@ FINDING_DESCRIPTIONS: dict[FindingCode, str] = {
     C.duplicate_field: "A field appears more than once with different content.",
     C.malformed_row: "A table row does not match the expected shape.",
     C.inconsistent_row_header: "Line item rows are inconsistent with their header.",
+    C.model_proposal_unsupported: "A model-proposed value was not supported by the source.",
+    C.model_parser_disagreement: "A model-proposed value differs from the parsed value.",
+    C.risk_signal_embedded_instructions: "The document contains text addressed to an AI system.",
 }
 
 _WARNINGS = {
@@ -219,6 +225,8 @@ _INFO = {
     C.unparsed_line,
     C.risk_signal_urgency,
     C.unrecognized_field,
+    C.model_proposal_unsupported,
+    C.risk_signal_embedded_instructions,
 }
 _REVIEW = {
     C.non_usd_currency,
@@ -232,6 +240,7 @@ _REVIEW = {
     C.version_conflict,
     C.duplicate_field,
     C.malformed_row,
+    C.model_parser_disagreement,
 }
 
 DEFAULT_SEVERITY: dict[FindingCode, Severity] = {

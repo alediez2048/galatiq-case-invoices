@@ -10,7 +10,13 @@ returns can authorize payment.
 from decimal import Decimal
 
 from invoice_processing import ledger, policy
-from invoice_processing.agents.state import Deps, InvoiceState, emit, make_session
+from invoice_processing.agents.state import (
+    Deps,
+    InvoiceState,
+    emit,
+    emit_model_calls,
+    make_session,
+)
 from invoice_processing.codes import CritiqueIssue, Recommendation, RunStatus, Severity
 from invoice_processing.observability import stage_timer
 from invoice_processing.reasoning.errors import ModelError
@@ -60,24 +66,7 @@ def _merge(model: list[CritiqueIssue], checks: list[CritiqueIssue]) -> list[Crit
 
 
 def _emit_model_calls(deps: Deps, state: InvoiceState, session: ModelSession) -> None:
-    provider = deps.provider
-    for call in session.calls:
-        emit(
-            deps,
-            state,
-            "model",
-            "model_call",
-            agent=STAGE,
-            step=call.step,
-            attempt=call.attempt,
-            latency_ms=call.latency_ms,
-            input_tokens=call.input_tokens,
-            output_tokens=call.output_tokens,
-            tool_turns=call.tool_turns,
-            provider=provider.provider,
-            model=provider.model,
-            prompt_version=provider.prompt_version,
-        )
+    emit_model_calls(deps, state, session, STAGE, deps.provider.prompt_version)
 
 
 def _recommend_loop(

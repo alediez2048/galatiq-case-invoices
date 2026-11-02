@@ -130,4 +130,6 @@ class OfflineSimulator:
     def assist_extraction(
         self, request: ExtractionAssistRequest, session: ModelSession
     ) -> ExtractionProposals:
+        # Never called: ingestion runs the assist step in live mode only (offline never
+        # triggers). Kept for the protocol, and proposes nothing.
         return ExtractionProposals(proposals=[])

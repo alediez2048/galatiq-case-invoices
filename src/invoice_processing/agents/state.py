@@ -108,3 +108,27 @@ def emit(
     observability.log_event(
         deps.events, run_id=state.get("run_id"), stage=stage, event=event, **fields
     )
+
+
+def emit_model_calls(
+    deps: Deps, state: InvoiceState, session: ModelSession, agent: str, prompt_version: str | None
+) -> None:
+    """One `model_call` audit event per attempt the session recorded (counts, never text)."""
+    provider = deps.provider
+    for call in session.calls:
+        emit(
+            deps,
+            state,
+            "model",
+            "model_call",
+            agent=agent,
+            step=call.step,
+            attempt=call.attempt,
+            latency_ms=call.latency_ms,
+            input_tokens=call.input_tokens,
+            output_tokens=call.output_tokens,
+            tool_turns=call.tool_turns,
+            provider=provider.provider,
+            model=provider.model,
+            prompt_version=prompt_version,
+        )

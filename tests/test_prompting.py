@@ -17,7 +17,7 @@ from tests.helpers import finding, inv_1001
 POLICY = PolicyContext(policy_version="p1", high_value_threshold=Decimal("10000.00"))
 
 
-@pytest.mark.parametrize("name", ["recommend", "critique", "revise"])
+@pytest.mark.parametrize("name", ["recommend", "critique", "revise", "extract"])
 def test_load_prompt_returns_text_and_version(name):
     text, version = load_prompt(name)
     assert version == f"{name}.v1"

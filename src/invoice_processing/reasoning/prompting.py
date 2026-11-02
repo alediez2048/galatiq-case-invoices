@@ -29,6 +29,8 @@ _ESCAPES = (
     (re.compile(re.escape(CLOSE), re.I), "INVOICE-DATA>>>"),
 )
 _FINDING_FIELDS = {"code", "severity", "field", "item", "expected", "observed"}
+NOTES_MAX_CHARS = 1000
+_TRUNCATED = " [truncated]"
 
 
 @cache
@@ -56,11 +58,15 @@ def invoice_payload(
     extra: Mapping[str, Any] | None = None,
 ) -> str:
     """JSON of the normalized invoice, finding codes and the policy summary (no raw source)."""
+    fields = invoice.model_dump(
+        mode="json",
+        exclude={"normalization_events": True, "lines": {"__all__": {"evidence"}}},
+    )
+    notes = fields.get("notes")
+    if notes is not None and len(notes) > NOTES_MAX_CHARS:  # untrusted free text: keep it short
+        fields["notes"] = notes[:NOTES_MAX_CHARS] + _TRUNCATED
     data: dict[str, Any] = {
-        "invoice": invoice.model_dump(
-            mode="json",
-            exclude={"normalization_events": True, "lines": {"__all__": {"evidence"}}},
-        ),
+        "invoice": fields,
         "findings": [f.model_dump(mode="json", include=_FINDING_FIELDS) for f in findings],
         "policy": {
             "policy_version": policy.policy_version,

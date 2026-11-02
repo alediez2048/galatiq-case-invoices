@@ -5,7 +5,7 @@ What this prototype assumes where a question is unresolved, why, and what follow
 <a id="l-offline-vs-llm"></a>
 ## 1. Offline simulator plus live integration versus the brief (row 1)
 
-- **Assumption:** the brief asks for LLM reasoning and also forbids external API dependencies at runtime. We treat an explicitly selected `offline` mode (local parsers, deterministic validation, a labeled simulated reasoning adapter, no network) plus a separately selected `live` mode (Grok through `xai_sdk`) as satisfying both. See [constraints](contraints.md#primary-ambiguity-llm-integration-versus-offline-execution).
+- **Decided 2026-11-01** ([decisions round 5, item 1](decisions.md#d-dual-mode)). **Interpretation:** the brief asks for LLM reasoning and also forbids external API dependencies at runtime. We treat an explicitly selected `offline` mode (local parsers, deterministic validation, a labeled simulated reasoning adapter, no network) plus a separately selected `live` mode (Grok through `xai_sdk`) as satisfying both. See [constraints](contraints.md#primary-ambiguity-llm-integration-versus-offline-execution).
 - **Why:** the two requirements cannot both hold for a single run, so each is met in its own mode.
 - **Consequence:** if the evaluator requires real local inference with no network, the offline mode does not meet that; it is a scripted simulator, not a model. Tests use a scripted fake client for the model, not a real one.
 
@@ -24,7 +24,7 @@ What this prototype assumes where a question is unresolved, why, and what follow
 <a id="l-eur"></a>
 ## 4. EUR settlement (row 4)
 
-- **Assumption:** review-only. Explicit EUR is preserved, never converted, and routed to `needs_review`; settlement is USD-only. INV-1014 (EUR 4,125) ends `needs_review` with `unsupported_currency` and `non_usd_currency` and no receipt (`tests/test_acceptance.py`). A missing currency is treated as USD with a recorded `currency_assumed_usd` finding.
+- **Decided 2026-11-01** ([decisions round 5, item 3](decisions.md#d-eur)): review-only. Explicit EUR is preserved, never converted, and routed to `needs_review`; settlement is USD-only. INV-1014 (EUR 4,125) ends `needs_review` with `unsupported_currency` and `non_usd_currency` and no receipt (`tests/test_acceptance.py`). A missing currency is treated as USD with a recorded `currency_assumed_usd` finding.
 - **Consequence:** a EUR invoice can never be paid by this prototype, even by a human, since no exchange-rate source or EUR settlement exists.
 
 <a id="l-pdf"></a>
@@ -35,7 +35,7 @@ Resolved: see [decisions](decisions.md#d-pdf). Residual limit: the three committ
 <a id="l-revisions"></a>
 ## 6. Revision handling and inventory semantics (row 6)
 
-- **Assumption (revisions):** a revision of an already-paid invoice is not paid again; it goes to `needs_review` with `revision_after_payment` (INV-1004 revised, `tests/test_acceptance.py`). Changed content under an existing unpaid identity yields `version_conflict`. Duplicates across formats are detected by semantic identity (INV-1013 PDF is a `duplicate` of the JSON).
+- **Decided 2026-11-01** ([decisions round 5, item 4](decisions.md#d-revisions-inventory)). **Revisions:** a revision of an already-paid invoice is not paid again; it goes to `needs_review` with `revision_after_payment` (INV-1004 revised, `tests/test_acceptance.py`). Changed content under an existing unpaid identity yields `version_conflict`. Duplicates across formats are detected by semantic identity (INV-1013 PDF is a `duplicate` of the JSON).
 - **Assumption (inventory):** quantities are positive integers checked against current stock per item; lines for the same item are aggregated (INV-1013 aggregates 22/18/9). Paying an invoice does not decrement stock and nothing is reserved (no inventory update exists in `src`), so two payable invoices can each fit the same stock.
 - **Consequence:** an evaluator who expects revisions to supersede and re-pay, or stock to be reserved, will see different behavior.
 
@@ -52,13 +52,13 @@ Resolved: pays as `paid_mock` ([decisions](decisions.md#d-inv1012)). Residual li
 <a id="l-supersede"></a>
 ## 9. Corrected submissions superseding unpaid versions (row 9)
 
-- **Working assumption (not yet built, P4-05):** a corrected invoice supersedes prior versions only when none is paid, approved or awaiting human approval, and only when submitted through "Add corrected invoice" with an explicit link and reason. A plain upload with the same identity still gets `version_conflict`.
+- **Decided 2026-11-01** ([decisions round 5, item 5](decisions.md#d-supersede)); not yet built (P4-05): a corrected invoice supersedes prior versions only when none is paid, approved or awaiting human approval, and only when submitted through "Add corrected invoice" with an explicit link and reason. A plain upload with the same identity still gets `version_conflict`.
 - **Consequence:** until P4-05 ships, a corrected invoice hits `version_conflict` (current behavior in `src/invoice_processing/ledger.py`). If P4-05 is cut, rejected invoices cannot be fixed by resubmission.
 
 <a id="l-readme"></a>
 ## 10. README layout (row 10)
 
-- **Working assumption:** solution section on top with the original assignment text preserved below. Decided in P6-04 once the user answers.
+- **Decided 2026-11-01** ([decisions round 5, item 6](decisions.md#d-readme)): solution section on top with the original assignment text preserved below. Decided in P6-04 once the user answers.
 - **Consequence:** purely presentational; the assignment text is not altered either way.
 
 ## Other known limits

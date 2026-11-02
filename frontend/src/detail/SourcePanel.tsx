@@ -3,7 +3,13 @@ import { useSourceContent } from "../api/hooks";
 import type { SourceSummary } from "../api/types";
 import { evidenceKey, useEvidence } from "./evidence";
 
-export function SourcePanel({ source }: { source: SourceSummary }) {
+/** Optional evidence picking (P5-09 correction form): each line becomes a toggle button. */
+export interface SourceLinePicker {
+  selected: string | null;
+  onSelect: (location: string, text: string) => void;
+}
+
+export function SourcePanel({ source, picker }: { source: SourceSummary; picker?: SourceLinePicker }) {
   const content = useSourceContent(source.source_id);
   const { active } = useEvidence();
   const [showPdf, setShowPdf] = useState(true);
@@ -55,7 +61,19 @@ export function SourcePanel({ source }: { source: SourceSummary }) {
                 <span className="source__loc" aria-hidden="true">
                   {line.location.replace(/^(line|row):/, "")}
                 </span>
-                <span className="source__text">{line.text || " "}</span>
+                {picker ? (
+                  <button
+                    type="button"
+                    className="source__pick"
+                    aria-pressed={picker.selected === line.location}
+                    aria-label={`Use ${line.location} as evidence${line.text ? `: ${line.text.trim()}` : ""}`}
+                    onClick={() => picker.onSelect(line.location, line.text)}
+                  >
+                    {line.text || " "}
+                  </button>
+                ) : (
+                  <span className="source__text">{line.text || " "}</span>
+                )}
               </li>
             );
           })}

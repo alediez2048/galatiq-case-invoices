@@ -1482,6 +1482,134 @@ tbody tr:hover {
   }
 }
 
+/* ---- Needs review (P5-09) ----------------------------------------------------------- */
+
+.review-group {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-7);
+}
+
+.review-group tr[aria-selected="true"] td {
+  background: var(--color-pill-fill);
+}
+
+button.row-open {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+button.row-open[aria-pressed="true"] {
+  color: var(--color-accent);
+}
+
+.review-panel {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.review-panel h2:focus {
+  outline: none;
+}
+
+.review-body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.review-form {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.review-correct {
+  margin: 0;
+}
+
+.form-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.form-field label {
+  font-size: var(--text-small);
+  color: var(--color-text-intro);
+}
+
+.input {
+  width: 100%;
+  background: #090909;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-3);
+  font: inherit;
+  font-size: var(--text-small);
+  color: var(--color-text);
+  min-height: 2.5rem;
+}
+
+.input.mono {
+  font-family: var(--font-mono);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 5rem;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-danger-border);
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.source__pick {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.source__pick:hover {
+  color: var(--color-text);
+}
+
+.source__pick[aria-pressed="true"] {
+  color: var(--color-text);
+  box-shadow: inset 2px 0 var(--color-accent);
+  background: var(--color-pill-fill);
+}
+
+.review-history {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (max-width: 479px) {
+  .review-actions {
+    flex-direction: column-reverse;
+  }
+  .review-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

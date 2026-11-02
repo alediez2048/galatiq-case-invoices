@@ -173,17 +173,3 @@ export function InvoicesView() {
     <InvoiceListPanel title="Invoices" subtitle="Every invoice. Its current outcome and the mode of its latest run." />
   );
 }
-
-/**
- * Placeholder for P5-09: lists invoices whose current outcome is needs review. The grouped
- * review queue with correction and approval actions replaces this.
- */
-export function NeedsReviewView() {
-  return (
-    <InvoiceListPanel
-      fixedStatus="needs_review"
-      title="Needs review"
-      subtitle="Unresolved invoices. Open one to see the reason and its evidence."
-    />
-  );
-}

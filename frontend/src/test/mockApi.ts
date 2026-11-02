@@ -4,6 +4,7 @@
  */
 import type { InvoiceDetail, InvoiceSummary } from "../api/types";
 import * as f from "./fixtures";
+import * as review from "./reviewFixtures";
 import * as wire from "./wire";
 
 export type Route = (url: URL, init?: RequestInit) => unknown | Response | Promise<unknown | Response>;
@@ -48,6 +49,7 @@ const details: Record<string, InvoiceDetail> = Object.fromEntries(
     f.detailProvider,
     f.detailProcessing,
     f.detailMissingFields,
+    ...review.reviewDetails,
   ].map((d) => [d.invoice_id, d]),
 );
 
@@ -77,6 +79,8 @@ export const defaultRoutes: Routes = {
   },
   "GET /api/sources/:id/content": () => wire.source(f.source1001),
   "GET /api/samples": () => wire.samples(f.samplesFixture),
+  // Hand-shaped until P5-04 lands (see api/review.ts).
+  "GET /api/review-queue": () => review.reviewQueueFixture,
 };
 
 export function installMockApi(routes: Routes = defaultRoutes) {

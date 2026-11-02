@@ -1,8 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { fourInvoices } from "../test/fixtures";
-import { listFrom } from "../test/mockApi";
 import { renderApp } from "../test/render";
 
 const rowsOf = () =>
@@ -76,15 +74,5 @@ describe("Invoices list", () => {
     });
     expect(await screen.findByRole("alert")).toHaveTextContent("Database is locked.");
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
-  });
-});
-
-describe("Needs review (placeholder until P5-09)", () => {
-  it("requests only needs_review invoices", async () => {
-    const { calls } = renderApp("/review", { "GET /api/invoices": listFrom([...fourInvoices]) });
-    expect(await screen.findByText("TechParts International", { selector: "td" })).toBeInTheDocument();
-    expect(calls.find((c) => c.url.startsWith("/api/invoices"))?.url).toBe(
-      "/api/invoices?status=needs_review&page=1",
-    );
   });
 });

@@ -1345,9 +1345,10 @@ def source_content(source_id: str, request: Request) -> queries.SourceContent:
     return queries.source_content(record, raw_text, has_original=original is not None)
 
 
-# The original bytes are untrusted (an uploaded .xml can be XHTML with a script). Every
-# response is sandboxed with no sources allowed and never sniffed; only a PDF is shown inline
-# (the UI embeds it); any other format is inert text, downloaded.
+# The original bytes are untrusted (an uploaded .xml can be XHTML with a script). Nothing is
+# ever sniffed. Only a PDF is shown inline (the UI embeds it), without the sandbox policy,
+# which would stop the browser's built-in PDF viewer; any other format is inert text,
+# downloaded, under a sandbox policy with no sources allowed.
 ORIGINAL_CSP = "sandbox; default-src 'none'"
 
 
@@ -1358,13 +1359,13 @@ def source_original(source_id: str, request: Request) -> FileResponse:
     original = _locate_original(_settings(request), record)
     if original is None:
         raise queries.NotFound("original_not_found", "The original file is no longer available.")
-    headers = {"Content-Security-Policy": ORIGINAL_CSP, "X-Content-Type-Options": "nosniff"}
     if record.format.value == "pdf":
         return FileResponse(
             original,
             media_type="application/pdf",
-            headers={**headers, "Content-Disposition": "inline"},
+            headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "inline"},
         )
+    headers = {"Content-Security-Policy": ORIGINAL_CSP, "X-Content-Type-Options": "nosniff"}
     name = uploads.safe_filename(record.original_name)
     return FileResponse(
         original,

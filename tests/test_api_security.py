@@ -313,7 +313,7 @@ def test_non_pdf_sources_have_no_original_url(client):
     assert client.get(f"/api/sources/{src}/content").json()["original_url"] is None
 
 
-def test_pdf_original_stays_inline_with_the_sandbox_policy(client):
+def test_pdf_original_stays_inline_without_the_sandbox_policy(client):
     r = post_json(client, "/api/runs", run_body("invoice_1011.pdf"), key())
     src = wait_done(client, r.json()["run_id"])["source"]["source_id"]
     body = client.get(f"/api/sources/{src}/content").json()
@@ -321,7 +321,7 @@ def test_pdf_original_stays_inline_with_the_sandbox_policy(client):
     o = client.get(body["original_url"])
     assert o.headers["content-type"] == "application/pdf"
     assert o.headers["content-disposition"] == "inline"
-    assert o.headers["content-security-policy"] == "sandbox; default-src 'none'"
+    assert "content-security-policy" not in o.headers  # sandbox would block the PDF viewer
     assert o.headers["x-content-type-options"] == "nosniff"
 
 

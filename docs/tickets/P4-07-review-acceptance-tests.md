@@ -1,6 +1,6 @@
 # P4-07 — Review workflow acceptance fixtures and tests
 
-Phase: 4 · Status: todo · Depends on: P4-01 – P4-06 · Requirements: P10, P13, P14
+Phase: 4 · Status: done · Depends on: P4-01 – P4-06 · Requirements: P10, P13, P14
 
 ## Context
 
@@ -27,5 +27,10 @@ Fixtures in `tests/fixtures/review/` (threshold fixtures reused from P3-06):
 
 ## Acceptance criteria
 
-- [ ] All scenarios pass offline with the network guard, plus the live-failure scenario with the scripted fake.
-- [ ] No blocker or review finding can be cleared by approve/decline (property-style test over all such codes); a correction may change only extracted values that the source supports, and the corrected version is re-validated from scratch rather than having findings removed.
+- [x] All scenarios pass offline with the network guard, plus the live-failure scenario with the scripted fake. (`tests/test_review_acceptance.py`)
+- [x] No blocker or review finding can be cleared by approve/decline (property-style test over all such codes); a correction may change only extracted values that the source supports, and the corrected version is re-validated from scratch rather than having findings removed. (`tests/test_review_acceptance.py::test_matching_approval_never_clears_a_gating_finding`, `::test_approve_refused_for_every_recorded_gating_code`; `tests/test_corrections.py`)
+
+## As built (2026-11-02)
+
+- `tests/test_review_acceptance.py` runs every row of the table above through the public calls, each ending with at most one payment for its invoice. The restart row runs `main.py` in a subprocess and approves from the test process. Fixtures live in `tests/fixtures/review/` and `tests/fixtures/threshold/`.
+- **Thread tests deferred** (cut line): no test runs two review actions on separate threads.

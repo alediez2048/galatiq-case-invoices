@@ -278,6 +278,13 @@ def test_check_rejects_unsupported_proposals(kw):
     assert assist.check_proposal(_p(**kw), SOURCE, draft) == "unsupported"
 
 
+def test_check_accepts_an_amount_after_a_closed_parenthesis():
+    # a closed "(...)" before the amount is a label, not an accounting negative
+    source = {**SOURCE, "line:11": "Tax (8%): $40.00"}
+    p = _p(field="tax", value="40.00", quote="Tax (8%): $40.00", location="line:11")
+    assert assist.check_proposal(p, source, _draft(tax_raw=None)) == "accept"
+
+
 @pytest.mark.parametrize(
     "kw",
     [

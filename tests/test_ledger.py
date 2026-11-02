@@ -433,12 +433,72 @@ def test_check_identity_ignores_failed_duplicate_and_retry_runs(conn, sid, two_v
     assert ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2)).kind == "new"
 
 
-def test_check_identity_retry_run_is_always_new(conn, sid, two_versions):
+def test_check_identity_retry_of_paid_same_version_is_new_never_duplicate(conn, sid, two_versions):
+    # pay() then returns the existing receipt; a retry is never a duplicate
     inv, v1, _ = two_versions
     paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
     add_payment(conn, inv, 1, paid)
-    retry = current(conn, sid, inv, v1, retry_of=paid)
+    original = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    retry = current(conn, sid, inv, v1, retry_of=original)
     assert ledger.check_identity(conn, inv, v1, retry).kind == "new"
+
+
+def test_check_identity_retry_still_sees_revision_after_payment(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    original = finished_run(conn, sid, inv, v2, RunStatus.failed)
+    retry = current(conn, sid, inv, v2, retry_of=original)
+    check = ledger.check_identity(conn, inv, v2, retry)
+    assert check.kind == "revision_after_payment" and check.prior.run_id == paid
+
+
+def test_check_identity_retry_never_duplicate_of_unpaid_same_version(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    original = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    retry = current(conn, sid, inv, v1, retry_of=original)
+    assert ledger.check_identity(conn, inv, v1, retry).kind == "new"
+
+
+def test_check_identity_retry_sees_version_conflict(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    rejected = finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    original = finished_run(conn, sid, inv, v2, RunStatus.failed)
+    retry = current(conn, sid, inv, v2, retry_of=original)
+    check = ledger.check_identity(conn, inv, v2, retry)
+    assert check.kind == "version_conflict" and check.prior.run_id == rejected
+
+
+def test_check_identity_retry_excludes_its_own_retry_chain(conn, sid, two_versions):
+    # An original whose outcome would otherwise conflict (forced here: retries require a
+    # failed original in practice) and a sibling retry are both excluded.
+    inv, v1, v2 = two_versions
+    original = finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    sibling = finished_run(conn, sid, inv, v1, RunStatus.needs_review, retry_of=original)
+    retry = current(conn, sid, inv, v2, retry_of=sibling)
+    assert ledger.check_identity(conn, inv, v2, retry).kind == "new"
+    # the same history is a conflict for an unrelated run
+    assert ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2)).kind == (
+        "version_conflict"
+    )
+
+
+def test_start_run_records_retry_and_mode_switch_links(conn, sid):
+    original = start_run(conn, ExecutionMode.live, sid, EVAL)
+    retry = start_run(conn, ExecutionMode.live, sid, EVAL, retry_of=original)
+    switch = start_run(conn, ExecutionMode.offline, sid, EVAL, mode_switch_of=retry)
+    row = conn.execute(
+        "SELECT retry_of, mode_switch_of FROM runs WHERE run_id = ?", (retry,)
+    ).fetchone()
+    assert tuple(row) == (original, None)
+    row = conn.execute(
+        "SELECT retry_of, mode_switch_of FROM runs WHERE run_id = ?", (switch,)
+    ).fetchone()
+    assert tuple(row) == (None, retry)
+    # only the latest run of the source counts: it is offline now
+    assert ledger.latest_run_in_other_mode(conn, sid, ExecutionMode.offline) is None
+    assert ledger.latest_run_in_other_mode(conn, sid, ExecutionMode.live) == switch
 
 
 def test_check_identity_provisional_identity_is_always_new(conn, sid):

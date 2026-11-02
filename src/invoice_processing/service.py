@@ -1,6 +1,7 @@
 """Shared processing service: one entry point used by the CLI and tests."""
 
 import logging
+import sqlite3
 from datetime import date
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from invoice_processing.codes import (
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
-from invoice_processing.schemas import ProcessingResult
+from invoice_processing.schemas import ProcessingResult, SourceDocument
 from invoice_processing.storage import connect, init_schema
 from invoice_processing.workflow import build_graph
 
@@ -43,7 +44,13 @@ def _call_budget(provider: ReasoningProvider) -> int | None:
 def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingResult:
     error_code = state.get("error_code")
     source = state.get("source")
-    recoverable = error_code in _MODEL_ERROR_CODES
+    if error_code in _MODEL_ERROR_CODES:
+        next_actions = list(RECOVERY_ACTIONS)
+    elif error_code == "unexpected_error":
+        next_actions = ["retry"]  # an offline simulation would not fix it
+    else:
+        next_actions = []
+    recoverable = bool(next_actions)
     fields = {
         "run_id": state["run_id"],
         "invoice_id": state.get("invoice_id"),
@@ -61,10 +68,103 @@ def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingR
         "model_calls_used": state.get("model_calls_used", 0),
         "model_calls_budget": budget,
         "recoverable": recoverable,
-        "next_actions": list(RECOVERY_ACTIONS) if recoverable else [],
+        "next_actions": next_actions,
     }
     fields.update(overrides)
     return ProcessingResult(**fields)
+
+
+class RetryRefused(RuntimeError):
+    """`retry_run` will not retry this run; `reason` is a stable code."""
+
+    def __init__(self, reason: str, run_id: str, receipt_id: str | None = None) -> None:
+        super().__init__(f"run {run_id} cannot be retried: {reason}")
+        self.reason = reason
+        self.run_id = run_id
+        self.receipt_id = receipt_id  # set for already_paid: the existing receipt
+
+
+# Failures a retry can fix: model errors, a crash (startup sweep) or an unexpected exception.
+# Extraction and payment-refusal codes are deterministic; the same file fails the same way.
+RETRYABLE_ERROR_CODES = _MODEL_ERROR_CODES | {"interrupted", "unexpected_error"}
+
+
+def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> ledger.RunSummary:
+    run = ledger.get_run(conn, run_id)
+    if run is None:
+        raise RetryRefused("unknown_run", run_id)
+    if run.status is not RunStatus.failed:
+        raise RetryRefused("not_failed", run_id)
+    if run.error_code not in RETRYABLE_ERROR_CODES:
+        raise RetryRefused("not_recoverable", run_id)
+    if run.content_hash != content_hash:
+        raise RetryRefused("source_mismatch", run_id)
+    # Another (non-failed) run already paid this version: a retry would only re-decide a
+    # paid identity. A payer that crashed after paying is retried and re-pointed instead.
+    receipt_id = ledger.payment_outside_retry_chain(conn, run_id)
+    if receipt_id is not None:
+        raise RetryRefused("already_paid", run_id, receipt_id)
+    return run
+
+
+def _open_for_retry(db_path: str | Path, run_id: str) -> sqlite3.Connection:
+    """Open an existing ledger for a retry: a database without a schema has no runs, so it
+    is refused as unknown_run rather than initialized. Runs the startup sweep, so a crashed
+    run becomes a retryable `interrupted` failure."""
+    conn = connect(db_path)
+    try:
+        if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+            raise RetryRefused("unknown_run", run_id)
+        init_schema(conn)  # version check only: every table already exists
+        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def check_retry(
+    run_id: str, path: str | Path, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
+) -> ledger.RunSummary:
+    """The failed run `retry_run` would retry, or RetryRefused. Creates no run; the only
+    write is the startup sweep (see `_open_for_retry`)."""
+    source, _ = intake.read_source(path, limits)
+    conn = _open_for_retry(db_path, run_id)
+    try:
+        return _check_retry(conn, run_id, source.content_hash)
+    finally:
+        conn.close()
+
+
+def retry_run(
+    run_id: str,
+    path: str | Path,
+    db_path: str | Path,
+    evaluation_date: date,
+    events: logging.Logger | None = None,
+    provider: ReasoningProvider | None = None,
+    limits: Limits = DEFAULT_LIMITS,
+) -> ProcessingResult:
+    """Process `path` again as a new run linked to the failed `run_id` (`retry_of`), in the
+    original run's mode. The ledger keeps no source bytes, so the caller re-supplies the
+    file; it must hash to the original source. Payment stays once per identity."""
+    source, raw = intake.read_source(path, limits)
+    conn = _open_for_retry(db_path, run_id)
+    try:
+        original = _check_retry(conn, run_id, source.content_hash)
+    finally:
+        conn.close()
+    return _process(
+        source,
+        raw,
+        original.mode,
+        db_path,
+        evaluation_date,
+        events,
+        limits,
+        provider,
+        retry_of=original.run_id,
+    )
 
 
 def process_invoice(
@@ -77,6 +177,20 @@ def process_invoice(
     provider: ReasoningProvider | None = None,
 ) -> ProcessingResult:
     source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
+    return _process(source, raw, mode, db_path, evaluation_date, events, limits, provider)
+
+
+def _process(
+    source: SourceDocument,
+    raw: bytes,
+    mode: ExecutionMode,
+    db_path: str | Path,
+    evaluation_date: date,
+    events: logging.Logger | None,
+    limits: Limits,
+    provider: ReasoningProvider | None,
+    retry_of: str | None = None,
+) -> ProcessingResult:
     if events is None:
         events = observability.configure_events(None)
     provider = provider or get_provider(mode)  # config errors propagate before any run exists
@@ -85,8 +199,18 @@ def process_invoice(
     try:
         init_schema(conn)
         ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
-        ledger.record_source(conn, source)
-        run_id = ledger.start_run(conn, mode, source.source_id, evaluation_date)
+        ledger.record_source(conn, source)  # source_id derives from the content hash
+        # The same bytes in the other mode: a labeled switch, never a byte-level duplicate.
+        # It reads no earlier decision (decisions are per run); payment still decides.
+        mode_switch_of = ledger.latest_run_in_other_mode(conn, source.source_id, mode)
+        run_id = ledger.start_run(
+            conn,
+            mode,
+            source.source_id,
+            evaluation_date,
+            retry_of=retry_of,
+            mode_switch_of=mode_switch_of,
+        )
         deps = Deps(conn=conn, provider=provider, events=events, limits=limits)
         state = InvoiceState(
             run_id=run_id,
@@ -105,8 +229,13 @@ def process_invoice(
                 source_hash=source.content_hash,
                 original_name=source.original_name,
                 mode=mode.value,
+                retry_of=retry_of,
+                mode_switch_of=mode_switch_of,
             )
-            prior = ledger.find_prior_outcome(conn, source.content_hash)
+            # Retries and mode switches skip the byte-level check; the identity check in
+            # ingestion still runs (and never pays an identity twice).
+            exempt = retry_of is not None or mode_switch_of is not None
+            prior = None if exempt else ledger.find_prior_outcome(conn, source.content_hash)
             if prior is not None:
                 ledger.finish_run(conn, run_id, RunStatus.duplicate, prior_run_id=prior.run_id)
                 state["status"] = RunStatus.duplicate

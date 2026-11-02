@@ -72,3 +72,10 @@ export const MODE_LABEL: Record<ExecutionMode, string> = {
 export function isOverdue(due: string | null | undefined, evaluated: string | null | undefined) {
   return Boolean(due && evaluated && evaluated.slice(0, 10) > due.slice(0, 10));
 }
+
+/** "412 B", "3.4 KiB", "1.2 MiB" for the selected-file line (binary units, like the limit). */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}

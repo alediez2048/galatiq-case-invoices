@@ -962,6 +962,71 @@ tbody tr:hover {
   gap: var(--space-2);
 }
 
+.dropzone.is-dragging {
+  border-color: var(--color-accent);
+  background: rgba(0, 154, 108, 0.06);
+}
+
+.selected {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.mode-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.processing {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 56rem;
+}
+
+.progress-stages {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-4) 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  border-top: 1px solid var(--color-grid);
+  border-bottom: 1px solid var(--color-grid);
+}
+
+.progress-active {
+  color: var(--color-text-intro);
+}
+
+.progress-events {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.progress-events li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.recovery {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 767px) {
+  .progress-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .action-with-reason {
   display: flex;
   align-items: center;

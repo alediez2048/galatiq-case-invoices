@@ -20,7 +20,7 @@ Reasoning agents use whitelisted function calls; tool requests execute through a
 | `list_item_aliases()` | ingestion | Known canonical items and documented alias rules (P2-08). |
 
 - Tools act only on the current run's invoice; no tool accepts a file path, SQL, or arbitrary item list beyond 200 entries.
-- Dispatcher: unknown tool, unauthorized agent, or invalid arguments → structured error result returned to the model (`tool_rejected`), logged as an audit event; never raises into the graph.
+- Dispatcher: unknown tool, unauthorized agent, or invalid arguments → structured error result returned to the model (`{"error": "tool_rejected", "reason": ...}`), audited as a `tool_call` event with `ok=false` and the reason (there is no separate `tool_rejected` event); never raises into the graph.
 - Every call and result is persisted (tool, agent, validated args, result summary, duration).
 - No payment, write, or policy-changing tool exists; a test asserts the registry contains none.
 

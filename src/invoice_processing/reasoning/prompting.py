@@ -3,7 +3,8 @@
 Invoice content is untrusted: it reaches the model only inside one `data_block`, whose
 delimiters cannot be forged from within (any occurrence in the text is escaped first), and
 every prompt states that the block's content is never an instruction. The payload carries
-normalized fields and finding codes only, never raw source text or evidence snippets.
+normalized fields and finding codes only, never raw source text or evidence snippets. Tool
+results (which can quote source lines and evidence) are sent wrapped in a `data_block` too.
 """
 
 import json

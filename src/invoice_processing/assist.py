@@ -39,7 +39,8 @@ DRAFT_FIELDS: dict[str, str] = {
 _AMOUNT_FIELDS = {"subtotal", "tax", "shipping", "total"}
 _DATE_FIELDS = {"invoice_date", "due_date"}
 # Literals inside a quote that a proposed amount or date must match exactly once parsed.
-_AMOUNT_LITERAL = re.compile(r"-?[$€£]?-?\d[\d,]*(?:\.\d+)?")
+# An amount literal never starts inside a word or another number ("INV-7001" holds none).
+_AMOUNT_LITERAL = re.compile(r"(?<![\w.,$€£-])-?[$€£]?-?\d[\d,]*(?:\.\d+)?")
 _DATE_LITERAL = re.compile(
     r"\d{4}-\d{2}-\d{2}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}-[A-Za-z]+-\d{4}"
     r"|\d{1,2}/\d{1,2}/\d{4}"
@@ -147,9 +148,17 @@ def _same(field: str, a: str, b: str) -> bool:
     return vendor_key(a) == vendor_key(b)
 
 
+def _parenthesized(quote: str, m: re.Match[str]) -> bool:
+    return quote[: m.start()].rstrip().endswith("(") and quote[m.end() :].lstrip().startswith(")")
+
+
 def _parsed_literals(quote: str, pattern: re.Pattern[str], parser) -> list:
+    """Every literal of `pattern` in `quote`, parsed. An amount in parentheses, e.g.
+    "($5,000.00)", is an accounting negative whose sign the pattern cannot read: skipped."""
     out = []
     for m in pattern.finditer(quote):
+        if pattern is _AMOUNT_LITERAL and _parenthesized(quote, m):
+            continue
         try:
             out.append(parser(m[0]))
         except ValueError:  # includes ambiguous and relative dates: never a match

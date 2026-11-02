@@ -1,3 +1,4 @@
+import grpc
 import pytest
 
 from invoice_processing import readiness
@@ -34,3 +35,30 @@ def test_bad_number_not_ready(capsys, monkeypatch):
     assert readiness.main([]) == 2
     out = capsys.readouterr()
     assert SENTINEL not in out.out + out.err
+
+
+def test_ping_failure_prints_the_stable_error_code(capsys, monkeypatch):
+    from invoice_processing.reasoning import xai
+    from tests.fakes.xai_client import FakeXaiClient, Raise
+
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    client = FakeXaiClient([Raise(grpc.StatusCode.UNAUTHENTICATED, f"bad key {SENTINEL}")])
+    monkeypatch.setattr(xai, "real_client_factory", lambda settings: client)
+    assert readiness.main(["--ping"]) == 2
+    out = capsys.readouterr()
+    assert "ping: failed (model_auth_error)" in out.out
+    assert SENTINEL not in out.out + out.err
+
+
+def test_ping_ok_uses_the_shared_client_factory(capsys, monkeypatch):
+    from invoice_processing.reasoning import xai
+    from tests.fakes.xai_client import FakeXaiClient, Parsed
+
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    client = FakeXaiClient([Parsed({})])  # sample() returns a plain answer without consuming
+    monkeypatch.setattr(xai, "real_client_factory", lambda settings: client)
+    assert readiness.main(["--ping"]) == 0
+    assert "ping: ok (grok-test" in capsys.readouterr().out
+    assert len(client.requests) == 1

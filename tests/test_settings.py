@@ -80,3 +80,15 @@ def test_dotenv_read_without_override(tmp_path, monkeypatch):
     s = load_live_settings()
     assert s.api_key == "from-file" and s.model == "from-env"
     monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+
+@pytest.mark.real_dotenv
+def test_dotenv_in_a_parent_directory_is_not_read(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("XAI_API_KEY=from-parent\nXAI_MODEL=from-parent\n")
+    child = tmp_path / "child"
+    child.mkdir()
+    monkeypatch.chdir(child)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_MODEL", raising=False)
+    with pytest.raises(ConfigurationError):
+        load_live_settings()

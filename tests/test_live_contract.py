@@ -1,6 +1,7 @@
 """Live-path contract (P3-09): every model failure code, tool authorization and offline parity,
 all through `process_invoice(mode=live)` with the scripted fake client."""
 
+import ast
 import json
 from datetime import date
 from decimal import Decimal
@@ -41,7 +42,6 @@ UNAVAILABLE = Raise(grpc.StatusCode.UNAVAILABLE)
 TIMEOUT = Raise(grpc.StatusCode.DEADLINE_EXCEEDED)
 
 #: error code -> ids of the tests in this module that produce it
-PRODUCED: dict[ModelErrorCode, str] = {}
 
 
 @pytest.fixture
@@ -93,7 +93,6 @@ def n_payments(db) -> int:
 
 
 def assert_failed(r, db, code: ModelErrorCode):
-    PRODUCED[code] = r.run_id
     assert r.status is RunStatus.failed
     assert r.errors == [code.value]
     assert r.recoverable is True and r.next_actions
@@ -200,7 +199,6 @@ def test_empty_answer_without_tools_is_a_refusal_and_with_tools_a_tool_loop(db):
     with pytest.raises(ModelError) as info:
         provider.recommend(inv_1001(), [], PolicyContext("p", Decimal("10000")), session)
     assert info.value.code is ModelErrorCode.model_refused
-    PRODUCED[ModelErrorCode.model_refused] = "provider-level"
 
 
 def test_budget_exhaustion(db):
@@ -227,9 +225,36 @@ def test_runaway_tool_loop(db):
     assert client.remaining > 0
 
 
+def _codes_asserted_by_tests() -> set[str]:
+    """ModelErrorCode members a test in this module asserts: the code passed to
+    `assert_failed(...)` or compared with `... is ModelErrorCode.<code>`. Read from the
+    source, so the check does not depend on which tests ran or in what order."""
+    tree = ast.parse(Path(__file__).read_text())
+    found: set[str] = set()
+
+    def member(node: ast.AST) -> str | None:
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "ModelErrorCode"
+        ):
+            return node.attr
+        return None
+
+    for fn in tree.body:
+        if not (isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_")):
+            continue
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "assert_failed":
+                found |= {m for a in node.args if (m := member(a))}
+            elif isinstance(node, ast.Compare) and isinstance(node.ops[0], ast.Is):
+                found |= {m for c in node.comparators if (m := member(c))}
+    return found
+
+
 def test_every_model_error_code_is_produced_by_a_test():
-    # runs after the tests above (definition order); fails if one is added without a test
-    assert set(PRODUCED) == set(ModelErrorCode)
+    # static: fails if a ModelErrorCode is added without a test that produces it
+    assert _codes_asserted_by_tests() == {c.name for c in ModelErrorCode}
 
 
 # --- tool authorization -----------------------------------------------------------------------

@@ -6,22 +6,25 @@ bounded tool loop when the agent has tools, then ask for structured output with
 `ModelErrorCode`s; a transient one is retried once as a new, separately charged attempt.
 
 Only this subset of the SDK is used (and mirrored by `tests/fakes/xai_client.py`):
-`Client(api_key, timeout)`, `client.chat.create(model, messages, tools)`, `chat.append`,
-`chat.sample`, `chat.parse`, `response.tool_calls[*].id / .function.name / .function.arguments`,
+`Client(api_key, timeout, channel_options)`, `client.chat.create(model, messages, tools)`,
+`chat.append`, `chat.sample`, `chat.parse`,
+`response.tool_calls[*].id / .function.name / .function.arguments`,
 `response.usage.prompt_tokens / .completion_tokens`, and the `xai_sdk.chat` message builders
 `system`, `user`, `tool`, `tool_result`. `reasoning_content` is never read.
 
 Bounds (P3-04). The session budget (`MODEL_CALL_BUDGET`, default 6) counts top-level steps
 and transport retries; tool follow-up turns do not count. A step with tools makes at most
 `tool_turn_cap + 2` requests (the first sample, one sample per tool turn, then the parse);
-a step without tools makes one. Worst case per invoice: `budget * (tool_turn_cap + 2)`
-requests (6 * 5 = 30 with the defaults). Normal call plan: extraction assist 0-2 (only when
-needed; one repair), recommendation 1, critique 1, revision 0-1, so at most 5 steps plus
-transport retries within the budget of 6.
+a step without tools makes one. At most `MAX_TOOL_CALLS_PER_TURN` (8) tool calls run per
+turn; the rest of that turn's calls are answered `tool_rejected` without running. Worst
+case per invoice: `budget * (tool_turn_cap + 2)` requests (6 * 5 = 30 with the defaults).
+Normal call plan: extraction assist 0-2 (only when needed; one repair), recommendation 1,
+critique 1, revision 0-1, so at most 5 steps plus transport retries within the budget of 6.
 """
 
 import importlib.metadata
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -57,16 +60,35 @@ _ASSIST_STEP, _ASSIST_PROMPT = "assist_extraction", "extract"
 EXTRACT_PROMPT_VERSION = load_prompt(_ASSIST_PROMPT)[1]
 _APPROVAL, _INGESTION = "approval", "ingestion"
 
+# Tool calls dispatched per model turn; the rest of that turn's calls are answered with a
+# rejection and never run.
+MAX_TOOL_CALLS_PER_TURN = 8
+_TOO_MANY_TOOL_CALLS = json.dumps({"error": "tool_rejected", "reason": "too_many_tool_calls"})
+
 
 def _system_prompt(step: str) -> str:
     return load_prompt(_ASSIST_PROMPT if step == _ASSIST_STEP else step)[0]
 
 
+# The SDK's default channel turns on gRPC's own retries (up to 5 attempts on UNAVAILABLE
+# inside one call), which would break the bound of 2 transport attempts per step.
+_CHANNEL_OPTIONS = [("grpc.enable_retries", 0)]
+
+
 def real_client_factory(settings: LiveSettings) -> Any:
-    """Build the official SDK client. Construction is lazy: no RPC until the first call."""
+    """Build the official SDK client. Construction is lazy: no RPC until the first call.
+
+    The SDK's OpenTelemetry tracer is created when its modules are imported and would see
+    request content, so it is switched off first unless the environment says otherwise.
+    """
+    os.environ.setdefault("XAI_SDK_DISABLE_TRACING", "1")
     import xai_sdk
 
-    return xai_sdk.Client(api_key=settings.api_key, timeout=settings.timeout_seconds)
+    return xai_sdk.Client(
+        api_key=settings.api_key,
+        timeout=settings.timeout_seconds,
+        channel_options=list(_CHANNEL_OPTIONS),
+    )
 
 
 def _sdk_version() -> str | None:
@@ -250,9 +272,15 @@ class XaiProvider:
                         f"model still calling tools after {session.tool_turn_cap} turn(s)",
                     )
                 chat.append(response)
-                for call in response.tool_calls:
-                    result = session.tools.call(agent, call.function.name, call.function.arguments)
-                    chat.append(tool_result(result, tool_call_id=call.id))
+                for index, call in enumerate(response.tool_calls):
+                    if index < MAX_TOOL_CALLS_PER_TURN:
+                        result = session.tools.call(
+                            agent, call.function.name, call.function.arguments
+                        )
+                    else:  # every call id still gets an answer, but nothing runs
+                        result = _TOO_MANY_TOOL_CALLS
+                    # Tool results can quote invoice text: they travel as data, like the payload.
+                    chat.append(tool_result(data_block(result), tool_call_id=call.id))
                 stats.tool_turns += 1
                 response = chat.sample()
                 stats.add_usage(response)

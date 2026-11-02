@@ -20,10 +20,17 @@ def conn(db_path):
     c.close()
 
 
+def is_live_test(node) -> bool:
+    """`@pytest.mark.live` tests (tests/live, skipped unless RUN_LIVE_TESTS=1) make real xAI
+    calls on purpose, so every guard below (sockets, gRPC, the real client factory, the
+    developer's XAI_* settings and `.env`) leaves them alone."""
+    return node.get_closest_marker("live") is not None
+
+
 @pytest.fixture(autouse=True)
 def no_network(request, monkeypatch):
-    if request.node.get_closest_marker("live") is not None:
-        return  # opt-in real xAI calls (tests/live); skipped unless RUN_LIVE_TESTS=1
+    if is_live_test(request.node):
+        return
 
     def blocked(*args, **kwargs):
         raise RuntimeError("network access blocked in tests")
@@ -42,6 +49,8 @@ def no_grpc(request, monkeypatch):
     """gRPC sockets live in its C core, out of reach of `no_network`: block channel creation
     and the real xAI client factory. `@pytest.mark.real_xai_factory` keeps the real factory
     (channel creation stays blocked unless the test re-patches it itself)."""
+    if is_live_test(request.node):
+        return
     import grpc
 
     def blocked(*args, **kwargs):
@@ -61,6 +70,9 @@ def no_grpc(request, monkeypatch):
 def no_live_env(request, monkeypatch):
     """No test sees the developer's XAI_* settings or `.env`. Tests marked
     `@pytest.mark.real_dotenv` keep the real `.env` loader (they chdir to a tmp `.env`)."""
+    if is_live_test(request.node):
+        yield
+        return
     for name in _LIVE_ENV:
         monkeypatch.delenv(name, raising=False)
     if request.node.get_closest_marker("real_dotenv") is None:

@@ -50,65 +50,89 @@ def parse_xml(source: SourceDocument, data: bytes) -> InvoiceDraft:
         raise ExtractionError(
             "xml_forbidden_construct", "This XML uses DTDs or entities, which are not allowed."
         ) from exc
-    except (ParseError, ValueError) as exc:
+    except (ParseError, ValueError, LookupError) as exc:
         raise ExtractionError("xml_invalid", f"The XML file could not be parsed: {exc}.") from exc
     if root.tag != "invoice":
         raise ExtractionError("xml_invalid", "The XML root element must be <invoice>.")
 
     draft = InvoiceDraft(source_id=source.source_id)
     flat = {**_HEADER, **_TOTALS, **_ROOT_ONLY}
+    taken: set[str] = set()
 
-    def ref(path: str, text: str | None = None) -> EvidenceRef:
-        return EvidenceRef(source_id=source.source_id, location=path, snippet=text)
-
-    def issue(code: FindingCode, message: str, path: str, text: str | None = None) -> None:
-        draft.issues.append(ExtractionIssue(code=code, message=message, evidence=[ref(path, text)]))
-
-    def text_of(el: Element, path: str) -> str | None:
-        if len(el):
-            issue("malformed_row", f"Expected a single value at {path}.", path)
-            return None
-        text = (el.text or "").strip()
-        return text or None
-
-    def set_field(field: str, el: Element, path: str, seen: set[str]) -> None:
-        text = text_of(el, path)
-        if field in seen:
-            issue(
-                "duplicate_field",
-                f"Element '{el.tag}' appears more than once; the first value is used.",
-                path,
-                text,
-            )
-            return
-        seen.add(field)
-        if text is None:
-            return
-        setattr(draft, f"{field}_raw", text)
-        draft.field_evidence.setdefault(field, []).append(ref(path, text))
-
-    seen: set[str] = set()
+    def set_field(field: str, el: Element, path: str) -> None:
+        text = _leaf_text(draft, el, path)
+        if _claim(draft, el.tag, path, text, field, taken) and text is not None:
+            setattr(draft, f"{field}_raw", text)
+            draft.field_evidence.setdefault(field, []).append(_ref(draft, path, text))
 
     for child, path in _children(root, "/invoice"):
         tag = child.tag
         if tag in flat:
-            set_field(flat[tag], child, path, seen)
+            set_field(flat[tag], child, path)
         elif tag == "header" or tag == "totals":
             table = _HEADER if tag == "header" else _TOTALS
             for el, el_path in _children(child, path):
                 if el.tag in table:
-                    set_field(table[el.tag], el, el_path, seen)
+                    set_field(table[el.tag], el, el_path)
                 else:
-                    issue("unrecognized_field", f"Unrecognized element '{el.tag}'.", el_path)
+                    _unrecognized(draft, el, el_path)
         elif tag == "line_items":
             for item, item_path in _children(child, path):
-                if item.tag != "item":
-                    issue("unrecognized_field", f"Unrecognized element '{item.tag}'.", item_path)
-                    continue
-                _line(draft, item, item_path, text_of, issue)
+                if item.tag == "item":
+                    _line(draft, item, item_path)
+                else:
+                    _unrecognized(draft, item, item_path)
         else:
-            issue("unrecognized_field", f"Unrecognized element '{tag}'.", path)
+            _unrecognized(draft, child, path)
     return draft
+
+
+def _ref(draft: InvoiceDraft, path: str, text: str | None = None) -> EvidenceRef:
+    return EvidenceRef(source_id=draft.source_id, location=path, snippet=text)
+
+
+def _issue(
+    draft: InvoiceDraft, code: FindingCode, message: str, path: str, text: str | None = None
+) -> None:
+    draft.issues.append(
+        ExtractionIssue(code=code, message=message, evidence=[_ref(draft, path, text)])
+    )
+
+
+def _unrecognized(draft: InvoiceDraft, el: Element, path: str) -> None:
+    _issue(draft, "unrecognized_field", f"Unrecognized element '{el.tag}'.", path)
+
+
+def _leaf_text(draft: InvoiceDraft, el: Element, path: str) -> str | None:
+    """Stripped text; None when empty or when the element has children (malformed_row)."""
+    if len(el):
+        _issue(draft, "malformed_row", f"Expected a single value at {path}.", path)
+        return None
+    return (el.text or "").strip() or None
+
+
+def _claim(
+    draft: InvoiceDraft,
+    tag: str,
+    path: str,
+    text: str | None,
+    key: str,
+    taken: set[str],
+) -> bool:
+    """True when this non-empty value is the first for `key`; a repeat emits duplicate_field."""
+    if text is None:
+        return False
+    if key in taken:
+        _issue(
+            draft,
+            "duplicate_field",
+            f"Element '{tag}' appears more than once; the first value is used.",
+            path,
+            text,
+        )
+        return False
+    taken.add(key)
+    return True
 
 
 def _children(parent: Element, parent_path: str) -> Iterator[tuple[Element, str]]:
@@ -123,25 +147,17 @@ def _children(parent: Element, parent_path: str) -> Iterator[tuple[Element, str]
         yield child, f"{parent_path}/{child.tag}{suffix}"
 
 
-def _line(draft, item, item_path, text_of, issue) -> None:
+def _line(draft: InvoiceDraft, item: Element, item_path: str) -> None:
     values: dict[str, str | None] = {attr: None for attr in _LINE_FIELDS}
     taken: set[str] = set()
     for el, path in _children(item, item_path):
         attr = next((a for a, tag in _LINE_FIELDS.items() if tag == el.tag), None)
         if attr is None:
-            issue("unrecognized_field", f"Unrecognized element '{el.tag}'.", path)
+            _unrecognized(draft, el, path)
             continue
-        text = text_of(el, path)
-        if attr in taken:
-            issue(
-                "duplicate_field",
-                f"Element '{el.tag}' appears more than once; the first value is used.",
-                path,
-                text,
-            )
-            continue
-        taken.add(attr)
-        values[attr] = text
+        text = _leaf_text(draft, el, path)
+        if _claim(draft, el.tag, path, text, attr, taken):
+            values[attr] = text
     draft.lines.append(
         DraftLine(**values, evidence=[EvidenceRef(source_id=draft.source_id, location=item_path)])
     )

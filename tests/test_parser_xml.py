@@ -98,3 +98,39 @@ def test_fields_directly_under_root_and_line_note(tmp_path):
     assert x.vendor_raw == "V" and x.payment_terms_raw == "Net 5"
     assert x.lines[0].line_total_raw == "2" and x.lines[0].note == "n"
     assert x.lines[0].evidence[0].location == "/invoice/line_items/item"
+
+
+def test_unknown_declared_encoding(tmp_path):
+    with pytest.raises(ExtractionError) as e:
+        _parse(tmp_path, b'<?xml version="1.0" encoding="bogus"?><invoice/>')
+    assert e.value.code == "xml_invalid"
+
+
+def test_empty_first_element_does_not_hide_later_value(tmp_path):
+    x = _parse(
+        tmp_path,
+        "<invoice><header><vendor></vendor><vendor>B</vendor></header></invoice>",
+    )
+    assert x.vendor_raw == "B" and x.issues == []
+
+
+def test_line_level_duplicate_and_unrecognized(tmp_path):
+    x = _parse(
+        tmp_path,
+        "<invoice><line_items><item><name>A</name><name>B</name><sku>1</sku>"
+        "</item></line_items></invoice>",
+    )
+    assert x.lines[0].raw_name == "A"
+    assert [(i.code, i.evidence[0].location) for i in x.issues] == [
+        ("duplicate_field", "/invoice/line_items/item/name[2]"),
+        ("unrecognized_field", "/invoice/line_items/item/sku"),
+    ]
+
+
+def test_non_leaf_field_is_malformed_row_only_once(tmp_path):
+    x = _parse(
+        tmp_path,
+        "<invoice><header><vendor><b>x</b></vendor><vendor><b>y</b></vendor></header></invoice>",
+    )
+    assert x.vendor_raw is None
+    assert [i.code for i in x.issues] == ["malformed_row", "malformed_row"]

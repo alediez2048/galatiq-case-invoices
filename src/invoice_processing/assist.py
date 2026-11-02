@@ -149,12 +149,15 @@ def _same(field: str, a: str, b: str) -> bool:
 
 
 def _parenthesized(quote: str, m: re.Match[str]) -> bool:
-    return quote[: m.start()].rstrip().endswith("(") and quote[m.end() :].lstrip().startswith(")")
+    """The literal sits inside a "(" not yet closed before it, whatever follows it."""
+    before = quote[: m.start()]
+    return before.count("(") > before.count(")")
 
 
 def _parsed_literals(quote: str, pattern: re.Pattern[str], parser) -> list:
     """Every literal of `pattern` in `quote`, parsed. An amount in parentheses, e.g.
-    "($5,000.00)", is an accounting negative whose sign the pattern cannot read: skipped."""
+    "($5,000.00)" or "(5,000.00 CR)", is an accounting negative whose sign the pattern
+    cannot read: skipped."""
     out = []
     for m in pattern.finditer(quote):
         if pattern is _AMOUNT_LITERAL and _parenthesized(quote, m):

@@ -34,6 +34,7 @@ _REVIEW_KINDS = {
     "revision_after_payment": FindingCode.revision_after_payment,
     "version_conflict": FindingCode.version_conflict,
 }
+MISMATCH_MESSAGE = "The corrected invoice has a different vendor or invoice number."
 
 
 def run(state: InvoiceState, deps: Deps) -> dict:
@@ -76,64 +77,128 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 for i in draft.issues
                 for ref in i.evidence
             ]
-            source = state["source"]
-            invoice_id = ledger.upsert_invoice(
-                deps.conn, invoice.vendor_key, invoice.invoice_number_key, source.content_hash
-            )
-            version_id, version = ledger.record_version(
-                deps.conn, invoice_id, invoice, source.source_id
-            )
-            run_id = state["run_id"]
-            ledger.attach_run(deps.conn, run_id, invoice_id, version_id)
-            identity = ledger.check_identity(deps.conn, invoice_id, version_id, run_id)
-            code = _REVIEW_KINDS.get(identity.kind)
-            if code is not None:
-                findings.append(
-                    ValidationFinding(
-                        code=code, severity=DEFAULT_SEVERITY[code], observed=identity.prior.run_id
-                    )
-                )
-            ledger.record_findings(deps.conn, run_id, version_id, findings)
-            ledger.update_run_status(deps.conn, run_id, RunStatus.extracted)
-            update = {
-                "source_text": source_text,
-                "invoice": invoice,
-                "invoice_id": invoice_id,
-                "version_id": version_id,
-                "version": version,
-                "findings": findings,
-                "status": RunStatus.extracted,
-                "model_calls_used": calls_used,
-            }
-            emit(
-                deps,
-                {**state, **update},
-                STAGE,
-                "extracted",
-                source_hash=source.content_hash,
-                version=version,
-                codes=[f.code for f in findings],
-                issues=issues,
-            )
-            if identity.kind == "duplicate":
-                prior = identity.prior
-                ledger.update_run_status(deps.conn, run_id, RunStatus.duplicate)
+            link = state.get("supersede")
+            if link is not None and not _same_identity(deps, link.invoice_id, invoice):
+                # Before upsert_invoice: a corrected file for another invoice creates nothing.
+                emit(deps, state, STAGE, "corrected_identity_mismatch")
                 update = {
-                    **update,
-                    "status": RunStatus.duplicate,
-                    "prior_run_id": prior.run_id,
-                    "receipt": prior.receipt,
+                    "status": RunStatus.failed,
+                    "error_code": "corrected_identity_mismatch",
+                    "error_message": MISMATCH_MESSAGE,
                 }
-                emit(
-                    deps,
-                    {**state, **update},
-                    STAGE,
-                    "duplicate",
-                    prior_run_id=prior.run_id,
-                    prior_status=prior.status.value,
-                    match="semantic",
-                )
+            else:
+                update = _record(deps, state, invoice, findings, issues, source_text, calls_used)
     return {**update, "timings_ms": {**timings, STAGE: t["duration_ms"]}}
+
+
+def _record(
+    deps: Deps,
+    state: InvoiceState,
+    invoice: NormalizedInvoice,
+    findings: list[ValidationFinding],
+    issues: list[dict],
+    source_text: str,
+    calls_used: int,
+) -> dict:
+    """Record the version, check the identity and record the findings; the state update."""
+    source = state["source"]
+    link = state.get("supersede")
+    if link is not None:
+        invoice_id = link.invoice_id
+    else:
+        invoice_id = ledger.upsert_invoice(
+            deps.conn, invoice.vendor_key, invoice.invoice_number_key, source.content_hash
+        )
+    version_id, version = ledger.record_version(
+        deps.conn, invoice_id, invoice, source.source_id, supersede=link is not None
+    )
+    run_id = state["run_id"]
+    ledger.attach_run(deps.conn, run_id, invoice_id, version_id)
+    identity = ledger.check_identity(
+        deps.conn, invoice_id, version_id, run_id, superseding=link is not None
+    )
+    code = _REVIEW_KINDS.get(identity.kind)
+    if code is not None:
+        findings.append(
+            ValidationFinding(
+                code=code, severity=DEFAULT_SEVERITY[code], observed=identity.prior.run_id
+            )
+        )
+    elif link is not None and _is_superseded(deps, version_id):
+        # The corrected file matches a version it replaced earlier: an ordinary
+        # conflict with the version that is current now (Decision 22).
+        code = FindingCode.version_conflict
+        findings.append(
+            ValidationFinding(
+                code=code,
+                severity=DEFAULT_SEVERITY[code],
+                observed=_current_outcome_run(deps, invoice_id),
+            )
+        )
+    ledger.record_findings(deps.conn, run_id, version_id, findings)
+    ledger.update_run_status(deps.conn, run_id, RunStatus.extracted)
+    update = {
+        "source_text": source_text,
+        "invoice": invoice,
+        "invoice_id": invoice_id,
+        "version_id": version_id,
+        "version": version,
+        "findings": findings,
+        "status": RunStatus.extracted,
+        "model_calls_used": calls_used,
+    }
+    emit(
+        deps,
+        {**state, **update},
+        STAGE,
+        "extracted",
+        source_hash=source.content_hash,
+        version=version,
+        codes=[f.code for f in findings],
+        issues=issues,
+    )
+    if identity.kind == "duplicate":
+        prior = identity.prior
+        ledger.update_run_status(deps.conn, run_id, RunStatus.duplicate)
+        update = {
+            **update,
+            "status": RunStatus.duplicate,
+            "prior_run_id": prior.run_id,
+            "receipt": prior.receipt,
+        }
+        emit(
+            deps,
+            {**state, **update},
+            STAGE,
+            "duplicate",
+            prior_run_id=prior.run_id,
+            prior_status=prior.status.value,
+            match="semantic",
+        )
+    return update
+
+
+def _same_identity(deps: Deps, invoice_id: str, invoice: NormalizedInvoice) -> bool:
+    """A corrected submission must carry the identity keys of the invoice it replaces."""
+    row = ledger.get_invoice(deps.conn, invoice_id)
+    return (invoice.vendor_key, invoice.invoice_number_key) == (
+        row.vendor_key,
+        row.invoice_number_key,
+    )
+
+
+def _is_superseded(deps: Deps, version_id: str) -> bool:
+    return ledger.get_version_by_id(deps.conn, version_id).version_status == "superseded"
+
+
+def _current_outcome_run(deps: Deps, invoice_id: str) -> str | None:
+    """The latest outcome run of the invoice's current version, if any."""
+    row = ledger.get_invoice(deps.conn, invoice_id)
+    if row.current_version is None:
+        return None
+    current = ledger.get_version(deps.conn, invoice_id, row.current_version)
+    run = ledger.latest_outcome_run(deps.conn, current.version_id)
+    return None if run is None else run.run_id
 
 
 def _normalize(

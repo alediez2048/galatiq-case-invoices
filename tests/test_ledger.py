@@ -424,6 +424,20 @@ def test_check_identity_version_conflict(conn, sid, two_versions):
     assert check.kind == "version_conflict" and check.prior.run_id == rejected
 
 
+def test_check_identity_superseding_applies_only_the_payment_rule(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    finished_run(conn, sid, inv, v2, RunStatus.needs_review)
+    for version_id in (v1, v2):  # neither duplicate nor version_conflict from history
+        run = current(conn, sid, inv, version_id)
+        assert ledger.check_identity(conn, inv, version_id, run, superseding=True).kind == "new"
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    run = current(conn, sid, inv, v2)
+    check = ledger.check_identity(conn, inv, v2, run, superseding=True)
+    assert check.kind == "revision_after_payment" and check.prior.run_id == paid
+
+
 def test_check_identity_ignores_failed_duplicate_and_retry_runs(conn, sid, two_versions):
     inv, v1, v2 = two_versions
     finished_run(conn, sid, inv, v1, RunStatus.failed)
@@ -704,6 +718,24 @@ def test_record_version_supersede_on_hash_match_changes_nothing(conn, sid):
     v1 = ledger.record_version(conn, inv, inv_1001(), sid)
     assert ledger.record_version(conn, inv, inv_1001(), sid, supersede=True) == v1
     assert versions(conn, inv) == [(1, None, "source", "current")]
+
+
+def test_record_version_supersede_on_hash_match_of_a_plain_upload(conn, sid):
+    # The same file first uploaded plainly (a conflicting current version), then through
+    # the corrected path: the matched version becomes current and the others are superseded.
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    eur = inv_1001().model_copy(update={"currency": "EUR"})
+    ledger.record_version(conn, inv, eur, sid)
+    ledger.record_version(conn, inv, inv_1001().model_copy(update={"currency": "GBP"}), sid)
+    assert current_version(conn, inv) == 3
+    _, v = ledger.record_version(conn, inv, eur, sid, supersede=True)
+    assert v == 2 and current_version(conn, inv) == 2
+    assert [x[3] for x in versions(conn, inv)] == ["superseded", "current", "superseded"]
+    # A match with a superseded version is returned unchanged.
+    _, v = ledger.record_version(conn, inv, inv_1001(), sid, supersede=True)
+    assert v == 1 and current_version(conn, inv) == 2
+    assert [x[3] for x in versions(conn, inv)] == ["superseded", "current", "superseded"]
 
 
 def test_get_invoice_and_get_version(conn, sid):

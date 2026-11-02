@@ -21,7 +21,7 @@ from invoice_processing.codes import (
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
 from invoice_processing.reasoning.base import NoModelProvider
-from invoice_processing.schemas import ProcessingResult, SourceDocument
+from invoice_processing.schemas import ProcessingResult, SourceDocument, SupersedeLink
 from invoice_processing.storage import connect, init_schema, write_transaction
 from invoice_processing.workflow import build_graph
 
@@ -154,6 +154,8 @@ def check_retry(
         conn.close()
 
 
+CORRECTED_SUBMISSION = "corrected_submission"
+
 # Review runs are retried on their own version from validation, never from the file.
 _REVIEW_RETRY_TRIGGERS = frozenset({"correction", "human_review"})
 
@@ -199,6 +201,9 @@ def retry_run(
     conn = _open_for_retry(db_path, run_id)
     try:
         original = _check_retry(conn, run_id, source.content_hash)
+        supersede = (
+            _supersede_link(conn, original) if original.trigger == CORRECTED_SUBMISSION else None
+        )
     finally:
         conn.close()
     return _process(
@@ -212,7 +217,19 @@ def retry_run(
         provider,
         retry_of=original.run_id,
         on_run_started=on_run_started,
+        supersede=supersede,
     )
+
+
+def _supersede_link(conn: sqlite3.Connection, run: ledger.RunSummary) -> SupersedeLink:
+    """The link a corrected-submission run was started with (its audit event), so a retry
+    supersedes like the original run instead of becoming a plain upload."""
+    row = conn.execute(
+        "SELECT payload_json FROM audit_events WHERE run_id = ? AND event = ? "
+        "ORDER BY event_id LIMIT 1",
+        (run.run_id, CORRECTED_SUBMISSION),
+    ).fetchone()
+    return SupersedeLink.model_validate_json(row["payload_json"])
 
 
 def _retry_review(
@@ -285,8 +302,14 @@ def process_invoice(
     limits: Limits = DEFAULT_LIMITS,
     provider: ReasoningProvider | None = None,
     on_run_started: Callable[[str], None] | None = None,
+    supersede: SupersedeLink | None = None,
 ) -> ProcessingResult:
-    """`on_run_started(run_id)` is called once the run row exists, before any work runs."""
+    """`on_run_started(run_id)` is called once the run row exists, before any work runs.
+
+    `supersede` (a corrected submission, via `review.submit_corrected_invoice`) links the
+    file to the invoice it replaces: the run's trigger is `corrected_submission`, the
+    byte-level duplicate check is skipped, and ingestion supersedes the earlier versions
+    (Decision 22)."""
     source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
     return _process(
         source,
@@ -298,6 +321,7 @@ def process_invoice(
         limits,
         provider,
         on_run_started=on_run_started,
+        supersede=supersede,
     )
 
 
@@ -312,6 +336,7 @@ def _process(
     provider: ReasoningProvider | None,
     retry_of: str | None = None,
     on_run_started: Callable[[str], None] | None = None,
+    supersede: SupersedeLink | None = None,
 ) -> ProcessingResult:
     if events is None:
         events = observability.configure_events(None)
@@ -324,14 +349,27 @@ def _process(
         # The same bytes in the other mode: a labeled switch, never a byte-level duplicate.
         # It reads no earlier decision (decisions are per run); payment still decides.
         mode_switch_of = ledger.latest_run_in_other_mode(conn, source.source_id, mode)
-        run_id = ledger.start_run(
-            conn,
-            mode,
-            source.source_id,
-            evaluation_date,
-            retry_of=retry_of,
-            mode_switch_of=mode_switch_of,
-        )
+        # The run and its corrected-submission link commit together (a retry reads the link).
+        with write_transaction(conn):
+            run_id = ledger.start_run(
+                conn,
+                mode,
+                source.source_id,
+                evaluation_date,
+                retry_of=retry_of,
+                mode_switch_of=mode_switch_of,
+                trigger="submission" if supersede is None else CORRECTED_SUBMISSION,
+            )
+            if supersede is not None:
+                ledger.append_audit_event(
+                    conn,
+                    run_id,
+                    "review",
+                    CORRECTED_SUBMISSION,
+                    supersede.model_dump(mode="json"),
+                    invoice_id=supersede.invoice_id,
+                    actor=supersede.reviewer,
+                )
         if on_run_started is not None:
             on_run_started(run_id)
         deps = Deps(conn=conn, provider=provider, events=events, limits=limits)
@@ -342,6 +380,7 @@ def _process(
             source=source,
             raw=raw,
             status=RunStatus.received,
+            supersede=supersede,
         )
         try:
             emit(
@@ -355,9 +394,9 @@ def _process(
                 retry_of=retry_of,
                 mode_switch_of=mode_switch_of,
             )
-            # Retries and mode switches skip the byte-level check; the identity check in
-            # ingestion still runs (and never pays an identity twice).
-            exempt = retry_of is not None or mode_switch_of is not None
+            # Retries, mode switches and corrected submissions skip the byte-level check;
+            # the identity check in ingestion still runs (and never pays an identity twice).
+            exempt = retry_of is not None or mode_switch_of is not None or supersede is not None
             prior = None if exempt else ledger.find_prior_outcome(conn, source.content_hash)
             if prior is not None:
                 ledger.finish_run(conn, run_id, RunStatus.duplicate, prior_run_id=prior.run_id)

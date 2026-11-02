@@ -193,17 +193,34 @@ def _insert_version(
             (invoice_id, parent_version),
         )
     elif supersede == "others":
-        conn.execute(
-            "UPDATE invoice_versions SET version_status = 'superseded' "
-            "WHERE invoice_id = ? AND version != ? AND version_status = 'current'",
-            (invoice_id, version),
-        )
+        _supersede_others(conn, invoice_id, version)
+        return version_id, version
+    _set_current(conn, invoice_id, version)
+    return version_id, version
+
+
+def _set_current(conn: sqlite3.Connection, invoice_id: str, version: int) -> None:
     conn.execute(
         "UPDATE invoices SET current_version = ?, updated_at = ? "
         "WHERE invoice_id = ? AND status != ?",
-        (version, now, invoice_id, InvoiceStatus.paid_mock.value),
+        (version, utcnow(), invoice_id, InvoiceStatus.paid_mock.value),
     )
-    return version_id, version
+
+
+def _supersede_others(conn: sqlite3.Connection, invoice_id: str, version: int) -> None:
+    """Make `version` current and mark every other current version superseded (refused on a
+    paid invoice)."""
+    status = conn.execute(
+        "SELECT status FROM invoices WHERE invoice_id = ?", (invoice_id,)
+    ).fetchone()
+    if status is not None and status["status"] == InvoiceStatus.paid_mock.value:
+        raise ValueError(f"cannot supersede a version of paid invoice {invoice_id}")
+    conn.execute(
+        "UPDATE invoice_versions SET version_status = 'superseded' "
+        "WHERE invoice_id = ? AND version != ? AND version_status = 'current'",
+        (invoice_id, version),
+    )
+    _set_current(conn, invoice_id, version)
 
 
 def record_version(
@@ -217,15 +234,20 @@ def record_version(
     """The version of this content: an existing version with the same semantic hash is
     returned as is (first payload and source kept, current_version not moved, Decision 6);
     otherwise a new version becomes current. `supersede=True` (a corrected submission)
-    also marks every other current version of the invoice superseded."""
+    also marks every other current version of the invoice superseded; on a hash match with a
+    version that is not superseded (e.g. the same file first uploaded plainly), that version
+    becomes current and the others are superseded. A match with a superseded version is
+    returned unchanged (the caller reports a version conflict)."""
     digest = semantic_hash(invoice)
     with storage.atomic(conn):
         row = conn.execute(
-            "SELECT version_id, version FROM invoice_versions "
+            "SELECT version_id, version, version_status FROM invoice_versions "
             "WHERE invoice_id = ? AND semantic_hash = ? ORDER BY version LIMIT 1",
             (invoice_id, digest),
         ).fetchone()
         if row is not None:
+            if supersede and row["version_status"] == "current":
+                _supersede_others(conn, invoice_id, row["version"])
             return row["version_id"], row["version"]
         latest = conn.execute(
             "SELECT MAX(version) FROM invoice_versions WHERE invoice_id = ?", (invoice_id,)
@@ -807,7 +829,11 @@ def _retry_chain(conn: sqlite3.Connection, run_id: str) -> list[str]:
 
 
 def check_identity(
-    conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str
+    conn: sqlite3.Connection,
+    invoice_id: str,
+    version_id: str,
+    run_id: str,
+    superseding: bool = False,
 ) -> IdentityCheck:
     """Compare this run's invoice version with earlier outcomes for the same identity.
 
@@ -822,6 +848,9 @@ def check_identity(
     run that did not fail makes it a duplicate carrying the receipt) and rule 2 is skipped;
     revisions and version conflicts still apply, with the run being retried and its retry
     chain excluded from prior outcomes.
+
+    A corrected submission (`superseding=True`) has replaced every earlier version, so only
+    rule 1 applies: history never makes it a duplicate or a version conflict.
     """
     new = IdentityCheck("new", None)
     this = conn.execute("SELECT retry_of FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -854,6 +883,8 @@ def check_identity(
         if payment["status"] == RunStatus.failed.value:
             return new
         return IdentityCheck("duplicate", _prior(conn, payment))
+    if superseding:
+        return new
 
     excluded = [run_id, *(_retry_chain(conn, run_id) if is_retry else [])]
     slots = ",".join("?" * len(excluded))

@@ -16,15 +16,19 @@ from typing import Any
 
 from invoice_processing import evidence, ledger, normalize, policy, service
 from invoice_processing.codes import (
+    EXTRACTION_REVIEW_CODES,
     ExecutionMode,
     FindingCode,
     HumanReviewAction,
     InvoiceStatus,
+    QueueGroup,
     ReviewAction,
     ReviewRefusal,
     RunStatus,
+    Severity,
     SourceFormat,
 )
+from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
 from invoice_processing.reasoning.base import NoModelProvider
 from invoice_processing.schemas import (
@@ -38,6 +42,9 @@ from invoice_processing.schemas import (
     NormalizationEvent,
     NormalizedInvoice,
     ProcessingResult,
+    QueueItem,
+    ReviewQueue,
+    SupersedeLink,
     ValidationFinding,
 )
 from invoice_processing.storage import connect, init_schema, write_transaction
@@ -652,4 +659,119 @@ def _load_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
             date.fromisoformat(run["evaluation_date"]) if run["evaluation_date"] else None
         ),
         model_calls_used=decision.model_calls_used if decision is not None else 0,
+    )
+
+
+# --- Review queue --------------------------------------------------------------------------
+
+_QUEUED = (InvoiceStatus.needs_review, InvoiceStatus.awaiting_human_approval)
+_REASON_SEVERITIES = frozenset({Severity.review.value, Severity.blocker.value})
+
+
+def list_queue(*, db_path: str | Path) -> ReviewQueue:
+    """Invoices waiting on a person (Decision 21), grouped and ordered by `updated_at`:
+    awaiting approval; needs review whose every reason is an extraction mistake a correction
+    can fix; any other needs review (unresolved blocker)."""
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT invoice_id FROM invoices WHERE status IN (?, ?) ORDER BY updated_at, rowid",
+            tuple(s.value for s in _QUEUED),
+        ).fetchall()
+        groups: dict[QueueGroup, list[QueueItem]] = {g: [] for g in QueueGroup}
+        for row in rows:
+            group, item = _queue_item(conn, row["invoice_id"])
+            groups[group].append(item)
+        return ReviewQueue(groups=groups)
+    finally:
+        conn.close()
+
+
+def _queue_item(conn: sqlite3.Connection, invoice_id: str) -> tuple[QueueGroup, QueueItem]:
+    invoice = ledger.get_invoice(conn, invoice_id)
+    payload: NormalizedInvoice | None = None
+    reasons: list[FindingCode] = []
+    if invoice.current_version is not None:
+        version = ledger.get_version(conn, invoice_id, invoice.current_version)
+        payload = version.invoice
+        run = ledger.latest_outcome_run(conn, version.version_id)
+        if run is not None:
+            found = {
+                FindingCode(f["code"])
+                for f in ledger.list_findings(conn, run.run_id)
+                if f["severity"] in _REASON_SEVERITIES
+            }
+            reasons = sorted(found)
+    if invoice.status is InvoiceStatus.awaiting_human_approval:
+        group = QueueGroup.awaiting_human_approval
+    elif reasons and set(reasons) <= EXTRACTION_REVIEW_CODES:
+        group = QueueGroup.correctable_extraction
+    else:
+        group = QueueGroup.unresolved_blocker
+    item = QueueItem(
+        invoice_id=invoice_id,
+        vendor_name=payload.vendor_name if payload else None,
+        invoice_number=payload.invoice_number if payload else None,
+        total=payload.stated.total if payload else None,
+        currency=payload.currency if payload else None,
+        status=invoice.status,
+        current_version=invoice.current_version,
+        reason_codes=reasons,
+        actions=_allowed(conn, invoice_id),
+    )
+    return group, item
+
+
+# --- Corrected-invoice submissions ---------------------------------------------------------
+
+
+def submit_corrected_invoice(
+    invoice_id: str,
+    path: str | Path,
+    reason: str,
+    reviewer: str,
+    *,
+    db_path: str | Path,
+    evaluation_date: date,
+    mode: ExecutionMode | None = None,
+    events: logging.Logger | None = None,
+    provider: ReasoningProvider | None = None,
+    limits: Limits = DEFAULT_LIMITS,
+    on_run_started: Callable[[str], None] | None = None,
+) -> ProcessingResult:
+    """Process a corrected invoice from the vendor as a new version of `invoice_id` that
+    supersedes every earlier version (Decision 22). Eligible only with no payment, status
+    rejected, needs review or failed, and no version held by approval; the file must carry
+    the same vendor and invoice number (else the run fails `corrected_identity_mismatch`).
+    `mode` defaults to the latest run's mode. `on_run_started(run_id)` is called once the run
+    row exists, before any work runs."""
+    link = SupersedeLink(invoice_id=invoice_id, reviewer=reviewer, reason=reason)
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        current = _allowed(conn, invoice_id)  # unknown_invoice when there is no such invoice
+        if _paid(conn, invoice_id):
+            raise _refuse(R.already_paid, current)
+        if A.submit_corrected not in current.allowed:
+            raise _refuse(current.refused.get(A.submit_corrected, R.action_not_allowed), current)
+        if mode is None:
+            latest = conn.execute(
+                "SELECT mode FROM runs WHERE invoice_id = ? ORDER BY started_at DESC, rowid DESC "
+                "LIMIT 1",
+                (invoice_id,),
+            ).fetchone()
+            mode = ExecutionMode.offline if latest is None else ExecutionMode(latest["mode"])
+    finally:
+        conn.close()
+    return service.process_invoice(
+        path,
+        mode,
+        db_path,
+        evaluation_date,
+        events,
+        limits,
+        provider=provider,
+        on_run_started=on_run_started,
+        supersede=link,
     )

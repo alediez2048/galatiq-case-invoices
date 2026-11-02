@@ -19,6 +19,7 @@ import pytest
 
 from invoice_processing import ledger, seed, storage
 from invoice_processing.codes import ExecutionMode, ModelErrorCode, RunStatus
+from invoice_processing.reasoning import xai
 from invoice_processing.reasoning.xai import XaiProvider
 from invoice_processing.service import process_invoice
 from invoice_processing.settings import ConfigurationError, LiveSettings, load_live_settings
@@ -60,6 +61,11 @@ pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(_SETTINGS is None, reason=_WHY_SKIPPED),
 ]
+
+
+def live_provider(settings: LiveSettings) -> XaiProvider:
+    """The provider the smoke run uses: the real SDK client factory, looked up at call time."""
+    return XaiProvider(settings, xai.real_client_factory)
 
 
 @dataclass
@@ -174,7 +180,7 @@ def smoke(tmp_path_factory):
     import time
 
     assert _SETTINGS is not None
-    provider = XaiProvider(_SETTINGS)
+    provider = live_provider(_SETTINGS)
     records: list[Record] = []
     started = time.perf_counter()
     for path, expected in EXPECTED.items():
@@ -191,7 +197,7 @@ def smoke(tmp_path_factory):
         _measure(db, r.run_id, record)
         records.append(record)
     invalid = None
-    bad = XaiProvider(replace(_SETTINGS, api_key="xai-invalid-key-for-smoke-test"))
+    bad = live_provider(replace(_SETTINGS, api_key="xai-invalid-key-for-smoke-test"))
     db = _fresh_db(tmp_path_factory.mktemp("invalid_key"), "live")
     r = process_invoice(INVOICES / "invoice_1001.txt", ExecutionMode.live, db, EVAL, provider=bad)
     invalid = Record(

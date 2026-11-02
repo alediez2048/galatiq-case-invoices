@@ -165,9 +165,11 @@ Scope:
 
 Exit criteria:
 
-- [ ] 10,000.00 auto-pays; 10,000.01 waits unpaid until explicit human approval.
-- [ ] Human approval cannot override any hard blocker.
-- [ ] Stale approval after a correction cannot reach payment.
+- [x] 10,000.00 auto-pays; 10,000.01 waits unpaid until explicit human approval. (`tests/test_review_acceptance.py::test_10000_00_pays_with_no_human_action`, `::test_10000_01_waits_then_approve_pays`, `::test_restart_between_wait_and_approve`; `tests/test_human_approval.py::test_10000_01_waits_then_approve_pays_once`, `::test_pay_without_human_review_over_threshold_raises`)
+- [x] Human approval cannot override any hard blocker. (`tests/test_review_acceptance.py::test_matching_approval_never_clears_a_gating_finding`, `::test_approve_refused_for_every_recorded_gating_code`; `tests/test_policy.py::test_decline_never_reached_past_blockers_or_review`)
+- [x] Stale approval after a correction cannot reach payment. (`tests/test_review_acceptance.py::test_correction_after_recommendation_invalidates_and_reruns`; `tests/test_human_approval.py::test_approve_stale_after_correction`, `::test_pay_refuses_superseded_version_even_with_forged_approval`)
+
+Not built in Phase 4 (cut line): identity corrections (P4-03, refused with `identity_correction_deferred`), the review CLI (P4-06) and thread-concurrency tests (P4-04, P4-07). The review workflow is reached through the Python calls in [development](development.md#review-workflow).
 
 Covers: P13, P14, plus completion items 2 and 5.
 

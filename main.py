@@ -52,6 +52,7 @@ from invoice_processing.observability import (  # noqa: E402
     write_result,
 )
 from invoice_processing.reasoning import ProviderUnavailable, get_provider  # noqa: E402
+from invoice_processing.reasoning.base import NoModelProvider  # noqa: E402
 from invoice_processing.seed import seed_inventory  # noqa: E402
 from invoice_processing.service import (  # noqa: E402
     RetryNeedsFile,
@@ -72,7 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--invoice-path",
         dest="invoice_path",
         default=None,
-        help="path to the invoice file (required, except with --retry of a failed correction run)",
+        help="path to the invoice file (required, except with --retry of a failed review run: "
+        "a correction or an approve/decline run)",
     )
     p.add_argument(
         "--mode",
@@ -102,7 +104,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="RUN_ID",
         default=None,
         help="retry this failed run with the same --invoice_path, in the run's original mode "
-        "(--mode is ignored); a failed correction run needs no --invoice_path",
+        "(--mode is ignored); a failed correction or approve/decline run needs no "
+        "--invoice_path, and an approve/decline run calls no model (no credentials needed)",
     )
     return p
 
@@ -183,8 +186,12 @@ def _retry(args: argparse.Namespace, evaluation_date: date | None) -> int:
     try:
         target = check_retry(args.retry, args.invoice_path, args.db)
         print(f"Retrying run {target.run_id} (failed: {target.error_code})", file=sys.stderr)
-        provider = get_provider(target.mode)
-        _print_mode_banner(target.mode, provider)
+        if target.trigger == "human_review":  # approve/decline: no model call, no key
+            provider = NoModelProvider(target.mode)
+            print(f"Mode: {target.mode.value} human review (no model call)", file=sys.stderr)
+        else:
+            provider = get_provider(target.mode)
+            _print_mode_banner(target.mode, provider)
         events = configure_events(Path(args.events))
         result = retry_run(
             args.retry,

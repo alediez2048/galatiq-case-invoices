@@ -101,17 +101,19 @@ Goal: corrections and high-value approvals work end to end through the shared se
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P4-01](P4-01-versioning-and-review-contracts.md) (pending) | Invoice versioning and review contracts | P0-04, P2-10 | todo |
-| [P4-02](P4-02-evidence-backed-corrections.md) (pending) | Evidence-backed correction and revalidation | P1-07, P3-05, P4-01 | todo |
+| [P4-01](P4-01-versioning-and-review-contracts.md) (complete) | Invoice versioning and review contracts | P0-04, P2-10 | done |
+| [P4-02](P4-02-evidence-backed-corrections.md) (complete) | Evidence-backed correction and revalidation | P1-07, P3-05, P4-01 | done |
 | [P4-03](P4-03-identity-corrections-and-duplicate-safety.md) (pending) | Identity corrections and duplicate safety | P2-10, P4-02 | todo |
-| [P4-04](P4-04-human-approval-for-high-value.md) (pending) | Human approval for high-value invoices | P1-05, P3-06, P4-01 | todo |
-| [P4-05](P4-05-review-queue-and-corrected-submissions.md) (pending) | Review queue and corrected-invoice submissions | P4-02, P4-04 | todo |
+| [P4-04](P4-04-human-approval-for-high-value.md) (complete) | Human approval for high-value invoices (thread tests deferred) | P1-05, P3-06, P4-01 | done |
+| [P4-05](P4-05-review-queue-and-corrected-submissions.md) (complete) | Review queue and corrected-invoice submissions | P4-02, P4-04 | done |
 | [P4-06](P4-06-review-cli.md) (pending) | Review CLI | P4-02 – P4-05 | todo |
-| [P4-07](P4-07-review-acceptance-tests.md) (pending) | Review workflow acceptance fixtures and tests | P4-01 – P4-06 | todo |
+| [P4-07](P4-07-review-acceptance-tests.md) (complete) | Review workflow acceptance fixtures and tests (thread tests deferred) | P4-01 – P4-06 | done |
 
 Suggested order: P4-01 → P4-02 and P4-04 in parallel → P4-03 and P4-05 → P4-06 → P4-07.
 
-Open decision in P4-05: how a corrected vendor invoice supersedes unpaid prior versions instead of hitting `version_conflict`.
+Resolved 2026-11-01 ([decisions round 5, item 5](../decisions.md#d-supersede)), built in P4-05: a corrected vendor invoice supersedes unpaid prior versions only through the explicit corrected-invoice action with a reason, and only when no version is paid, approved or awaiting human approval; a plain upload stays `version_conflict`.
+
+P4-03 (identity corrections) and P4-06 (review CLI) are deferred by the cut line: a `vendor` / `invoice_number` correction that changes the identity is refused with `identity_correction_deferred`, and the review actions are Python calls ([development](../development.md#review-workflow)). P4-07 was built against them as they are.
 
 ## Phase 5 — API and operator UI
 
@@ -184,7 +186,7 @@ Deferred findings from the Phase 1 reviews, each assigned to the ticket that sho
 | ~~Phase 2 deps~~ | ~~Declare `langsmith>=0.14,<1` in `pyproject.toml`.~~ Done. |
 | ~~P3-08~~ | ~~(Phase 2 final review) Retry runs skip the identity check, so a retried revision of a paid invoice ends `failed` (`payment_not_authorized:revision_after_payment`) instead of `needs_review`; after a repaired crash replay the paying `payments.run_id` still points at the failed run, so an exact re-submission returns `duplicate` without a receipt and `check_identity` keeps returning `new` — re-point `payments.run_id` on replay or fall back to the invoice payment. No money moves in either case.~~ Done (retries run the identity check; a replay re-points a failed payer's payment: `tests/test_retry.py`). |
 | ~~P3-01 / P3-07~~ | ~~Disable LangSmith tracing in live mode too; redaction misses camelCase names; network guard leaves `connect_ex`/`getaddrinfo` unpatched; exact-threshold critique test; approval-node revision path untested.~~ Done: tracing forced off in both modes (`service.py`, `tests/test_e2e.py`), camelCase redaction (`tests/test_ledger.py`), guard extended (`tests/test_network_guard.py`), `tests/test_live_approval.py` (USD 10,000.00 and 10,000.01 critique, revision path). Not done, moved to P6: declare the reasoning protocol attributes as `ClassVar`. |
-| P4-01 | `record_version` reuses the first source's payload on a semantic-hash match; a repeat of an older version does not move `current_version` (moved from P2-10; no double-payment risk). |
-| P4-04 | Gate's human-review match ignores `invoice_id` (ledger query filters by it and `pay` rechecks — make it explicit); approval-node human-review path untested. |
+| ~~P4-01~~ | ~~`record_version` reuses the first source's payload on a semantic-hash match; a repeat of an older version does not move `current_version` (moved from P2-10; no double-payment risk).~~ Done: both behaviours kept and pinned (`tests/test_ledger.py::test_record_version_hash_match_returns_first_payload_and_keeps_current`, `::test_record_version_does_not_move_current_version_when_paid`). |
+| ~~P4-04~~ | ~~Gate's human-review match ignores `invoice_id` (ledger query filters by it and `pay` rechecks — make it explicit); approval-node human-review path untested.~~ Done: `policy.evaluate` takes `invoice_id` (`tests/test_policy.py::test_human_review_for_other_invoice_does_not_count`); approval-node path in `tests/test_human_approval.py::test_10000_01_waits_then_approve_pays_once`. |
 | P5 | `mark_interrupted_runs(utcnow())` would fail a concurrent process's live run — add a grace window before FastAPI concurrency; observability: caller `ts=` overrides the timestamp, `write_result` treats a `str` path as a stream, tests leave the events logger configured. |
 | P6 | Reasoning protocol attrs (`mode`, `provider`, `model`, prompt versions) as `ClassVar` (moved from P3-01 / P3-07). Payment: reserve-then-execute (pending row) before any real gateway, positive-amount guard, empty vendor name; service exception path drops `invoice_id`/findings/timings and leaves `invoices.status` intermediate; `attach_run`/`set_invoice_status` no-op on unknown ids; CLI tracebacks for unexpected errors (unwritable `--output`); `atomic` join test strength; audit polish (stale status on recommendation/critique events, generic `waiting` event, `error_message` never set, cwd-relative pay-guard test). |

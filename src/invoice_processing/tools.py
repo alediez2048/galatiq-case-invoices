@@ -240,6 +240,14 @@ class Dispatcher:
         self._audit(agent, name, args, result, len(text), start)
         return text
 
+    def reject(self, agent: str, name: str, reason: str) -> str:
+        """Answer a call that is refused before dispatch (e.g. over the per-turn cap); audited."""
+        start = time.perf_counter()
+        result = _reject(reason)
+        text = json.dumps(result)
+        self._audit(agent, name, None, result, len(text), start)
+        return text
+
     def _run(self, agent: str, name: str, arguments_json: str) -> tuple[dict, dict | None]:
         spec = REGISTRY.get(name) if isinstance(name, str) else None
         if spec is None:

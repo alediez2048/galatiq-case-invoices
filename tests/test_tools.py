@@ -138,6 +138,23 @@ def test_audit_event_per_call_without_excerpt(run_ctx):
     assert "WidgetA" not in json.dumps([e["payload"] for e in events])
 
 
+def test_reject_audits_a_call_that_never_ran(run_ctx):
+    state, deps = run_ctx
+    d = _dispatcher(deps.conn, state)
+    out = json.loads(d.reject("approval", "lookup_inventory", "too_many_tool_calls"))
+    assert out == {"error": "tool_rejected", "reason": "too_many_tool_calls"}
+    d.reject("approval", "SECRET_TOOL_NAME", "too_many_tool_calls")
+    events = [
+        e for e in ledger.list_audit_events(deps.conn, state["run_id"]) if e["stage"] == "tool"
+    ]
+    assert [e["event"] for e in events] == ["tool_call"] * 2
+    known, unknown = (e["payload"] for e in events)
+    assert known["tool"] == "lookup_inventory" and known["agent"] == "approval"
+    assert known["ok"] is False and known["error"] == "too_many_tool_calls"
+    assert known["args"] is None and known["result_size"] > 0
+    assert unknown["tool"] == "unknown" and "SECRET_TOOL_NAME" not in json.dumps(unknown)
+
+
 def test_source_excerpt_line_and_cap(run_ctx):
     state, deps = run_ctx
     d = _dispatcher(deps.conn, state)

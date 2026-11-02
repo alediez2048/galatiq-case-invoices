@@ -1,17 +1,20 @@
 """The review queue (Decision 21) and its allowed actions, which must agree with what each
 review action actually refuses."""
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from invoice_processing import review, storage
-from invoice_processing.codes import InvoiceStatus, QueueGroup, ReviewAction
+from invoice_processing.codes import InvoiceStatus, QueueGroup, ReviewAction, ReviewRefusal
 from invoice_processing.schemas import CorrectionRequest, FieldChange, QueueItem
 from tests.review_helpers import EVAL, INVOICES, REVIEW, process, seeded_db
 
 THRESHOLD = Path(__file__).resolve().parent / "fixtures" / "threshold"
+CORRECTED = REVIEW / "inv_1013_corrected.json"
 FILES = [
+    INVOICES / "invoice_1013.json",  # rejected (not queued); created before the others
     INVOICES / "invoice_1001.txt",
     INVOICES / "invoice_1003.txt",
     INVOICES / "invoice_1014.xml",
@@ -25,6 +28,17 @@ def db(tmp_path_factory) -> Path:
     path = seeded_db(tmp_path_factory.mktemp("queue"))
     for f in FILES:
         process(f, path)
+    # Touched last: INV-1013 now awaits approval, after TH-10000-01, though created first.
+    conn = storage.connect(path)
+    try:
+        (inv_1013,) = conn.execute(
+            "SELECT invoice_id FROM invoices WHERE invoice_number_key LIKE '%1013%'"
+        ).fetchone()
+    finally:
+        conn.close()
+    review.submit_corrected_invoice(
+        inv_1013, CORRECTED, "Vendor reissued", "Ana", db_path=path, evaluation_date=EVAL
+    )
     return path
 
 
@@ -49,7 +63,7 @@ def test_queue_groups(db):
     assert not any(
         i.invoice_number in {"INV-1001", "INV-1003"} for g in q.groups.values() for i in g
     )
-    assert sum(len(g) for g in q.groups.values()) == 3
+    assert sum(len(g) for g in q.groups.values()) == 4
 
 
 def test_reason_codes_sorted_and_unique(db):
@@ -63,14 +77,9 @@ def test_reason_codes_sorted_and_unique(db):
 
 def test_queue_items_ordered_by_updated_at(db):
     q = review.list_queue(db_path=db)
-    conn = storage.connect(db)
-    try:
-        updated = dict(conn.execute("SELECT invoice_id, updated_at FROM invoices").fetchall())
-    finally:
-        conn.close()
-    for group in q.groups.values():
-        stamps = [updated[i.invoice_id] for i in group]
-        assert stamps == sorted(stamps)
+    # INV-1013 was created first (lower rowid) but updated last, by its corrected submission.
+    waiting = [i.invoice_number for i in q.groups[QueueGroup.awaiting_human_approval]]
+    assert waiting == ["TH-10000-01", "INV-1013"]
 
 
 def test_empty_queue(tmp_path):
@@ -118,3 +127,46 @@ def test_allowed_actions_matches_service_refusals(db):
     assert checked >= 5
     # Nothing was written by the refusals: the queue is unchanged.
     assert review.list_queue(db_path=db) == q
+
+
+# A correction is checked against its content after the state gate; the placeholder change
+# above is refused on content, never by the gate that allowed_actions reports.
+_CONTENT_CODES = frozenset(
+    {
+        ReviewRefusal.field_not_correctable,
+        ReviewRefusal.invalid_value,
+        ReviewRefusal.identity_correction_deferred,
+        ReviewRefusal.correction_not_in_source,
+        ReviewRefusal.evidence_location_mismatch,
+        ReviewRefusal.evidence_unavailable,
+    }
+)
+
+
+def _copy(db: Path, dest: Path) -> Path:
+    src, dst = sqlite3.connect(db), sqlite3.connect(dest)
+    try:
+        src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    return dest
+
+
+def test_allowed_actions_are_not_refused(db, tmp_path):
+    q = review.list_queue(db_path=db)
+    checked = 0
+    for group in q.groups.values():
+        for i in group:
+            for action in i.actions.allowed:
+                copy = _copy(db, tmp_path / f"{i.invoice_number}-{action}.db")
+                try:
+                    _call(action, i, copy)
+                except review.ReviewRefused as e:
+                    assert action is ReviewAction.correct and e.code in _CONTENT_CODES, (
+                        i.invoice_number,
+                        action,
+                        e.code,
+                    )
+                checked += 1
+    assert checked >= 6

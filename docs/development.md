@@ -46,6 +46,51 @@ The retry is a new run linked by `retry_of`, in the original run's mode (`--mode
 
 Running the same file in the other mode (for example `--mode offline` after a failed live run) is a separate, labeled run: when the latest run of that file was in the other mode, `runs.mode_switch_of` points at it (a further run in the same mode is not a switch). It skips the byte-level duplicate check and its agents never see the earlier run's recommendation or decision, but the identity check still counts the earlier run's outcome whatever its mode: a payment, or a business outcome of the same invoice version (for example offline `rejected`, then live), makes the switched run a `duplicate` of that run; another version's outcome is a version conflict. No code path turns a live failure into an offline result.
 
+## Review workflow
+
+Phase 4 adds the human review actions as Python calls in `invoice_processing.review` (there is no review CLI; P4-06 is deferred). Each action checks the version the reviewer saw, records an immutable row and a new run in one transaction, then runs that run with no transaction open and returns a `ProcessingResult`. Refusals raise `review.ReviewRefused` with a stable `code` (`ReviewRefusal`), a `message` and `current` (the invoice's `AllowedActions`: status, current version, allowed and refused actions). A blank reviewer or reason (1–100 and 1–1,000 characters after stripping) raises Pydantic `ValidationError` before the database is opened. The reviewer is a free-text name kept for audit, not authentication.
+
+```python
+from datetime import date
+from invoice_processing import review
+from invoice_processing.schemas import CorrectionRequest, FieldChange
+
+db = "demo.db"
+
+# Invoices waiting on a person: groups correctable_extraction, awaiting_human_approval,
+# unresolved_blocker; each item has reason codes, current version and allowed actions.
+queue = review.list_queue(db_path=db)
+actions = review.allowed_actions(invoice_id, db_path=db)
+
+# Fix an extraction mistake, citing where the source states the value.
+result = review.submit_correction(
+    CorrectionRequest(
+        invoice_id=invoice_id,
+        expected_version=1,
+        changes=[FieldChange(field="stated.total", new_value="3500.00", evidence_location="line:13")],
+        reason="Total misread",
+        reviewer="Ana",
+    ),
+    db_path=db,
+)
+
+# Approve or decline the waiting version (over USD 10,000, or after a model disagreement).
+result = review.approve(invoice_id, 2, "Ana", "Checked against PO", db_path=db)
+result = review.decline(invoice_id, 2, "Ana", "Vendor not on contract", db_path=db)
+
+# A corrected invoice from the vendor supersedes the unpaid versions of the same invoice.
+result = review.submit_corrected_invoice(
+    invoice_id, "corrected.json", "Vendor reissued", "Ana",
+    db_path=db, evaluation_date=date(2026, 1, 31),
+)
+```
+
+- **Corrections** (`submit_correction`): up to 10 field changes, all or nothing. Field paths are `vendor`, `invoice_number`, `invoice_date`, `due_date`, `currency`, `stated.subtotal|tax|shipping|total` and `lines[N].item|quantity|unit_price|line_total`. Each cited location must resolve in the stored source text, use the scheme the parser records for the format (TXT `line:N`, PDF `page:P,line:N`, CSV `row:N[,col:…]`, JSON `$…`, XML `/…`), and not be another field's location; the text there must support the new value. Otherwise the refusal is `evidence_location_mismatch` or `correction_not_in_source` ("This value is not what the invoice says. Submit a corrected invoice from the vendor."). Other codes: `stale_version`, `already_paid`, `invalid_value`, `field_not_correctable` (for example a stated EUR), `identity_correction_deferred` (a vendor or number change), `source_text_unavailable` / `evidence_unavailable` (invoices processed before Phase 4), `no_change` (a new value equal to the version's current value, checked last, so a no-op version cannot re-queue a declined invoice; restating a value is accepted only when it drops a carried review or blocker finding on that field, such as `model_parser_disagreement`). A correction creates version N+1, marks the old version `superseded`, records `approvals_invalidated`, and reruns validation, recommendation and critique from scratch in the base run's mode. A clean corrected invoice up to USD 10,000 pays without further action.
+- **Approve / decline**: allowed only while the invoice is `awaiting_human_approval` and `expected_version` is current (otherwise `action_not_allowed` or `stale_version`). The review run revalidates against the current inventory and reaches the gate with the waiting run's recommendation; it never calls a model, so a live invoice needs no credentials to approve. Approval never clears a blocker or review finding. Decline rejects with `human_declined`. A repeated approve of the paid version returns the same receipt and writes nothing. EUR invoices are never payable.
+- **Corrected submissions** (`submit_corrected_invoice`): allowed with no payment, status `rejected`, `needs_review` or `failed`, and no version awaiting approval, approved or paid. The file must carry the same vendor and invoice number (else the run fails `corrected_identity_mismatch`); a version that becomes held before the write fails the run with `supersede_not_allowed` (not retryable). Uploading the same file through `process_invoice` stays `version_conflict`.
+- **Retries**: a failed correction or approve/decline run (for example a live model failure during re-review, or a run left `interrupted`) is retried on its own version without a file: `service.retry_run(run_id, None, db, evaluation_date)` or `python main.py --retry RUN_ID`. A retried approve/decline again calls no model. A retry whose version is no longer current is refused `not_current`.
+- `submit_correction`, `approve`, `decline` and `submit_corrected_invoice` take an optional `on_run_started(run_id)` callback, called once the new run is committed and before it executes.
+
 ## Live mode configuration
 
 Operator notes (environment variables, readiness check, `--ping`, call budget, behaviour without credentials, the paid smoke test) are in the README under [Offline and live modes](../README.md#offline-and-live-modes). Developer-only details:
@@ -70,7 +115,7 @@ uv run python -m invoice_processing.seed --db inventory.db
 
 Creates the database and schema if needed and inserts the required items (WidgetA 15, WidgetB 10, GadgetX 5, FakeItem 0). Re-running is safe: existing rows are never overwritten, and a stock value that differs from the seed is reported as a `WARNING` line and left as is.
 
-An `inventory.db` from an earlier phase (schema version 3 or 4) is refused: delete it and re-seed. Phase 2 changed invoice identity keys (4); Phase 3 adds `runs.mode_switch_of` (5).
+Phase 4 uses schema version 7 (review tables, run triggers, immutability triggers) and upgrades a version 6 database in place. An `inventory.db` from anything older is refused: delete it and re-seed. Phase 2 changed invoice identity keys (4); Phase 3 adds `runs.mode_switch_of` (5).
 
 `--fresh` only creates a new database: it exits with code 2 and leaves the file untouched if the path already exists. Use it for repeatable demo databases.
 

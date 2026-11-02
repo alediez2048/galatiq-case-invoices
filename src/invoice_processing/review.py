@@ -17,6 +17,7 @@ from typing import Any
 from invoice_processing import evidence, ledger, normalize, policy, service
 from invoice_processing.codes import (
     EXTRACTION_REVIEW_CODES,
+    INGESTION_CODES,
     ExecutionMode,
     FindingCode,
     HumanReviewAction,
@@ -70,6 +71,7 @@ MESSAGES: dict[ReviewRefusal, str] = {
     R.corrected_identity_mismatch: (
         "The corrected invoice has a different vendor or invoice number."
     ),
+    R.no_change: "The new value is the value this version already has; nothing would change.",
 }
 
 
@@ -102,9 +104,6 @@ _BY_STATUS: dict[InvoiceStatus, frozenset[ReviewAction]] = {
 _SUPERSEDE_STATUSES = frozenset(
     {InvoiceStatus.rejected, InvoiceStatus.needs_review, InvoiceStatus.failed}
 )
-# A version whose latest business run is one of these blocks a corrected submission.
-_HELD = (RunStatus.awaiting_human_approval, RunStatus.approved, RunStatus.paid_mock)
-_BUSINESS = (*_HELD, RunStatus.rejected, RunStatus.needs_review)
 
 
 def _paid(conn: sqlite3.Connection, invoice_id: str) -> bool:
@@ -120,18 +119,12 @@ def _has_source_text(conn: sqlite3.Connection, invoice: ledger.InvoiceRow) -> bo
 
 
 def _supersede_eligible(conn: sqlite3.Connection, invoice: ledger.InvoiceRow) -> bool:
-    """Decision 22: no payment, a correctable status, and no version held by its latest
-    business run (awaiting approval, approved or paid)."""
-    if invoice.status not in _SUPERSEDE_STATUSES or _paid(conn, invoice.invoice_id):
-        return False
-    slots = ",".join("?" * len(_BUSINESS))
-    rows = conn.execute(
-        f"SELECT version_id, status FROM runs WHERE invoice_id = ? AND version_id IS NOT NULL "
-        f"AND status IN ({slots}) ORDER BY started_at, rowid",
-        (invoice.invoice_id, *(s.value for s in _BUSINESS)),
-    ).fetchall()
-    latest = {r["version_id"]: r["status"] for r in rows}  # the last row per version wins
-    return not any(status in {s.value for s in _HELD} for status in latest.values())
+    """Decision 22: a correctable status, no payment, and no version held by its latest
+    business run (awaiting approval, approved or paid). Ingestion re-checks the last two at
+    the write (`ledger.supersede_blocked`)."""
+    return invoice.status in _SUPERSEDE_STATUSES and not ledger.supersede_blocked(
+        conn, invoice.invoice_id
+    )
 
 
 def _allowed(conn: sqlite3.Connection, invoice_id: str) -> AllowedActions:
@@ -282,7 +275,27 @@ def _check_change(
     structured = evidence.is_structured(location)
     if not evidence.supports(field, _text(value), located, structured=structured):
         raise _refuse(R.correction_not_in_source, current)
+    # Checked last, so a bad citation is still refused as such. A no-op correction would
+    # make a new version needing a fresh approval: a way around a decline (Final I1).
+    # Restating the value is accepted only when the correction drops a carried (ingestion-
+    # stage) review or blocker finding on that field: the operator confirms the parser's
+    # reading, e.g. after model_parser_disagreement. Validation findings are recomputed.
+    holder, attr = _target(invoice, field)
+    if value == getattr(holder, attr) and not _flags_field(base_findings, field):
+        raise _refuse(R.no_change, current)
     return value, located, location
+
+
+def _flags_field(findings: list[dict], field: str) -> bool:
+    """Whether a carried review or blocker finding names `field` (header totals are named
+    without "stated."), so a correction of that field would drop it."""
+    names = {field, field.removeprefix("stated.")}
+    return any(
+        f["code"] in INGESTION_CODES
+        and f.get("field") in names
+        and f.get("severity") in (Severity.review, Severity.blocker)
+        for f in findings
+    )
 
 
 def _base_run(conn: sqlite3.Connection, invoice_id: str) -> ledger.RunRow | None:

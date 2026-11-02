@@ -33,6 +33,8 @@ class ToolBox(Protocol):
 
     def call(self, agent: str, name: str, arguments_json: str) -> str: ...
 
+    def reject(self, agent: str, name: str, reason: str) -> str: ...
+
 
 class NullToolBox:
     """No tools for anyone: the offline simulator and bare sessions."""
@@ -42,6 +44,9 @@ class NullToolBox:
 
     def call(self, agent: str, name: str, arguments_json: str) -> str:
         return json.dumps({"error": "tool_rejected", "reason": "unknown_tool"})
+
+    def reject(self, agent: str, name: str, reason: str) -> str:
+        return json.dumps({"error": "tool_rejected", "reason": reason})
 
 
 @dataclass

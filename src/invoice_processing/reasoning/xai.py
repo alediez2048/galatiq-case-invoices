@@ -60,10 +60,10 @@ _ASSIST_STEP, _ASSIST_PROMPT = "assist_extraction", "extract"
 EXTRACT_PROMPT_VERSION = load_prompt(_ASSIST_PROMPT)[1]
 _APPROVAL, _INGESTION = "approval", "ingestion"
 
-# Tool calls dispatched per model turn; the rest of that turn's calls are answered with a
-# rejection and never run.
+# Tool calls dispatched per model turn; the rest of that turn's calls are answered with an
+# audited rejection and never run.
 MAX_TOOL_CALLS_PER_TURN = 8
-_TOO_MANY_TOOL_CALLS = json.dumps({"error": "tool_rejected", "reason": "too_many_tool_calls"})
+_TOO_MANY_TOOL_CALLS = "too_many_tool_calls"
 
 
 def _system_prompt(step: str) -> str:
@@ -278,7 +278,9 @@ class XaiProvider:
                             agent, call.function.name, call.function.arguments
                         )
                     else:  # every call id still gets an answer, but nothing runs
-                        result = _TOO_MANY_TOOL_CALLS
+                        result = session.tools.reject(
+                            agent, call.function.name, _TOO_MANY_TOOL_CALLS
+                        )
                     # Tool results can quote invoice text: they travel as data, like the payload.
                     chat.append(tool_result(data_block(result), tool_call_id=call.id))
                 stats.tool_turns += 1

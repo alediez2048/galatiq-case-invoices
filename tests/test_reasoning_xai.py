@@ -284,6 +284,7 @@ class _Spec:
 class _EchoToolBox:
     def __init__(self):
         self.calls: list[tuple[str, str, str]] = []
+        self.rejected: list[tuple[str, str, str]] = []
 
     def specs(self, agent):
         return [_Spec("lookup_inventory")] if agent == "approval" else []
@@ -291,6 +292,10 @@ class _EchoToolBox:
     def call(self, agent, name, arguments_json):
         self.calls.append((agent, name, arguments_json))
         return json.dumps({"ok": True})
+
+    def reject(self, agent, name, reason):
+        self.rejected.append((agent, name, reason))
+        return json.dumps({"error": "tool_rejected", "reason": reason})
 
 
 def test_tool_turns_within_cap_then_parse_consume_one_budget_unit():
@@ -332,6 +337,8 @@ def test_tool_calls_beyond_the_per_turn_cap_are_rejected_without_dispatch():
     session = _session(tools=tools)
     assert _recommend(provider, session) == _rec_model()
     assert len(tools.calls) == 8  # the 9th and 10th are never dispatched
+    # ... but each is still audited as a rejected tool call
+    assert tools.rejected == [("approval", "lookup_inventory", "too_many_tool_calls")] * 2
     results = [m.text for m in client.chats[0].messages if m.role == "tool"]
     assert len(results) == 10  # every tool call id still gets an answer
     assert all('"ok": true' in r for r in results[:8])
@@ -424,8 +431,17 @@ def test_client_is_built_once_per_provider():
     assert built == [1]
 
 
+def _unset_tracing_choice(monkeypatch):
+    """Unset XAI_SDK_DISABLE_TRACING for this test only. `delenv(raising=False)` on an unset
+    name records nothing to undo, so the factory's `setdefault` would leak into later tests;
+    `setenv` first makes monkeypatch restore the original state (unset) afterwards."""
+    monkeypatch.setenv("XAI_SDK_DISABLE_TRACING", "")
+    monkeypatch.delenv("XAI_SDK_DISABLE_TRACING")
+
+
 @pytest.mark.real_xai_factory
-def test_real_client_factory_is_stopped_by_the_grpc_guard():
+def test_real_client_factory_is_stopped_by_the_grpc_guard(monkeypatch):
+    _unset_tracing_choice(monkeypatch)
     with pytest.raises(RuntimeError, match="network access blocked"):
         real_client_factory(SETTINGS)
 
@@ -441,6 +457,7 @@ def test_real_client_factory_builds_a_lazy_channel_and_sends_nothing(monkeypatch
         return _REAL_SECURE_CHANNEL(target, credentials, options, compression)
 
     monkeypatch.setattr(grpc, "secure_channel", spy)
+    _unset_tracing_choice(monkeypatch)
     client = real_client_factory(SETTINGS)
     try:
         assert type(client).__module__.startswith("xai_sdk")
@@ -458,7 +475,7 @@ def test_real_client_factory_disables_grpc_retries_and_sdk_tracing(monkeypatch):
 
     built = []
     monkeypatch.setattr(xai_sdk, "Client", lambda **kwargs: built.append(kwargs) or "client")
-    monkeypatch.delenv("XAI_SDK_DISABLE_TRACING", raising=False)
+    _unset_tracing_choice(monkeypatch)
     assert real_client_factory(SETTINGS) == "client"
     (kwargs,) = built
     assert ("grpc.enable_retries", 0) in kwargs["channel_options"]

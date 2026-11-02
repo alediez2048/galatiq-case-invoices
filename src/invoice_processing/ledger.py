@@ -758,6 +758,26 @@ def invoice_history(
     }
 
 
+# A version whose latest business run is one of these cannot be superseded (Decision 22).
+_HELD = frozenset({RunStatus.awaiting_human_approval, RunStatus.approved, RunStatus.paid_mock})
+_BUSINESS = (*sorted(_HELD), RunStatus.rejected, RunStatus.needs_review)
+
+
+def supersede_blocked(conn: sqlite3.Connection, invoice_id: str) -> bool:
+    """True when a corrected submission may not supersede this invoice's versions: it has a
+    payment, or a version whose latest business run awaits approval, is approved or paid."""
+    if conn.execute("SELECT 1 FROM payments WHERE invoice_id = ?", (invoice_id,)).fetchone():
+        return True
+    slots = ",".join("?" * len(_BUSINESS))
+    rows = conn.execute(
+        f"SELECT version_id, status FROM runs WHERE invoice_id = ? AND version_id IS NOT NULL "
+        f"AND status IN ({slots}) ORDER BY started_at, rowid",
+        (invoice_id, *(s.value for s in _BUSINESS)),
+    ).fetchall()
+    latest = {r["version_id"]: r["status"] for r in rows}  # the last row per version wins
+    return any(RunStatus(status) in _HELD for status in latest.values())
+
+
 @dataclass(frozen=True)
 class PriorOutcome:
     run_id: str
@@ -792,10 +812,25 @@ def _prior(conn: sqlite3.Connection, row: sqlite3.Row) -> PriorOutcome:
 
 
 def find_prior_outcome(conn: sqlite3.Connection, content_hash: str) -> PriorOutcome | None:
+    """The latest business outcome for these bytes. A retry of a submission never counts
+    (its original failed); a retry of a review run does, as review runs do (Decision 17).
+    A payment made by a run of these bytes is the outcome whatever ran after it, so paid
+    bytes are never reported without their receipt (`check_identity` rule 1). A payer that
+    failed (paid, then crashed) is left to the Phase 3 replay, as in rule 1. Another
+    source's payment is never reported as these bytes' outcome."""
+    payer = conn.execute(
+        "SELECT r.run_id, r.status, r.invoice_id FROM payments p "
+        "JOIN runs r ON r.run_id = p.run_id JOIN sources s ON s.source_id = r.source_id "
+        "WHERE s.content_hash = ? LIMIT 1",
+        (content_hash,),
+    ).fetchone()
+    if payer is not None and payer["status"] != RunStatus.failed.value:
+        return _prior(conn, payer)
     row = conn.execute(
         "SELECT r.run_id, r.status, r.invoice_id FROM runs r "
         "JOIN sources s ON s.source_id = r.source_id "
-        f"WHERE s.content_hash = ? AND r.retry_of IS NULL AND r.status IN ({_OUTCOME_SLOTS}) "
+        "WHERE s.content_hash = ? AND (r.retry_of IS NULL OR r.trigger != 'submission') "
+        f"AND r.status IN ({_OUTCOME_SLOTS}) "
         "ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1",
         (content_hash, *_OUTCOME_VALUES),
     ).fetchone()

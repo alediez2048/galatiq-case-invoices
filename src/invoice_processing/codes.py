@@ -92,6 +92,7 @@ class ReviewRefusal(StrEnum):
     evidence_unavailable = "evidence_unavailable"
     source_text_unavailable = "source_text_unavailable"
     corrected_identity_mismatch = "corrected_identity_mismatch"
+    no_change = "no_change"  # the corrected value equals the version's current value
 
 
 class QueueGroup(StrEnum):

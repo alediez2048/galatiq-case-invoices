@@ -64,13 +64,25 @@ def _grpc_status_name(exc: BaseException) -> str | None:
     return name if name in grpc.StatusCode.__members__ else "UNKNOWN"
 
 
+def _mentions_api_key(exc: BaseException) -> bool:
+    """True when the RPC details talk about the API key. Only matched, never echoed."""
+    try:
+        details = exc.details()  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    return isinstance(details, str) and "api key" in details.lower()
+
+
 def classify(exc: BaseException) -> ModelError:
     if isinstance(exc, ModelError):
         return exc
     status = _grpc_status_name(exc)
     if status is not None:
+        code = _GRPC_CODES.get(status, ModelErrorCode.model_unavailable)
+        if status == "INVALID_ARGUMENT" and _mentions_api_key(exc):
+            code = ModelErrorCode.model_auth_error  # xAI's answer to an incorrect key
         return ModelError(
-            _GRPC_CODES.get(status, ModelErrorCode.model_unavailable),
+            code,
             f"xAI request failed (gRPC {status})",
             transient=status in _TRANSIENT_GRPC,
         )

@@ -86,3 +86,17 @@ def test_sdk_details_with_api_key_never_reach_the_message():
             assert SENTINEL not in rendered
             assert "Bearer" not in rendered
         assert err.__cause__ is None and err.__context__ is None
+
+
+def test_invalid_argument_for_a_bad_api_key_is_an_auth_error():
+    # xAI answers an incorrect key with INVALID_ARGUMENT, not UNAUTHENTICATED (live, 2026-11-02)
+    err = classify(
+        FakeRpcError(grpc.StatusCode.INVALID_ARGUMENT, f"Incorrect API key provided: {SENTINEL}")
+    )
+    assert err.code is E.model_auth_error and err.transient is False
+    assert SENTINEL not in err.message and "Incorrect" not in err.message
+
+
+def test_other_invalid_argument_stays_unavailable():
+    err = classify(FakeRpcError(grpc.StatusCode.INVALID_ARGUMENT, "bad request: tools"))
+    assert err.code is E.model_unavailable

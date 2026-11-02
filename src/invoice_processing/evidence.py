@@ -13,6 +13,7 @@ from xml.etree.ElementTree import Element, ParseError
 from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import fromstring
 
+from invoice_processing.codes import SourceFormat
 from invoice_processing.dates import parse_date
 from invoice_processing.normalize import fix_ocr_digits, parse_amount
 from invoice_processing.schemas import NormalizedInvoice
@@ -158,6 +159,21 @@ def canonical_location(location: str, text: str) -> str | None:
     return None
 
 
+def scheme_matches(location: str, fmt: SourceFormat) -> bool:
+    """Whether `location` uses the scheme the parser records for this format: TXT
+    `line:N`, PDF `page:P,line:N`, CSV `row:N[,col:…]`, JSON `$…`, XML `/…`. `locate` itself
+    accepts every scheme on every format (model tools see JSON/XML as numbered lines), so a
+    review citation must also pass this check, or one value has two addresses."""
+    if fmt is SourceFormat.txt or fmt is SourceFormat.pdf:
+        m = _LINE_LOC.fullmatch(location)
+        return m is not None and (m[1] is not None) == (fmt is SourceFormat.pdf)
+    if fmt is SourceFormat.csv:
+        return _ROW_LOC.fullmatch(location) is not None
+    if fmt is SourceFormat.json:
+        return location.startswith("$")
+    return fmt is SourceFormat.xml and location.startswith("/")
+
+
 def locate(text: str, location: str) -> str | None:
     canonical = canonical_location(location, text)
     if canonical is None:
@@ -260,12 +276,16 @@ def _supports_money(value: str, text: str, structured: bool) -> bool:
     wanted = f"{abs(amount):f}".replace(".", "").lstrip("0")
     negative = amount < 0
     return any(
-        _token_digits(m[0]) == wanted and _negative_before(text, m.start()) == negative
+        _token_digits(m[0]) == wanted
+        and _negative_before(text, m.start()) == negative
+        and _OPEN_PAREN.search(text[: m.start()]) is None
         for m in _MONEY_TOKEN.finditer(text)
     )
 
 
 _SIGN_BEFORE = re.compile(r"-\s*[$€£]?\s*$")
+# "(50.00)" is an accounting negative; its sign is ambiguous, so it is never evidence.
+_OPEN_PAREN = re.compile(r"\(\s*-?\s*[$€£]?\s*$")
 
 
 def _negative_before(text: str, start: int) -> bool:

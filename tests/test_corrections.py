@@ -146,6 +146,27 @@ def test_txt_subtotal_line_cannot_be_cited_under_another_spelling(tmp_path, loc)
 
 
 @pytest.mark.parametrize(
+    "path,field,value,loc",
+    [
+        (REVIEW / "source_error.txt", "stated.total", "5000.00", "row:12"),  # the subtotal line
+        (INVOICES / "invoice_1007.csv", "stated.total", "1.00", "line:5"),
+        (INVOICES / "invoice_1014.xml", "stated.total", "3750.00", "line:23"),
+        (REVIEW / "source_error.json", "stated.total", "5000.00", "row:19"),
+        (REVIEW / "source_error.json", "stated.total", "5000.00", "line:14"),
+        (INVOICES / "invoice_1013.pdf", "stated.total", "21040.00", "row:14"),
+        (INVOICES / "invoice_1013.pdf", "stated.total", "21040.00", "line:14"),  # needs page:
+        (INVOICES / "invoice_1014.xml", "stated.total", "3750.00", "$.totals.subtotal"),
+    ],
+)
+def test_cited_scheme_must_match_the_source_format(tmp_path, path, field, value, loc):
+    db = seeded_db(tmp_path)
+    r1 = process(path, db)
+    e = refused(db, r1, change(field, value, loc))
+    assert e.code is ReviewRefusal.evidence_location_mismatch
+    assert payment_count(db, r1.invoice_id) == 0
+
+
+@pytest.mark.parametrize(
     "loc",
     ["//invoice/totals/subtotal", "/invoice/totals[1]/subtotal[1]", "/invoice/totals/subtotal[01]"],
 )
@@ -166,7 +187,7 @@ def test_json_line_cannot_be_cited_under_another_index_spelling(tmp_path):
 def test_correction_evidence_stores_the_canonical_location(tmp_path):
     db = seeded_db(tmp_path)
     r1 = process(REVIEW / "source_error.txt", db)
-    correct(db, r1, change("stated.total", "5050.00", "page:1,line:014"))
+    correct(db, r1, change("stated.total", "5050.00", "line:014"))
     (row,) = rows(db, "SELECT evidence_location FROM corrections")
     assert row["evidence_location"] == "line:14"
     (v2,) = rows(db, "SELECT payload_json FROM invoice_versions WHERE version = 2")

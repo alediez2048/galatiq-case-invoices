@@ -20,6 +20,7 @@ from invoice_processing.codes import (
     ReviewAction,
     ReviewRefusal,
     RunStatus,
+    SourceFormat,
 )
 from invoice_processing.reasoning import ReasoningProvider, get_provider
 from invoice_processing.schemas import (
@@ -236,6 +237,7 @@ def _check_change(
     change: FieldChange,
     invoice: NormalizedInvoice,
     text: str | None,
+    fmt: SourceFormat,
     base_findings: list[dict],
     current: AllowedActions,
 ) -> tuple[Any, str, str]:
@@ -256,7 +258,10 @@ def _check_change(
         raise _refuse(R.source_text_unavailable, current)
     if not invoice.field_evidence and not any(line.evidence for line in invoice.lines):
         raise _refuse(R.evidence_unavailable, current)
-    location = evidence.canonical_location(change.evidence_location, text)
+    cited = change.evidence_location
+    if not evidence.scheme_matches(cited, fmt):  # one address per value (Decision 8)
+        raise _refuse(R.evidence_location_mismatch, current)
+    location = evidence.canonical_location(cited, text)
     located = None if location is None else evidence.locate(text, location)
     if located is None or evidence.claimed_by_other(field, location, invoice, text):
         raise _refuse(R.evidence_location_mismatch, current)
@@ -329,7 +334,7 @@ def _record_correction(
 
     text = source.extracted_text
     checked = [
-        (change, *_check_change(change, base.invoice, text, base_findings, current))
+        (change, *_check_change(change, base.invoice, text, source.format, base_findings, current))
         for change in request.changes
     ]
 

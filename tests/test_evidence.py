@@ -248,3 +248,35 @@ def test_money_sign_must_match(value, text, ok):
 def test_structured_money_sign_must_match():
     assert evidence.supports("stated.total", "-250.00", "250.0", structured=True) is False
     assert evidence.supports("stated.total", "-250.00", "-250.0", structured=True) is True
+
+
+@pytest.mark.parametrize(
+    "location,fmt,ok",
+    [
+        ("line:12", "txt", True),
+        ("page:1,line:12", "txt", False),
+        ("row:12", "txt", False),
+        ("page:1,line:3", "pdf", True),
+        ("line:3", "pdf", False),
+        ("row:3", "csv", True),
+        ("row:3,col:total", "csv", True),
+        ("line:3", "csv", False),
+        ("$.total", "json", True),
+        ("line:3", "json", False),
+        ("/invoice/totals/total", "xml", True),
+        ("row:3", "xml", False),
+        ("$.total", "xml", False),
+    ],
+)
+def test_scheme_matches_the_source_format(location, fmt, ok):
+    from invoice_processing.codes import SourceFormat
+
+    assert evidence.scheme_matches(location, SourceFormat(fmt)) is ok
+
+
+@pytest.mark.parametrize(
+    "value,text",
+    [("50.00", "Credit: (50.00)"), ("50.00", "Credit: ($50.00)"), ("-50.00", "Credit: (50.00)")],
+)
+def test_parenthesized_amounts_are_not_evidence(value, text):
+    assert evidence.supports("stated.shipping", value, text) is False

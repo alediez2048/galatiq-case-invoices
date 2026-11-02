@@ -454,6 +454,46 @@ def test_check_identity_same_version_payment_by_interrupted_run_is_new(conn, sid
     assert revision.kind == "revision_after_payment" and revision.prior.run_id == crashed
 
 
+def test_check_identity_failed_payer_beats_earlier_same_version_outcome(conn, sid, two_versions):
+    # A non-paying outcome on the paid version must not turn the replay into a duplicate
+    # carrying the receipt; the replay goes back through pay() instead.
+    inv, v1, _ = two_versions
+    finished_run(conn, sid, inv, v1, RunStatus.needs_review)
+    crashed = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    add_payment(conn, inv, 1, crashed)
+    assert ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1)).kind == "new"
+
+
+def test_check_identity_failed_payer_beats_other_version_outcome(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    crashed = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    add_payment(conn, inv, 1, crashed)
+    finished_run(conn, sid, inv, v2, RunStatus.needs_review)
+    assert ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1)).kind == "new"
+
+
+def test_check_identity_payment_beats_later_outcome_on_revision(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    finished_run(conn, sid, inv, v2, RunStatus.needs_review)
+    check = ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2))
+    assert check.kind == "revision_after_payment" and check.prior.run_id == paid
+    assert check.prior.receipt.receipt_id == "rcpt-1"
+
+
+def test_find_prior_outcome_receipt_only_for_paying_run(conn, sid, two_versions):
+    # An exact replay of a non-paying run never reports the invoice's receipt as its own.
+    inv, v1, v2 = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    other = ledger.record_source(conn, make_source(2))[0]
+    review = finished_run(conn, other, inv, v2, RunStatus.needs_review)
+    prior = ledger.find_prior_outcome(conn, "hash-2")
+    assert prior.run_id == review and prior.receipt is None
+    assert ledger.find_prior_outcome(conn, "hash-1").receipt.receipt_id == "rcpt-1"
+
+
 def test_find_prior_outcome_ignores_retry_and_duplicate_runs(conn, sid):
     original = start_run(conn, ExecutionMode.offline, sid, EVAL)
     finish_run(conn, original, RunStatus.failed, "x")

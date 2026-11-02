@@ -377,12 +377,11 @@ _OUTCOME_VALUES = tuple(sorted(s.value for s in BUSINESS_OUTCOMES))
 _OUTCOME_SLOTS = ",".join("?" * len(_OUTCOME_VALUES))
 
 
-def _receipt(conn: sqlite3.Connection, invoice_id: str | None) -> MockReceipt | None:
-    if invoice_id is None:
-        return None
+def _receipt(conn: sqlite3.Connection, run_id: str) -> MockReceipt | None:
+    """The receipt this run paid, if any; another run's payment is never reported as its own."""
     pay = conn.execute(
-        "SELECT receipt_id, amount, currency, created_at FROM payments WHERE invoice_id = ?",
-        (invoice_id,),
+        "SELECT receipt_id, amount, currency, created_at FROM payments WHERE run_id = ?",
+        (run_id,),
     ).fetchone()
     if pay is None:
         return None
@@ -395,10 +394,8 @@ def _receipt(conn: sqlite3.Connection, invoice_id: str | None) -> MockReceipt | 
 
 
 def _prior(conn: sqlite3.Connection, row: sqlite3.Row) -> PriorOutcome:
-    invoice_id = row["invoice_id"]
-    return PriorOutcome(
-        row["run_id"], RunStatus(row["status"]), invoice_id, _receipt(conn, invoice_id)
-    )
+    run_id = row["run_id"]
+    return PriorOutcome(run_id, RunStatus(row["status"]), row["invoice_id"], _receipt(conn, run_id))
 
 
 def find_prior_outcome(conn: sqlite3.Connection, content_hash: str) -> PriorOutcome | None:
@@ -426,7 +423,9 @@ def check_identity(
 ) -> IdentityCheck:
     """Compare this run's invoice version with earlier outcomes for the same identity.
 
-    Only business outcomes of non-retry runs count; failed and duplicate runs never do.
+    A payment decides first: a different version is a revision, the same version is a
+    duplicate of the paying run (or "new" when that run was interrupted, so it re-enters pay()).
+    Otherwise only business outcomes of non-retry runs count; failed and duplicate runs never do.
     """
     new = IdentityCheck("new", None)
     this = conn.execute("SELECT retry_of FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -453,9 +452,11 @@ def check_identity(
         if payment["version"] != version["version"]:
             return IdentityCheck("revision_after_payment", _prior(conn, payment))
         # A run that paid and was then interrupted is marked failed. Its replay goes back
-        # through pay(), which returns the existing receipt and finishes the invoice paid.
-        if payment["status"] != RunStatus.failed.value:
-            return IdentityCheck("duplicate", _prior(conn, payment))
+        # through pay(), which returns the existing receipt and finishes the invoice paid;
+        # the payment outranks every other run of this identity, so history is not consulted.
+        if payment["status"] == RunStatus.failed.value:
+            return new
+        return IdentityCheck("duplicate", _prior(conn, payment))
 
     base = (
         "SELECT run_id, status, invoice_id FROM runs WHERE invoice_id = ? AND run_id != ? "

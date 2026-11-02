@@ -33,8 +33,10 @@ Choosing which version wins (needs a human; Phase 4 adds corrections, not versio
 ## Behaviour (implemented)
 
 - `ledger.check_identity` runs in the ingestion node after the version is recorded and the run
-  is attached. In order: a payment for the identity on this version → `duplicate`; a payment on
-  another version → `revision_after_payment`; the latest non-retry business outcome on this
+  is attached. In order: a payment for the identity on this version → `duplicate` of the paying
+  run (or `new` when that run was interrupted, see below); a payment on another version →
+  `revision_after_payment`. A payment always decides: run history is consulted only when the
+  identity has no payment. Then the latest non-retry business outcome on this
   version → `duplicate`; one on another version → `version_conflict`; otherwise `new`. Failed
   and duplicate runs never count; provisional `pending:` identities and runs with `retry_of`
   are always `new`.
@@ -49,6 +51,9 @@ Choosing which version wins (needs a human; Phase 4 adds corrections, not versio
   identity was already paid on another version; a replay of the paid version still returns the
   existing receipt (`created=False`).
 - A run that paid and was then interrupted is marked `failed`, so a replay of the same version
-  is `new`: it goes back through `pay()`, gets the existing receipt and finishes `paid_mock`.
+  is `new` even when other runs of the identity have outcomes: it goes back through `pay()`,
+  gets the existing receipt and finishes `paid_mock`, repairing `invoices.status`.
+- A prior outcome carries a receipt only when that run itself paid; another run's payment is
+  never reported as its receipt.
 - `ledger.record_version` reuses the first source's payload when the semantic hash matches, so
   non-hashed fields (vendor display name, tax, shipping) come from the first file.

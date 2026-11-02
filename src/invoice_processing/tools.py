@@ -296,7 +296,7 @@ REGISTRY: dict[str, ToolSpec] = {
             "page:1,line:4, row:3, $.line_items[0].name or /invoice/header/date.",
             SourceExcerptArgs,
             _get_source_excerpt,
-            frozenset({_INGESTION, _APPROVAL}),
+            frozenset({_APPROVAL}),
         ),
         ToolSpec(
             "list_item_aliases",

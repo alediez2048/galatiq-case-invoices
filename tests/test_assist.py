@@ -19,7 +19,13 @@ from invoice_processing.codes import (
 )
 from invoice_processing.normalize import normalize
 from invoice_processing.reasoning.base import PolicyContext
-from invoice_processing.reasoning.prompting import CLOSE, OPEN, invoice_payload
+from invoice_processing.reasoning.prompting import (
+    CLOSE,
+    NOTES_MAX_CHARS,
+    OPEN,
+    TRUNCATED_MARKER,
+    invoice_payload,
+)
 from invoice_processing.reasoning.xai import XaiProvider
 from invoice_processing.schemas import (
     CritiqueOutput,
@@ -212,7 +218,13 @@ def test_review_or_blocker_extraction_finding_needs_assist(code):
 
 # --- evidence check --------------------------------------------------------------------
 
-SOURCE = {"line:3": "Total Amount: $5,000.00", FOOTER: "Acme Parts Ltd"}
+SOURCE = {
+    "line:3": "Total Amount: $5,000.00",
+    "line:4": "Credit: -$5,000.00",
+    "line:5": "Due Date: 2026-02-01",
+    "line:6": "Invoice Number: INV-7001",
+    FOOTER: "Acme Parts Ltd",
+}
 
 
 def _p(**kw) -> FieldProposal:
@@ -223,9 +235,25 @@ def test_check_accepts_a_quoted_value_at_its_location():
     assert assist.check_proposal(_p(), SOURCE, _draft(vendor_raw=None)) == "accept"
 
 
-def test_check_accepts_amount_with_formatting_stripped():
-    p = _p(field="total", value="5000.00", quote="$5,000.00", location="line:3")
-    assert assist.check_proposal(p, SOURCE, _draft(total_raw=None)) == "accept"
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"field": "total", "value": "5000.00", "quote": "$5,000.00", "location": "line:3"},
+        {
+            "field": "total",
+            "value": "$5,000.00",
+            "quote": "Total Amount: $5,000.00",
+            "location": "line:3",
+        },
+        {"field": "total", "value": "-5000.00", "quote": "-$5,000.00", "location": "line:4"},
+        {"field": "due_date", "value": "2026-02-01", "quote": "2026-02-01", "location": "line:5"},
+        {"field": "invoice_number", "value": "INV-7001", "quote": "INV-7001", "location": "line:6"},
+        {"value": "acme  PARTS ltd"},
+    ],
+)
+def test_check_accepts_values_the_quote_states(kw):
+    draft = _draft(vendor_raw=None, total_raw=None, due_date_raw=None, invoice_number_raw=None)
+    assert assist.check_proposal(_p(**kw), SOURCE, draft) == "accept"
 
 
 @pytest.mark.parametrize(
@@ -238,10 +266,15 @@ def test_check_accepts_amount_with_formatting_stripped():
         {"field": "total", "value": "5100.00", "quote": "$5,000.00", "location": "line:3"},
         {"quote": ""},
         {"value": "  "},
+        # every token is quoted, but the quote states a different value
+        {"field": "total", "value": "00.5000", "quote": "$5,000.00", "location": "line:3"},
+        {"field": "total", "value": "5000.00", "quote": "-$5,000.00", "location": "line:4"},
+        {"field": "due_date", "value": "2026-01-02", "quote": "2026-02-01", "location": "line:5"},
+        {"value": "Parts Acme"},  # vendor words out of order
     ],
 )
 def test_check_rejects_unsupported_proposals(kw):
-    draft = _draft(vendor_raw=None, total_raw=None)
+    draft = _draft(vendor_raw=None, total_raw=None, due_date_raw=None)
     assert assist.check_proposal(_p(**kw), SOURCE, draft) == "unsupported"
 
 
@@ -261,7 +294,8 @@ def test_check_present_field_differing_is_disagree_and_equal_is_ignore():
 
 def test_apply_fills_missing_field_with_model_provenance():
     draft = _draft(vendor_raw=None)
-    amended, findings = assist.apply(draft, [_p()], SOURCE, "model:xai/grok-test")
+    amended, findings, accepted = assist.apply(draft, [_p()], SOURCE, "model:xai/grok-test")
+    assert accepted == ["vendor"]
     assert amended.vendor_raw == "Acme Parts Ltd" and draft.vendor_raw is None
     (event,) = [e for e in amended.normalization_events if e.provenance.startswith("model:")]
     assert event.field == "vendor" and event.provenance == "model:xai/grok-test"
@@ -274,7 +308,8 @@ def test_apply_reports_unsupported_and_disagreeing_proposals():
     draft = _draft(vendor_raw=None, total_raw="$4,000.00")
     bad = _p(quote="Acme Fake Co", value="Acme Fake Co")
     differ = _p(field="total", value="5000.00", quote="$5,000.00", location="line:3")
-    amended, findings = assist.apply(draft, [bad, differ], SOURCE, "model:xai/m")
+    amended, findings, accepted = assist.apply(draft, [bad, differ], SOURCE, "model:xai/m")
+    assert accepted == []
     assert amended.vendor_raw is None and amended.total_raw == "$4,000.00"
     assert [(f.code, f.severity, f.field) for f in findings] == [
         (FindingCode.model_proposal_unsupported, Severity.info, "vendor"),
@@ -311,12 +346,13 @@ def test_invoice_payload_truncates_long_notes():
     invoice = inv_1001().model_copy(update={"notes": "n" * 5000})
     data = json.loads(invoice_payload(invoice, [], PolicyContext("p", Decimal("10000"))))
     notes = data["invoice"]["notes"]
-    assert len(notes) <= 1100 and notes.endswith("[truncated]")
+    assert notes == "n" * NOTES_MAX_CHARS + TRUNCATED_MARKER
+    assert len(notes) == NOTES_MAX_CHARS + len(TRUNCATED_MARKER)
 
 
 def test_normalize_records_model_event_when_rerun_on_amended_draft():
     draft = _draft(vendor_raw=None)
-    amended, _ = assist.apply(draft, [_p()], SOURCE, "model:xai/grok-test")
+    amended, _, _ = assist.apply(draft, [_p()], SOURCE, "model:xai/grok-test")
     invoice, _ = normalize(amended)
     assert invoice.vendor_name == "Acme Parts Ltd"
     assert any(e.provenance == "model:xai/grok-test" for e in invoice.normalization_events)

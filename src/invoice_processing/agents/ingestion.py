@@ -165,16 +165,10 @@ def _assist(
     """
     provider = deps.provider
     session = make_session(deps, {**state, "source_text": source_text})
-    settings = getattr(provider, "settings", None)
     request = assist.build_request(
-        draft,
-        findings,
-        source_text,
-        state["source"].format,
-        known,
-        settings.excerpt_chars if settings is not None else 4000,
+        draft, findings, source_text, state["source"].format, known, provider.excerpt_chars
     )
-    prompt_version = getattr(provider, "extract_prompt_version", None)
+    prompt_version = provider.extract_prompt_version
     repaired = False
     try:
         try:
@@ -192,8 +186,7 @@ def _assist(
     emit_model_calls(deps, state, session, STAGE, prompt_version)
     source_lines = {e.location: e.text for e in request.excerpts}
     provenance = f"model:{provider.provider}/{provider.model}"
-    amended, extra = assist.apply(draft, result.proposals, source_lines, provenance)
-    accepted = [e.field for e in amended.normalization_events[len(draft.normalization_events) :]]
+    amended, extra, accepted = assist.apply(draft, result.proposals, source_lines, provenance)
     emit(
         deps,
         state,

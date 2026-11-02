@@ -30,7 +30,7 @@ _ESCAPES = (
 )
 _FINDING_FIELDS = {"code", "severity", "field", "item", "expected", "observed"}
 NOTES_MAX_CHARS = 1000
-_TRUNCATED = " [truncated]"
+TRUNCATED_MARKER = " [truncated]"
 
 
 @cache
@@ -64,7 +64,7 @@ def invoice_payload(
     )
     notes = fields.get("notes")
     if notes is not None and len(notes) > NOTES_MAX_CHARS:  # untrusted free text: keep it short
-        fields["notes"] = notes[:NOTES_MAX_CHARS] + _TRUNCATED
+        fields["notes"] = notes[:NOTES_MAX_CHARS] + TRUNCATED_MARKER
     data: dict[str, Any] = {
         "invoice": fields,
         "findings": [f.model_dump(mode="json", include=_FINDING_FIELDS) for f in findings],

@@ -11,6 +11,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Literal
 
 from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode, Severity, SourceFormat
+from invoice_processing.dates import parse_date
 from invoice_processing.normalize import EMBEDDED_INSTRUCTIONS, parse_amount, vendor_key
 from invoice_processing.schemas import (
     EvidenceRef,
@@ -36,6 +37,13 @@ DRAFT_FIELDS: dict[str, str] = {
     "total": "total_raw",
 }
 _AMOUNT_FIELDS = {"subtotal", "tax", "shipping", "total"}
+_DATE_FIELDS = {"invoice_date", "due_date"}
+# Literals inside a quote that a proposed amount or date must match exactly once parsed.
+_AMOUNT_LITERAL = re.compile(r"-?[$€£]?-?\d[\d,]*(?:\.\d+)?")
+_DATE_LITERAL = re.compile(
+    r"\d{4}-\d{2}-\d{2}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}-[A-Za-z]+-\d{4}"
+    r"|\d{1,2}/\d{1,2}/\d{4}"
+)
 # Required fields whose absence triggers assist (Decision 6), with the code validation uses.
 _REQUIRED = (
     ("vendor", FindingCode.missing_vendor),
@@ -139,6 +147,33 @@ def _same(field: str, a: str, b: str) -> bool:
     return vendor_key(a) == vendor_key(b)
 
 
+def _parsed_literals(quote: str, pattern: re.Pattern[str], parser) -> list:
+    out = []
+    for m in pattern.finditer(quote):
+        try:
+            out.append(parser(m[0]))
+        except ValueError:  # includes ambiguous and relative dates: never a match
+            continue
+    return out
+
+
+def _collapse(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def _value_stated(field: str, value: str, quote: str) -> bool:
+    """The quote states exactly this value: amounts and dates by parsed equality (sign and
+    day/month order preserved), other fields as a contiguous substring."""
+    try:
+        if field in _AMOUNT_FIELDS:
+            return parse_amount(value) in _parsed_literals(quote, _AMOUNT_LITERAL, parse_amount)
+        if field in _DATE_FIELDS:
+            return parse_date(value) in _parsed_literals(quote, _DATE_LITERAL, parse_date)
+    except ValueError:
+        return False
+    return _collapse(value) in _collapse(quote)
+
+
 def _supported(p: FieldProposal, source_lines: Mapping[str, str]) -> bool:
     source = source_lines.get(p.location)
     if source is None or not p.quote.strip() or p.quote not in source:
@@ -146,7 +181,9 @@ def _supported(p: FieldProposal, source_lines: Mapping[str, str]) -> bool:
     if EMBEDDED_INSTRUCTIONS.search(source):  # never take a value from text aimed at a model
         return False
     value, quoted = _tokens(p.value), set(_tokens(p.quote))
-    return bool(value) and all(t in quoted for t in value)
+    if not value or not all(t in quoted for t in value):  # floor: every token is quoted
+        return False
+    return _value_stated(p.field, p.value.strip(), p.quote)
 
 
 def check_proposal(
@@ -176,20 +213,23 @@ def apply(
     proposals: Sequence[FieldProposal],
     source_lines: Mapping[str, str],
     provenance: str,
-) -> tuple[InvoiceDraft, list[ValidationFinding]]:
-    """A copy of `draft` with accepted proposals filled in, plus findings for the rest.
+) -> tuple[InvoiceDraft, list[ValidationFinding], list[str]]:
+    """A copy of `draft` with accepted proposals filled in, findings for the rest, and the
+    accepted field names in order.
 
     Proposals are checked in order against the amended draft, so a second proposal for a
     field filled by the first is treated like any other already-present value.
     """
     amended = draft.model_copy(deep=True)
     findings: list[ValidationFinding] = []
+    accepted: list[str] = []
     for p in proposals:
         verdict = check_proposal(p, source_lines, amended)
         ref = EvidenceRef(source_id=draft.source_id, location=p.location, snippet=p.quote)
         if verdict == "accept":
             value = p.value.strip()
             setattr(amended, DRAFT_FIELDS[p.field], value)
+            accepted.append(p.field)
             amended.field_evidence[p.field] = [ref]
             amended.normalization_events.append(
                 NormalizationEvent(
@@ -208,4 +248,4 @@ def apply(
             findings.append(
                 _finding(FindingCode.model_parser_disagreement, p, expected=current, evidence=[ref])
             )
-    return amended, findings
+    return amended, findings, accepted

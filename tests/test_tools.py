@@ -101,6 +101,8 @@ def test_registry_whitelist():
         assert not any(w in name for w in ("pay", "write", "update", "delete", "approve", "policy"))
     assert REGISTRY["list_item_aliases"].allowed_agents == {"ingestion"}
     assert REGISTRY["get_findings"].allowed_agents == {"approval"}
+    # excerpt results can never count as assist evidence, so ingestion is not offered them
+    assert REGISTRY["get_source_excerpt"].allowed_agents == {"approval"}
 
 
 def test_schemas_are_provider_safe():
@@ -113,7 +115,7 @@ def test_schemas_are_provider_safe():
 def test_specs_filtered_by_agent(run_ctx):
     state, deps = run_ctx
     d = _dispatcher(deps.conn, state)
-    assert {s.name for s in d.specs("ingestion")} == {"get_source_excerpt", "list_item_aliases"}
+    assert {s.name for s in d.specs("ingestion")} == {"list_item_aliases"}
     assert "list_item_aliases" not in {s.name for s in d.specs("approval")}
     assert d.specs("stranger") == []
 

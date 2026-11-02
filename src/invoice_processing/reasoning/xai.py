@@ -126,6 +126,7 @@ class XaiProvider:
     def __init__(self, settings: LiveSettings, client_factory: ClientFactory) -> None:
         self.settings = settings
         self.model = settings.model
+        self.excerpt_chars = settings.excerpt_chars
         self.sdk_version = _sdk_version()
         self._client_factory = client_factory
         self._client: Any = None

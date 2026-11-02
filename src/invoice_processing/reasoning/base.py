@@ -31,6 +31,8 @@ class ReasoningProvider(Protocol):
     provider: str
     model: str
     prompt_version: str | None
+    extract_prompt_version: str | None  # the extraction-assist prompt; None offline
+    excerpt_chars: int  # max source characters sent per assist request; 0 offline
 
     def recommend(
         self,

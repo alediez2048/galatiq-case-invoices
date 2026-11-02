@@ -52,6 +52,8 @@ class OfflineSimulator:
     provider = "offline"
     model = "simulated"
     prompt_version = None
+    extract_prompt_version = None
+    excerpt_chars = 0  # offline sends no source text anywhere
 
     def recommend(
         self,

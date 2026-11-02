@@ -9,8 +9,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 # 4: identity keys and normalization changed meaning (Phase 2); no DDL change.
-# 5: idempotency_keys table for the HTTP API (P5-01).
-SCHEMA_VERSION = 5
+# 5: diverged on two branches: runs.mode_switch_of (Phase 3) and idempotency_keys (P5-01).
+# 6: both of the above. A v5 database may hold only one of them, so it is refused too.
+SCHEMA_VERSION = 6
 
 
 class SchemaVersionError(RuntimeError):
@@ -61,6 +62,7 @@ _DDL = (
         error_code TEXT,
         error_message TEXT,
         retry_of TEXT REFERENCES runs(run_id),
+        mode_switch_of TEXT REFERENCES runs(run_id),
         prior_run_id TEXT REFERENCES runs(run_id),
         evaluation_date TEXT,
         started_at TEXT NOT NULL,

@@ -3,18 +3,20 @@
   "error_message": null,
   "events": [
     {
-      "created_at": "2026-11-02T03:56:22.734573Z",
+      "created_at": "2026-11-02T05:15:13.440815Z",
       "event": "received",
       "payload": {
         "mode": "offline",
+        "mode_switch_of": null,
         "original_name": "invoice_1011.pdf",
+        "retry_of": null,
         "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
         "status": "received"
       },
       "stage": "intake"
     },
     {
-      "created_at": "2026-11-02T03:56:22.749000Z",
+      "created_at": "2026-11-02T05:15:13.480509Z",
       "event": "extracted",
       "payload": {
         "codes": [
@@ -29,7 +31,7 @@
       "stage": "ingestion"
     },
     {
-      "created_at": "2026-11-02T03:56:22.750163Z",
+      "created_at": "2026-11-02T05:15:13.483634Z",
       "event": "validated",
       "payload": {
         "codes": [
@@ -42,31 +44,36 @@
       "stage": "validation"
     },
     {
-      "created_at": "2026-11-02T03:56:22.751070Z",
+      "created_at": "2026-11-02T05:15:13.488828Z",
       "event": "recommendation",
       "payload": {
         "codes": [],
         "mode": "offline",
         "recommendation": "approve",
         "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
-        "status": "validated"
+        "status": "validated",
+        "summary": "offline simulation: approve based on 0 blocking or review finding(s)"
       },
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.751365Z",
+      "created_at": "2026-11-02T05:15:13.494321Z",
       "event": "critique",
       "payload": {
         "agrees": true,
+        "high_value": false,
+        "issues": [],
         "mode": "offline",
+        "omissions": [],
         "revised_recommendation": null,
         "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
-        "status": "validated"
+        "status": "validated",
+        "summary": "offline simulation: critique agrees; 0 omission(s); high_value=False"
       },
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.752553Z",
+      "created_at": "2026-11-02T05:15:13.496153Z",
       "event": "decision",
       "payload": {
         "final_decision": "approved",
@@ -81,31 +88,31 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.753995Z",
+      "created_at": "2026-11-02T05:15:13.500531Z",
       "event": "payment_succeeded",
       "payload": {
         "amount": "3000.00",
         "currency": "USD",
-        "receipt_id": "rcpt-353fb3165f97"
+        "receipt_id": "rcpt-6d43d484d3d1"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T03:56:22.754336Z",
+      "created_at": "2026-11-02T05:15:13.502832Z",
       "event": "paid",
       "payload": {
         "amount": "3000.00",
         "created": true,
         "currency": "USD",
         "mode": "offline",
-        "receipt_id": "rcpt-353fb3165f97",
+        "receipt_id": "rcpt-6d43d484d3d1",
         "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
         "status": "paid_mock"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T03:56:22.754967Z",
+      "created_at": "2026-11-02T05:15:13.564723Z",
       "event": "finished",
       "payload": {
         "errors": [],
@@ -116,18 +123,21 @@
       "stage": "service"
     }
   ],
-  "finished_at": "2026-11-02T03:56:22.754720Z",
-  "invoice_id": "inv-6054c75525444031948c40ca49fff94b",
+  "finished_at": "2026-11-02T05:15:13.549727Z",
+  "invoice_id": "inv-dabcd0003ba34c6687f4464758433836",
   "mode": "offline",
   "prior_run_id": null,
   "result": {
     "decision": {
+      "critique_issues": [],
       "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
       "final_decision": "approved",
       "initial_recommendation": "approve",
       "mode": "offline",
       "model": "simulated",
+      "model_calls_used": 0,
       "policy_version": "2026-11-01.1",
+      "prompt_version": null,
       "provider": "offline",
       "reasons": [
         "R4_auto_approve"
@@ -155,29 +165,33 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-6054c75525444031948c40ca49fff94b",
+    "invoice_id": "inv-dabcd0003ba34c6687f4464758433836",
     "mode": "offline",
+    "model_calls_budget": null,
+    "model_calls_used": 0,
+    "next_actions": [],
     "prior_run_id": null,
     "receipt": {
       "amount": "3000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T03:56:22.753928Z",
-      "receipt_id": "rcpt-353fb3165f97"
+      "paid_at": "2026-11-02T05:15:13.500473Z",
+      "receipt_id": "rcpt-6d43d484d3d1"
     },
-    "run_id": "run-7716141262294a9cade08378af002eca",
+    "recoverable": false,
+    "run_id": "run-ab72557b4635429bb079197204db0cb3",
     "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
     "status": "paid_mock",
     "timings_ms": {}
   },
   "retry_of": null,
-  "run_id": "run-7716141262294a9cade08378af002eca",
+  "run_id": "run-ab72557b4635429bb079197204db0cb3",
   "source": {
     "format": "pdf",
     "original_name": "invoice_1011.pdf",
     "source_id": "src-bf3d624f6dceec42"
   },
   "stage": "paid_mock",
-  "started_at": "2026-11-02T03:56:22.734337Z",
+  "started_at": "2026-11-02T05:15:13.440545Z",
   "status": "paid_mock",
   "terminal": true
 }

@@ -24,6 +24,21 @@ def _install_network_guard() -> None:
 
     socket.socket.connect = blocked  # type: ignore[method-assign]
     socket.create_connection = blocked  # type: ignore[assignment]
+    socket.socket.connect_ex = blocked  # type: ignore[method-assign]
+    socket.getaddrinfo = blocked  # type: ignore[assignment]
+    # gRPC (used by xai_sdk) opens sockets in its C core, bypassing the socket module.
+    try:
+        import grpc
+    except ImportError:
+        return
+    grpc.secure_channel = blocked  # type: ignore[assignment]
+    grpc.insecure_channel = blocked  # type: ignore[assignment]
+    try:
+        import grpc.aio
+    except ImportError:
+        return
+    grpc.aio.secure_channel = blocked  # type: ignore[assignment]
+    grpc.aio.insecure_channel = blocked  # type: ignore[assignment]
 
 
 if os.environ.get("INVOICE_NETWORK_GUARD") == "1":
@@ -38,7 +53,12 @@ from invoice_processing.observability import (  # noqa: E402
 )
 from invoice_processing.reasoning import ProviderUnavailable, get_provider  # noqa: E402
 from invoice_processing.seed import seed_inventory  # noqa: E402
-from invoice_processing.service import process_invoice  # noqa: E402
+from invoice_processing.service import (  # noqa: E402
+    RetryRefused,
+    check_retry,
+    process_invoice,
+    retry_run,
+)
 from invoice_processing.storage import SchemaVersionError, connect, init_schema  # noqa: E402
 
 DEFAULT_MODE = "offline"  # provisional; see docs/tickets/P1-09
@@ -75,7 +95,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="date used for due-date checks, YYYY-MM-DD (default: today)",
     )
+    p.add_argument(
+        "--retry",
+        metavar="RUN_ID",
+        default=None,
+        help="retry this failed run with the same --invoice_path, in the run's original mode "
+        "(--mode is ignored)",
+    )
     return p
+
+
+def _print_mode_banner(mode: ExecutionMode, provider) -> None:
+    if mode is ExecutionMode.offline:
+        print("Mode: offline simulation", file=sys.stderr)
+    else:
+        # The model name is not a secret.
+        print(
+            f"Mode: live model ({getattr(provider, 'model', '?')})"
+            " \u2014 invoice text will be sent to xAI",
+            file=sys.stderr,
+        )
 
 
 def _ensure_database(path: str) -> None:
@@ -102,9 +141,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.retry is not None:
+        return _retry(args, evaluation_date)
     mode = ExecutionMode(args.mode)
     try:
-        get_provider(mode)
+        provider = get_provider(mode)
     except ProviderUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -113,18 +154,53 @@ def main(argv: list[str] | None = None) -> int:
     except intake.IntakeError as exc:
         print(f"error: {exc.code}: {exc}", file=sys.stderr)
         return 2
-    label = "offline simulation" if mode is ExecutionMode.offline else "live"
-    print(f"Mode: {label}", file=sys.stderr)
+    _print_mode_banner(mode, provider)
     try:
         _ensure_database(args.db)
         events = configure_events(Path(args.events))
-        result = process_invoice(args.invoice_path, mode, args.db, evaluation_date, events)
+        result = process_invoice(
+            args.invoice_path, mode, args.db, evaluation_date, events, provider=provider
+        )
     except intake.IntakeError as exc:
         print(f"error: {exc.code}: {exc}", file=sys.stderr)
         return 2
     except (SchemaVersionError, sqlite3.DatabaseError) as exc:
         print(f"error: database {args.db!r} cannot be used: {exc}", file=sys.stderr)
         return 2
+    return _finish(result, args)
+
+
+def _retry(args: argparse.Namespace, evaluation_date: date) -> int:
+    """--retry RUN_ID: the run's original mode is used; its provider loads only then."""
+    if not Path(args.db).exists():  # nothing to retry; do not create a database
+        print("error: retry refused: unknown_run", file=sys.stderr)
+        return 2
+    try:
+        target = check_retry(args.retry, args.invoice_path, args.db)
+        print(f"Retrying run {target.run_id} (failed: {target.error_code})", file=sys.stderr)
+        provider = get_provider(target.mode)
+        _print_mode_banner(target.mode, provider)
+        events = configure_events(Path(args.events))
+        result = retry_run(
+            args.retry, args.invoice_path, args.db, evaluation_date, events, provider=provider
+        )
+    except RetryRefused as exc:
+        receipt = f" (receipt {exc.receipt_id})" if exc.receipt_id else ""
+        print(f"error: retry refused: {exc.reason}{receipt}", file=sys.stderr)
+        return 2
+    except ProviderUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except intake.IntakeError as exc:
+        print(f"error: {exc.code}: {exc}", file=sys.stderr)
+        return 2
+    except (SchemaVersionError, sqlite3.DatabaseError) as exc:
+        print(f"error: database {args.db!r} cannot be used: {exc}", file=sys.stderr)
+        return 2
+    return _finish(result, args)
+
+
+def _finish(result, args: argparse.Namespace) -> int:
     write_result(result, Path(args.output) if args.output else None)
     print(format_summary(result), file=sys.stderr)
     return 1 if result.status is RunStatus.failed else 0

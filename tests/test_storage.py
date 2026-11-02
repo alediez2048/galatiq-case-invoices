@@ -181,7 +181,7 @@ def test_atomic_opens_and_rolls_back_alone(conn):
 
 
 def test_phase_1_schema_version_3_is_refused(db_path):
-    assert storage.SCHEMA_VERSION >= 4
+    assert storage.SCHEMA_VERSION == 6
     c = storage.connect(db_path)
     c.execute("PRAGMA user_version = 3")
     with pytest.raises(storage.SchemaVersionError):
@@ -193,3 +193,18 @@ def test_inventory_items_returns_all_names_sorted(conn):
 
     seed_inventory(conn)
     assert storage.inventory_items(conn) == ["FakeItem", "GadgetX", "WidgetA", "WidgetB"]
+
+
+def test_schema_v6_has_both_v5_branch_changes(conn):
+    # v5 diverged: Phase 3 added runs.mode_switch_of, P5-01 added idempotency_keys.
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}
+    assert "mode_switch_of" in cols
+    assert "idempotency_keys" in table_names(conn)
+
+
+def test_schema_v5_database_from_either_branch_is_refused(db_path):
+    assert storage.SCHEMA_VERSION == 6
+    c = storage.connect(db_path)
+    c.execute("PRAGMA user_version = 5")
+    with pytest.raises(storage.SchemaVersionError, match="older"):
+        storage.init_schema(c)

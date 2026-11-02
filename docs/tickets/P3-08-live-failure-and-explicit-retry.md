@@ -1,6 +1,6 @@
 # P3-08 — Live failure handling and explicit retry
 
-Phase: 3 · Status: todo · Depends on: P3-02, P3-04, P1-07 · Requirements: P15, P06
+Phase: 3 · Status: done · Depends on: P3-02, P3-04, P1-07 · Requirements: P15, P06
 
 ## Context
 

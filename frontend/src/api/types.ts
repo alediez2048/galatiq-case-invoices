@@ -60,12 +60,6 @@ export type ComputedTotals = S["ComputedTotals"];
 export type ProcessingResult = Omit<S["ProcessingResult"], "errors" | "findings"> & {
   errors: RunErrorCode[];
   findings: ValidationFinding[];
-  /**
-   * Phase 3 (P3-08) adds these to ProcessingResult; they are absent from today's schema.
-   * TODO(P3-08): drop these lines once openapi.json carries them.
-   */
-  recoverable?: boolean;
-  next_actions?: string[];
 };
 export type ApiErrorBody = Wire["ErrorBody"];
 

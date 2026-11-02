@@ -4,6 +4,13 @@
       "ApprovalDecision": {
         "additionalProperties": false,
         "properties": {
+          "critique_issues": {
+            "items": {
+              "$ref": "#/components/schemas/CritiqueIssue"
+            },
+            "title": "Critique Issues",
+            "type": "array"
+          },
           "critique_summary": {
             "anyOf": [
               {
@@ -35,9 +42,25 @@
             ],
             "title": "Model"
           },
+          "model_calls_used": {
+            "default": 0,
+            "title": "Model Calls Used",
+            "type": "integer"
+          },
           "policy_version": {
             "title": "Policy Version",
             "type": "string"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
           },
           "provider": {
             "anyOf": [
@@ -233,6 +256,16 @@
         "title": "CorrectionView",
         "type": "object"
       },
+      "CritiqueIssue": {
+        "description": "A problem with a recommendation, found by the critique model or the deterministic checks.",
+        "enum": [
+          "uncited_blocker",
+          "unsupported_claim",
+          "missed_high_value_scrutiny"
+        ],
+        "title": "CritiqueIssue",
+        "type": "string"
+      },
       "CurrencyTotal": {
         "additionalProperties": false,
         "properties": {
@@ -359,7 +392,10 @@
           "unrecognized_field",
           "duplicate_field",
           "malformed_row",
-          "inconsistent_row_header"
+          "inconsistent_row_header",
+          "model_proposal_unsupported",
+          "model_parser_disagreement",
+          "risk_signal_embedded_instructions"
         ],
         "title": "FindingCode",
         "type": "string"
@@ -1301,6 +1337,29 @@
           "mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
+          "model_calls_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Calls Budget"
+          },
+          "model_calls_used": {
+            "default": 0,
+            "title": "Model Calls Used",
+            "type": "integer"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
           "prior_run_id": {
             "anyOf": [
               {
@@ -1321,6 +1380,11 @@
                 "type": "null"
               }
             ]
+          },
+          "recoverable": {
+            "default": false,
+            "title": "Recoverable",
+            "type": "boolean"
           },
           "run_id": {
             "title": "Run Id",

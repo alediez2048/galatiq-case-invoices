@@ -74,19 +74,19 @@ Refines Phase 1: P2-10 narrows the P1-02 semantic hash to payable content only, 
 
 Goal: the primary demo runs on real Grok with tool use, structured outputs, and observable self-correction. Exit criteria: explicitly invoked live smoke test passes; controlled tests cover malformed output, budget exhaustion, timeout, and provider failure without payment; payment safety holds regardless of model wording.
 
-Prerequisite: xAI credentials, a confirmed model, and a live-testing budget. Only P3-10 needs them; P3-01 – P3-09 are built and tested against a scripted fake client.
+Prerequisite: xAI credentials, a confirmed model, and a live-testing budget. Only P3-10 needs them; P3-01 – P3-09 are built and tested against a scripted fake client (complete). P3-10's harness (`tests/live/test_live_smoke.py`) is in place; the run itself waits for the user's xAI key.
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P3-01](P3-01-live-mode-configuration.md) (pending) | Live mode configuration and credentials | P1-03, P1-09 | todo |
-| [P3-02](P3-02-xai-reasoning-adapter.md) (pending) | xAI reasoning adapter | P1-03, P3-01 | todo |
-| [P3-03](P3-03-tool-registry-and-dispatcher.md) (pending) | Whitelisted tool registry and dispatcher | P0-08, P1-02, P1-06 | todo |
-| [P3-04](P3-04-model-call-budget.md) (pending) | Bounded agent loops and per-invoice model budget | P1-07, P3-02, P3-03 | todo |
-| [P3-05](P3-05-extraction-assist-and-repair.md) (pending) | Model-assisted extraction with one repair retry | P2-08, P3-02 – P3-04 | todo |
-| [P3-06](P3-06-live-approval-and-critique.md) (pending) | Live approval recommendation and critique loop | P1-04, P3-02 – P3-04 | todo |
-| [P3-07](P3-07-untrusted-input-safeguards.md) (pending) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | todo |
-| [P3-08](P3-08-live-failure-and-explicit-retry.md) (pending) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | todo |
-| [P3-09](P3-09-scripted-provider-contract-tests.md) (pending) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | todo |
+| [P3-01](P3-01-live-mode-configuration.md) (complete) | Live mode configuration and credentials | P1-03, P1-09 | done |
+| [P3-02](P3-02-xai-reasoning-adapter.md) (complete) | xAI reasoning adapter | P1-03, P3-01 | done |
+| [P3-03](P3-03-tool-registry-and-dispatcher.md) (complete) | Whitelisted tool registry and dispatcher | P0-08, P1-02, P1-06 | done |
+| [P3-04](P3-04-model-call-budget.md) (complete) | Bounded agent loops and per-invoice model budget | P1-07, P3-02, P3-03 | done |
+| [P3-05](P3-05-extraction-assist-and-repair.md) (complete) | Model-assisted extraction with one repair retry | P2-08, P3-02 – P3-04 | done |
+| [P3-06](P3-06-live-approval-and-critique.md) (complete) | Live approval recommendation and critique loop | P1-04, P3-02 – P3-04 | done |
+| [P3-07](P3-07-untrusted-input-safeguards.md) (complete) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | done |
+| [P3-08](P3-08-live-failure-and-explicit-retry.md) (complete) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | done |
+| [P3-09](P3-09-scripted-provider-contract-tests.md) (complete) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | done |
 | [P3-10](P3-10-live-smoke-test-and-verification.md) (pending) | Live Grok smoke test and verification record | P3-01 – P3-09 | blocked |
 
 Suggested order: P3-01 and P3-03 in parallel → P3-02 → P3-04 → P3-05, P3-06, P3-08 in parallel → P3-07 → P3-09 → P3-10.
@@ -182,9 +182,9 @@ Deferred findings from the Phase 1 reviews, each assigned to the ticket that sho
 | ~~P2-10~~ | ~~Revision under a paid identity; `find_prior_outcome` and `mark_interrupted_runs` tests.~~ Done (`revision_after_payment`, `tests/test_ledger.py`). Not done, moved to P4-01 (versioning): `record_version` returns the first source's payload on a semantic-hash match, and a repeat of an older version does not move `current_version`; neither can cause a second payment. |
 | ~~P2-11~~ | ~~Repo-db e2e SHA-256; first-run status asserts; `None` total and combined high-value + disagreement gate cases.~~ Done (Task 12). |
 | ~~Phase 2 deps~~ | ~~Declare `langsmith>=0.14,<1` in `pyproject.toml`.~~ Done. |
-| P3-08 | (Phase 2 final review) Retry runs skip the identity check, so a retried revision of a paid invoice ends `failed` (`payment_not_authorized:revision_after_payment`) instead of `needs_review`; after a repaired crash replay the paying `payments.run_id` still points at the failed run, so an exact re-submission returns `duplicate` without a receipt and `check_identity` keeps returning `new` — re-point `payments.run_id` on replay or fall back to the invoice payment. No money moves in either case. |
-| P3-01 / P3-07 | Disable or hide LangSmith tracing inputs in live mode too (raw invoice bytes); redaction misses some camelCase names (`clientSecret`, `sessionToken`) — close before any API key exists; network guard leaves `socket.connect_ex`/`getaddrinfo` unpatched; reasoning protocol attrs as `ClassVar`, exact-threshold critique test; approval-node revision path untested. |
+| ~~P3-08~~ | ~~(Phase 2 final review) Retry runs skip the identity check, so a retried revision of a paid invoice ends `failed` (`payment_not_authorized:revision_after_payment`) instead of `needs_review`; after a repaired crash replay the paying `payments.run_id` still points at the failed run, so an exact re-submission returns `duplicate` without a receipt and `check_identity` keeps returning `new` — re-point `payments.run_id` on replay or fall back to the invoice payment. No money moves in either case.~~ Done (retries run the identity check; a replay re-points a failed payer's payment: `tests/test_retry.py`). |
+| ~~P3-01 / P3-07~~ | ~~Disable LangSmith tracing in live mode too; redaction misses camelCase names; network guard leaves `connect_ex`/`getaddrinfo` unpatched; exact-threshold critique test; approval-node revision path untested.~~ Done: tracing forced off in both modes (`service.py`, `tests/test_e2e.py`), camelCase redaction (`tests/test_ledger.py`), guard extended (`tests/test_network_guard.py`), `tests/test_live_approval.py` (USD 10,000.00 and 10,000.01 critique, revision path). Not done, moved to P6: declare the reasoning protocol attributes as `ClassVar`. |
 | P4-01 | `record_version` reuses the first source's payload on a semantic-hash match; a repeat of an older version does not move `current_version` (moved from P2-10; no double-payment risk). |
 | P4-04 | Gate's human-review match ignores `invoice_id` (ledger query filters by it and `pay` rechecks — make it explicit); approval-node human-review path untested. |
 | P5 | `mark_interrupted_runs(utcnow())` would fail a concurrent process's live run — add a grace window before FastAPI concurrency; observability: caller `ts=` overrides the timestamp, `write_result` treats a `str` path as a stream, tests leave the events logger configured. |
-| P6 | Payment: reserve-then-execute (pending row) before any real gateway, positive-amount guard, empty vendor name; service exception path drops `invoice_id`/findings/timings and leaves `invoices.status` intermediate; `attach_run`/`set_invoice_status` no-op on unknown ids; CLI tracebacks for unexpected errors (unwritable `--output`); `atomic` join test strength; audit polish (stale status on recommendation/critique events, generic `waiting` event, `error_message` never set, cwd-relative pay-guard test). |
+| P6 | Reasoning protocol attrs (`mode`, `provider`, `model`, prompt versions) as `ClassVar` (moved from P3-01 / P3-07). Payment: reserve-then-execute (pending row) before any real gateway, positive-amount guard, empty vendor name; service exception path drops `invoice_id`/findings/timings and leaves `invoices.status` intermediate; `attach_run`/`set_invoice_status` no-op on unknown ids; CLI tracebacks for unexpected errors (unwritable `--output`); `atomic` join test strength; audit polish (stale status on recommendation/critique events, generic `waiting` event, `error_message` never set, cwd-relative pay-guard test). |

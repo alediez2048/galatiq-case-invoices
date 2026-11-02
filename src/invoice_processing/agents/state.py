@@ -10,6 +10,7 @@ from invoice_processing import ledger, observability
 from invoice_processing.codes import ExecutionMode, FindingCode, RunStatus
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning.base import ReasoningProvider
+from invoice_processing.reasoning.session import ModelSession
 from invoice_processing.schemas import (
     ApprovalDecision,
     GateResult,
@@ -18,6 +19,7 @@ from invoice_processing.schemas import (
     SourceDocument,
     ValidationFinding,
 )
+from invoice_processing.tools import Dispatcher, ReadOnlyConnection, ToolContext
 
 
 class InvoiceState(TypedDict, total=False):
@@ -26,6 +28,7 @@ class InvoiceState(TypedDict, total=False):
     evaluation_date: date
     source: SourceDocument
     raw: bytes
+    source_text: str | None  # decoded raw text, or extracted PDF text; for model tools
     invoice: NormalizedInvoice
     invoice_id: str
     version_id: str
@@ -39,6 +42,7 @@ class InvoiceState(TypedDict, total=False):
     error_code: str
     error_message: str
     timings_ms: dict[str, int]
+    model_calls_used: int  # budget units spent so far this run, carried between nodes
 
 
 @dataclass
@@ -47,6 +51,28 @@ class Deps:
     provider: ReasoningProvider
     events: logging.Logger
     limits: Limits = DEFAULT_LIMITS
+
+
+def make_session(deps: Deps, state: InvoiceState) -> ModelSession:
+    """A model session for one node; live providers also get the read-only tool dispatcher.
+
+    The budget is per invoice: the session starts from the units earlier nodes spent, and
+    the node returns `session.used` as the new `model_calls_used`.
+    """
+    session = ModelSession.for_provider(deps.provider)
+    session.used = state.get("model_calls_used", 0)
+    settings = getattr(deps.provider, "settings", None)
+    if settings is not None:
+        ctx = ToolContext(
+            conn=ReadOnlyConnection(deps.conn),
+            run_id=state["run_id"],
+            invoice=state.get("invoice"),
+            invoice_id=state.get("invoice_id"),
+            version_id=state.get("version_id"),
+            source_text=state.get("source_text"),
+        )
+        session.tools = Dispatcher(ctx, excerpt_chars=settings.excerpt_chars, audit_conn=deps.conn)
+    return session
 
 
 def emit(
@@ -82,3 +108,27 @@ def emit(
     observability.log_event(
         deps.events, run_id=state.get("run_id"), stage=stage, event=event, **fields
     )
+
+
+def emit_model_calls(
+    deps: Deps, state: InvoiceState, session: ModelSession, agent: str, prompt_version: str | None
+) -> None:
+    """One `model_call` audit event per attempt the session recorded (counts, never text)."""
+    provider = deps.provider
+    for call in session.calls:
+        emit(
+            deps,
+            state,
+            "model",
+            "model_call",
+            agent=agent,
+            step=call.step,
+            attempt=call.attempt,
+            latency_ms=call.latency_ms,
+            input_tokens=call.input_tokens,
+            output_tokens=call.output_tokens,
+            tool_turns=call.tool_turns,
+            provider=provider.provider,
+            model=provider.model,
+            prompt_version=prompt_version,
+        )

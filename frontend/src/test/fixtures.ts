@@ -147,6 +147,7 @@ const offlineDecision = (
   mode: "offline" as const,
   provider: "offline",
   model: "simulator",
+  model_calls_used: 0,
 });
 
 /** Base detail; every state fixture overrides only what differs. */

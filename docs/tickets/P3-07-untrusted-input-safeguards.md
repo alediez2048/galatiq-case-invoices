@@ -1,6 +1,6 @@
 # P3-07 — Untrusted invoice text and prompt-injection safeguards
 
-Phase: 3 · Status: todo · Depends on: P3-05, P3-06 · Requirements: A07, P08
+Phase: 3 · Status: done · Depends on: P3-05, P3-06 · Requirements: A07, P08
 
 ## Context
 

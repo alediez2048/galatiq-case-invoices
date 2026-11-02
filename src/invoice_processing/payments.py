@@ -12,7 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from invoice_processing import ledger, storage
-from invoice_processing.codes import FindingCode, GateOutcome, HumanReviewAction
+from invoice_processing.codes import FindingCode, GateOutcome, HumanReviewAction, RunStatus
 from invoice_processing.money import canonical_amount, format_money
 from invoice_processing.policy import HIGH_VALUE_THRESHOLD_USD, POLICY_VERSION
 from invoice_processing.schemas import MockReceipt, NormalizedInvoice, PaymentResult
@@ -48,6 +48,39 @@ def _result(row: sqlite3.Row, created: bool) -> PaymentResult:
     )
 
 
+def _repoint_failed_payer(
+    conn: sqlite3.Connection,
+    existing: sqlite3.Row,
+    invoice_id: str,
+    version_id: str,
+    run_id: str,
+) -> None:
+    """Attribute the payment to a same-mode replaying run when the run that paid then failed.
+
+    Receipts are looked up by payments.run_id, so without this a later duplicate of the
+    replay would show no receipt. A payer in any other status keeps the payment, and so does
+    a failed payer replayed in the other mode (a mode switch never takes over a payment).
+    """
+    old_run_id = existing["run_id"]
+    if existing["payer_status"] != RunStatus.failed.value or old_run_id == run_id:
+        return
+    mode = conn.execute("SELECT mode FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+    if mode is None or mode["mode"] != existing["payer_mode"]:
+        return
+    conn.execute(
+        "UPDATE payments SET run_id = ? WHERE payment_id = ?", (run_id, existing["payment_id"])
+    )
+    ledger.append_audit_event(
+        conn,
+        run_id,
+        "payment",
+        "payment_run_repointed",
+        {"old_run_id": old_run_id, "new_run_id": run_id, "receipt_id": existing["receipt_id"]},
+        invoice_id=invoice_id,
+        version_id=version_id,
+    )
+
+
 def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str) -> PaymentResult:
     """Pay an approved invoice once.
 
@@ -58,7 +91,9 @@ def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str)
     with storage.write_transaction(conn):
         existing = conn.execute(
             "SELECT p.payment_id, p.receipt_id, p.amount, p.currency, p.created_at, "
+            "p.run_id, r.status AS payer_status, r.mode AS payer_mode, "
             "p.version = v.version AS same_version FROM payments p "
+            "JOIN runs r ON r.run_id = p.run_id "
             "LEFT JOIN invoice_versions v ON v.version_id = ? AND v.invoice_id = p.invoice_id "
             "WHERE p.invoice_id = ?",
             (version_id, invoice_id),
@@ -68,6 +103,7 @@ def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str)
             # receipt back; any other version is a revision and is never paid.
             if not existing["same_version"]:
                 raise PaymentNotAuthorized("revision_after_payment")
+            _repoint_failed_payer(conn, existing, invoice_id, version_id, run_id)
             return _result(existing, created=False)
 
         decision = conn.execute(

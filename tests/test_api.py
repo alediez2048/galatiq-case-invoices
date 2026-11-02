@@ -158,8 +158,12 @@ def test_openapi_exports_and_models_hide_internal_reasoning(client):
     spec = client.get("/openapi.json").json()
     assert "/api/runs" in spec["paths"] and "/api/overview" in spec["paths"]
     forbidden = ("prompt", "reasoning", "secret", "api_key", "apikey", "token", "password")
+    # A version label of the prompt template (Phase 3), not prompt text.
+    allowed = {"prompt_version"}
     for name, schema in spec["components"]["schemas"].items():
         for prop in schema.get("properties", {}):
+            if prop in allowed:
+                continue
             assert not any(word in prop.lower() for word in forbidden), f"{name}.{prop}"
 
 

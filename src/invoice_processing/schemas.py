@@ -5,10 +5,12 @@ normalized invoices carry typed values. Money fields serialize as decimal string
 """
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from invoice_processing.codes import (
+    CritiqueIssue,
     ExecutionMode,
     FindingCode,
     GateOutcome,
@@ -146,13 +148,16 @@ class ValidationFinding(Contract):
 class ApprovalDecision(Contract):
     initial_recommendation: Recommendation
     critique_summary: str | None = None
-    revised_recommendation: Recommendation | None = None
+    critique_issues: list[CritiqueIssue] = Field(default_factory=list)
+    revised_recommendation: Recommendation | None = None  # the revision's, when one ran
     final_decision: GateOutcome
     reasons: list[str] = Field(default_factory=list)
     policy_version: str
     mode: ExecutionMode
     provider: str | None = None
     model: str | None = None
+    prompt_version: str | None = None
+    model_calls_used: int = 0
 
 
 class MockReceipt(Contract):
@@ -162,25 +167,79 @@ class MockReceipt(Contract):
     paid_at: datetime
 
 
-class ApprovalRecommendation(Contract):
+SUMMARY_MAX_CHARS = 300  # model-written summaries; longer output is model_output_invalid
+
+
+class RecommendationOutput(Contract):
+    """What a live model returns for recommend/revise; provenance is added locally."""
+
     recommendation: Recommendation
     reasons: list[str]
     cited_codes: list[FindingCode]
-    summary: str
-    mode: ExecutionMode
-    provider: str
-    model: str
+    summary: str = Field(max_length=SUMMARY_MAX_CHARS)
 
 
-class Critique(Contract):
+class CritiqueOutput(Contract):
+    """What a live model returns for critique; provenance is added locally."""
+
     agrees: bool
     omissions: list[FindingCode]
     high_value: bool
     revised_recommendation: Recommendation | None
-    summary: str
+    summary: str = Field(max_length=SUMMARY_MAX_CHARS)
+    issues: list[CritiqueIssue] = Field(default_factory=list)
+
+
+class ApprovalRecommendation(RecommendationOutput):
     mode: ExecutionMode
     provider: str
     model: str
+
+
+class Critique(CritiqueOutput):
+    mode: ExecutionMode
+    provider: str
+    model: str
+
+
+class SourceExcerpt(Contract):
+    location: str  # an evidence location such as "line:9"
+    text: str
+
+
+class ExtractionAssistRequest(Contract):
+    """Bounded context for one extraction-assist step: never the whole source by default."""
+
+    issues: list[str]  # finding codes plus the affected field, e.g. "missing_vendor:vendor"
+    excerpts: list[SourceExcerpt] = Field(default_factory=list)  # <= excerpt_chars in total
+    known_items: list[str] = Field(default_factory=list)
+    repair_hint: str | None = None  # set on the single repair attempt: why the output failed
+
+
+ProposalField = Literal[
+    "vendor",
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "currency",
+    "subtotal",
+    "tax",
+    "shipping",
+    "total",
+]
+
+
+class FieldProposal(Contract):
+    """One model-proposed field value; applied only if `quote` checks out against the source."""
+
+    field: ProposalField
+    value: str = Field(max_length=200)
+    quote: str = Field(max_length=500)  # verbatim source text supporting the value
+    location: str = Field(max_length=200)  # an excerpt location such as "line:9"
+
+
+class ExtractionProposals(Contract):
+    proposals: list[FieldProposal] = Field(default_factory=list, max_length=20)
 
 
 class GateResult(Contract):
@@ -218,6 +277,10 @@ class ProcessingResult(Contract):
     prior_run_id: str | None = None
     evaluation_date: date | None = None
     error_message: str | None = None
+    model_calls_used: int = 0
+    model_calls_budget: int | None = None
+    recoverable: bool = False
+    next_actions: list[str] = Field(default_factory=list)
 
 
 class AggregatedItem(Contract):

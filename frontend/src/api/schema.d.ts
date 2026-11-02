@@ -197,6 +197,8 @@ export interface components {
     schemas: {
         /** ApprovalDecision */
         ApprovalDecision: {
+            /** Critique Issues */
+            critique_issues?: components["schemas"]["CritiqueIssue"][];
             /** Critique Summary */
             critique_summary?: string | null;
             final_decision: components["schemas"]["GateOutcome"];
@@ -204,8 +206,15 @@ export interface components {
             mode: components["schemas"]["ExecutionMode"];
             /** Model */
             model?: string | null;
+            /**
+             * Model Calls Used
+             * @default 0
+             */
+            model_calls_used: number;
             /** Policy Version */
             policy_version: string;
+            /** Prompt Version */
+            prompt_version?: string | null;
             /** Provider */
             provider?: string | null;
             /** Reasons */
@@ -259,6 +268,12 @@ export interface components {
             /** To Version */
             to_version: number;
         };
+        /**
+         * CritiqueIssue
+         * @description A problem with a recommendation, found by the critique model or the deterministic checks.
+         * @enum {string}
+         */
+        CritiqueIssue: "uncited_blocker" | "unsupported_claim" | "missed_high_value_scrutiny";
         /** CurrencyTotal */
         CurrencyTotal: {
             /** Amount */
@@ -295,7 +310,7 @@ export interface components {
          * FindingCode
          * @enum {string}
          */
-        FindingCode: "missing_vendor" | "missing_invoice_number" | "missing_due_date" | "missing_currency" | "missing_total" | "missing_line_items" | "incomplete_line_item" | "non_positive_quantity" | "non_integer_quantity" | "non_positive_total" | "negative_unit_price" | "negative_tax" | "negative_shipping" | "due_date_past" | "line_total_mismatch" | "subtotal_mismatch" | "tax_mismatch" | "total_mismatch" | "rounding_tolerated" | "arithmetic_unverifiable" | "unknown_item" | "zero_stock" | "quantity_exceeds_stock" | "currency_assumed_usd" | "model_disagreement" | "non_usd_currency" | "unparsed_line" | "ambiguous_normalization" | "unparseable_value" | "risk_signal_urgency" | "due_date_unresolved" | "ambiguous_date" | "due_before_invoice_date" | "terms_inconsistent" | "unsupported_currency" | "currency_conflict" | "revision_after_payment" | "version_conflict" | "unrecognized_field" | "duplicate_field" | "malformed_row" | "inconsistent_row_header";
+        FindingCode: "missing_vendor" | "missing_invoice_number" | "missing_due_date" | "missing_currency" | "missing_total" | "missing_line_items" | "incomplete_line_item" | "non_positive_quantity" | "non_integer_quantity" | "non_positive_total" | "negative_unit_price" | "negative_tax" | "negative_shipping" | "due_date_past" | "line_total_mismatch" | "subtotal_mismatch" | "tax_mismatch" | "total_mismatch" | "rounding_tolerated" | "arithmetic_unverifiable" | "unknown_item" | "zero_stock" | "quantity_exceeds_stock" | "currency_assumed_usd" | "model_disagreement" | "non_usd_currency" | "unparsed_line" | "ambiguous_normalization" | "unparseable_value" | "risk_signal_urgency" | "due_date_unresolved" | "ambiguous_date" | "due_before_invoice_date" | "terms_inconsistent" | "unsupported_currency" | "currency_conflict" | "revision_after_payment" | "version_conflict" | "unrecognized_field" | "duplicate_field" | "malformed_row" | "inconsistent_row_header" | "model_proposal_unsupported" | "model_parser_disagreement" | "risk_signal_embedded_instructions";
         /**
          * GateOutcome
          * @description Result of the deterministic policy gate (P1-04).
@@ -552,9 +567,23 @@ export interface components {
             /** Invoice Id */
             invoice_id?: string | null;
             mode: components["schemas"]["ExecutionMode"];
+            /** Model Calls Budget */
+            model_calls_budget?: number | null;
+            /**
+             * Model Calls Used
+             * @default 0
+             */
+            model_calls_used: number;
+            /** Next Actions */
+            next_actions?: string[];
             /** Prior Run Id */
             prior_run_id?: string | null;
             receipt?: components["schemas"]["MockReceipt"] | null;
+            /**
+             * Recoverable
+             * @default false
+             */
+            recoverable: boolean;
             /** Run Id */
             run_id: string;
             /** Source Hash */

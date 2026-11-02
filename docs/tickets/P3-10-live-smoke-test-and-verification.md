@@ -15,6 +15,10 @@ A simulated run cannot satisfy the primary live-demo requirement; unavailable cr
 - Write `docs/verification/live-<YYYY-MM-DD>.md`: date, SDK version, model, per-invoice status, calls used, latency, tool calls, any divergence from expectations with explanation. No keys, no full prompts, no hidden reasoning.
 - Estimate and record token/cost usage for the run against the agreed budget.
 
+## Progress
+
+The harness is built (`tests/live/test_live_smoke.py`, task 7 of Phase 3) and skipped by default. Only the run is pending: it needs the user's xAI key, a confirmed model and a spending limit set in the xAI console. The record also carries the exact model id, SDK version, calls, latency, tool calls, token usage and a cost estimate (set `XAI_PRICE_INPUT_PER_MTOK` / `XAI_PRICE_OUTPUT_PER_MTOK` to compute it).
+
 ## Acceptance criteria
 
 - [ ] `RUN_LIVE_TESTS=1 pytest -m live` passes against real Grok.

@@ -32,7 +32,38 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt | python -m json.to
 python main.py --invoice_path=data/invoices/invoice_1001.txt --mode=offline --db=demo.db --output=result.json
 ```
 
-Options: `--mode {offline,live}` (live is unavailable until Phase 3), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
+Options: `--mode {offline,live}` (live needs `XAI_API_KEY` and `XAI_MODEL`; see below), `--retry RUN_ID` (see below), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
+
+## Retry a failed run
+
+A live run that fails on a model error (`model_unavailable`, `model_timeout`, ...) ends `failed` with `recoverable: true`, the message "Model request failed. Payment was not attempted." and `next_actions` `retry` / `run offline as a separate simulation`. Retry it with the same file:
+
+```bash
+python main.py --retry RUN_ID --invoice_path=data/invoices/invoice_1001.txt
+```
+
+The retry is a new run linked by `retry_of`, in the original run's mode (`--mode` is ignored). It prints `Retrying run <id> (failed: <code>)`, then the normal summary. Refused with exit 2 and a reason: `not_failed`, `not_recoverable` (only model errors, `interrupted` and `unexpected_error` are retryable), `source_mismatch` (the file's SHA-256 differs from the original source; the ledger keeps no source bytes), `already_paid` (another run that did not fail already paid this invoice version; the existing receipt id is printed) or `unknown_run`. A run that ended `unexpected_error` reports `recoverable: true` with `next_actions` `retry` only. A retry still sees revisions after payment and version conflicts, and an invoice is paid at most once: when the run that paid crashed afterwards, a same-mode replay or retry gets the existing receipt and the payment is re-attributed to it (`payment_run_repointed` audit event); a replay in the other mode gets the receipt without taking over the payment.
+
+Running the same file in the other mode (for example `--mode offline` after a failed live run) is a separate, labeled run: when the latest run of that file was in the other mode, `runs.mode_switch_of` points at it (a further run in the same mode is not a switch). It skips the byte-level duplicate check, never reads the earlier run's recommendation or decision, and any payment still counts against the same invoice identity. No code path turns a live failure into an offline result.
+
+## Live mode configuration
+
+Live mode reads `XAI_API_KEY`, `XAI_MODEL` (no default), `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6) from the environment, falling back to a git-ignored `.env` (copy `.env.example`; real variables win). Missing or invalid settings exit 2 before any run is created, naming the variable but never its value. `python -m invoice_processing.readiness [--ping]` reports the setup (exit 0 ready, 2 not); `--ping` makes one minimal SDK call and is the only path that touches the network. LangSmith tracing is forced off in both modes. Tests block `connect`, `connect_ex`, `create_connection` and `getaddrinfo`.
+
+### Verify against real Grok (opt-in)
+
+Default `uv run pytest` never touches the network: the live path is covered by a scripted fake client (`tests/test_live_contract.py`: every `ModelErrorCode`, tool authorization, and offline parity for all 20 samples). The real-API smoke test is skipped unless you ask for it:
+
+```bash
+# 1. Set a spending limit in the xAI console first (USD 10 is recommended for the first run).
+# 2. XAI_API_KEY and XAI_MODEL in the environment or .env (no default model); check:
+python -m invoice_processing.readiness --ping
+# 3. Optional, for a cost estimate in the record (USD per million tokens, xAI pricing page):
+export XAI_PRICE_INPUT_PER_MTOK=... XAI_PRICE_OUTPUT_PER_MTOK=...
+RUN_LIVE_TESTS=1 uv run pytest -m live
+```
+
+It runs 11 invoices on fresh databases (INV-1001, 1002, 1003, 1012, 1013, 1014, the USD 10,000.01 fixture and the four adversarial fixtures) plus one invalid-key run, asserts business invariants only, and writes `docs/verification/live-<date>.md` (model id, SDK version, calls, latency, tool calls, tokens, cost estimate, divergences; never keys or prompts). Expect up to 6 model steps per invoice, so roughly 60 requests in total. Commit the record after reading it.
 
 ## Run every sample
 
@@ -50,7 +81,7 @@ uv run python -m invoice_processing.seed --db inventory.db
 
 Creates the database and schema if needed and inserts the required items (WidgetA 15, WidgetB 10, GadgetX 5, FakeItem 0). Re-running is safe: existing rows are never overwritten, and a stock value that differs from the seed is reported as a `WARNING` line and left as is.
 
-A Phase 1 `inventory.db` (schema version 3) is refused: delete it and re-seed, because invoice identity keys changed in Phase 2.
+An `inventory.db` from an earlier phase (schema version 3 or 4) is refused: delete it and re-seed. Phase 2 changed invoice identity keys (4); Phase 3 adds `runs.mode_switch_of` (5).
 
 `--fresh` only creates a new database: it exits with code 2 and leaves the file untouched if the path already exists. Use it for repeatable demo databases.
 

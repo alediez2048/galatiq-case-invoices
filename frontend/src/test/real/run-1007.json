@@ -3,18 +3,20 @@
   "error_message": null,
   "events": [
     {
-      "created_at": "2026-11-02T03:56:22.820401Z",
+      "created_at": "2026-11-02T05:15:13.719976Z",
       "event": "received",
       "payload": {
         "mode": "offline",
+        "mode_switch_of": null,
         "original_name": "invoice_1007.csv",
+        "retry_of": null,
         "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
         "status": "received"
       },
       "stage": "intake"
     },
     {
-      "created_at": "2026-11-02T03:56:22.825176Z",
+      "created_at": "2026-11-02T05:15:13.760796Z",
       "event": "extracted",
       "payload": {
         "codes": [
@@ -29,7 +31,7 @@
       "stage": "ingestion"
     },
     {
-      "created_at": "2026-11-02T03:56:22.829282Z",
+      "created_at": "2026-11-02T05:15:13.766180Z",
       "event": "validated",
       "payload": {
         "codes": [
@@ -45,7 +47,7 @@
       "stage": "validation"
     },
     {
-      "created_at": "2026-11-02T03:56:22.830117Z",
+      "created_at": "2026-11-02T05:15:13.767170Z",
       "event": "recommendation",
       "payload": {
         "codes": [
@@ -55,24 +57,29 @@
         "mode": "offline",
         "recommendation": "reject",
         "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
-        "status": "validated"
+        "status": "validated",
+        "summary": "offline simulation: reject based on 2 blocking or review finding(s); total above the 10000.00 high-value threshold"
       },
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.830575Z",
+      "created_at": "2026-11-02T05:15:13.771010Z",
       "event": "critique",
       "payload": {
         "agrees": true,
+        "high_value": true,
+        "issues": [],
         "mode": "offline",
+        "omissions": [],
         "revised_recommendation": null,
         "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
-        "status": "validated"
+        "status": "validated",
+        "summary": "offline simulation: critique agrees; 0 omission(s); high_value=True"
       },
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.833724Z",
+      "created_at": "2026-11-02T05:15:13.777318Z",
       "event": "decision",
       "payload": {
         "final_decision": "rejected",
@@ -87,7 +94,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T03:56:22.835315Z",
+      "created_at": "2026-11-02T05:15:13.779057Z",
       "event": "rejection_recorded",
       "payload": {
         "codes": [
@@ -99,7 +106,7 @@
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T03:56:22.836465Z",
+      "created_at": "2026-11-02T05:15:13.780131Z",
       "event": "finished",
       "payload": {
         "errors": [],
@@ -110,18 +117,21 @@
       "stage": "service"
     }
   ],
-  "finished_at": "2026-11-02T03:56:22.836130Z",
-  "invoice_id": "inv-d84d67b33362415392088eebb581c18b",
+  "finished_at": "2026-11-02T05:15:13.779823Z",
+  "invoice_id": "inv-ad2377f8b5834aec8f9489979c281ca5",
   "mode": "offline",
   "prior_run_id": null,
   "result": {
     "decision": {
+      "critique_issues": [],
       "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=True",
       "final_decision": "rejected",
       "initial_recommendation": "reject",
       "mode": "offline",
       "model": "simulated",
+      "model_calls_used": 0,
       "policy_version": "2026-11-01.1",
+      "prompt_version": null,
       "provider": "offline",
       "reasons": [
         "R1_blocker"
@@ -173,24 +183,28 @@
         "severity": "blocker"
       }
     ],
-    "invoice_id": "inv-d84d67b33362415392088eebb581c18b",
+    "invoice_id": "inv-ad2377f8b5834aec8f9489979c281ca5",
     "mode": "offline",
+    "model_calls_budget": null,
+    "model_calls_used": 0,
+    "next_actions": [],
     "prior_run_id": null,
     "receipt": null,
-    "run_id": "run-1e043cdef6ca437fa75b878b1c3c986a",
+    "recoverable": false,
+    "run_id": "run-217432facbe84108b7ccf245066bbbb8",
     "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
     "status": "rejected",
     "timings_ms": {}
   },
   "retry_of": null,
-  "run_id": "run-1e043cdef6ca437fa75b878b1c3c986a",
+  "run_id": "run-217432facbe84108b7ccf245066bbbb8",
   "source": {
     "format": "csv",
     "original_name": "invoice_1007.csv",
     "source_id": "src-332b4c6464b59d5a"
   },
   "stage": "rejected",
-  "started_at": "2026-11-02T03:56:22.819631Z",
+  "started_at": "2026-11-02T05:15:13.716093Z",
   "status": "rejected",
   "terminal": true
 }

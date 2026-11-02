@@ -1,6 +1,6 @@
 # P3-05 — Model-assisted extraction with one repair retry
 
-Phase: 3 · Status: todo · Depends on: P3-02, P3-03, P3-04, P2-08 · Requirements: A02, A07, P04
+Phase: 3 · Status: done · Depends on: P3-02, P3-03, P3-04, P2-08 · Requirements: A02, A07, P04
 
 ## Context
 

@@ -144,9 +144,9 @@ Scope:
 
 Exit criteria:
 
-- [ ] Explicitly invoked live smoke test passes and reports provider/model without exposing secrets.
-- [ ] Controlled tests cover malformed model output, budget exhaustion, timeout, and provider failure; none produce payment.
-- [ ] Payment-safety tests pass regardless of model wording.
+- [ ] Explicitly invoked live smoke test passes and reports provider/model without exposing secrets. Pending user's xAI key (P3-10); harness: `tests/live/test_live_smoke.py`, run with `RUN_LIVE_TESTS=1 uv run pytest -m live`.
+- [x] Controlled tests cover malformed model output, budget exhaustion, timeout, and provider failure; none produce payment. (`tests/test_live_contract.py::test_invalid_output`, `::test_budget_exhaustion`, `::test_timeout_twice_fails_recoverably`, `::test_unavailable_twice`, `::test_every_model_error_code_is_produced_by_a_test`; parity: `::test_reasonable_live_model_matches_the_offline_outcome`.)
+- [x] Payment-safety tests pass regardless of model wording. (`tests/test_adversarial.py::test_obeying_model_cannot_change_the_gate_outcome`, `tests/test_live_approval.py::test_gate_rejects_even_if_revision_still_says_approve`, `tests/test_live_contract.py::test_unauthorized_tool_request_is_audited_and_the_run_continues`.)
 
 Covers: A04, A06, A07, P09, P11, P15.
 

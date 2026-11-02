@@ -32,6 +32,24 @@ _NET_TERMS = re.compile(r"net\s*(\d+)", re.IGNORECASE)
 _URGENCY = re.compile(
     r"\b(urgent|immediately|asap|wire transfer|penalt(y|ies)|final notice)\b", re.IGNORECASE
 )
+# Text addressed to an AI system rather than to accounts payable (P3-07). Info only.
+EMBEDDED_INSTRUCTIONS = re.compile(
+    "|".join(
+        (
+            r"ignore (all |any )?(previous |prior )?instructions",
+            r"you are (now )?(an?|the) ",
+            r"approve this invoice",
+            r"mark (this|as) (approved|paid)",
+            r"(manager|cfo|director) (has )?(already )?approved",
+            r"inventory has been updated",
+            r"\"recommendation\"\s*:",
+            r"tool_call",
+            r"function_call",
+            r"system prompt",
+        )
+    ),
+    re.IGNORECASE,
+)
 _SYMBOL_CODES = {"$": "USD", "€": "EUR", "£": "GBP"}
 _KEY_STRIP = re.compile(r"[\s\-_/#.]")
 _INV_PREFIX = re.compile(r"^INV(?=\d)")
@@ -271,6 +289,9 @@ def normalize(
     _check_dates(invoice, finding, field_ev)
     _resolve_currency(draft, invoice, event, finding, field_ev)
     _urgency(draft, finding, field_ev)
+    embedded = detect_embedded_instructions(draft)
+    if embedded is not None:
+        findings.append(embedded)
     invoice.normalization_events = events
     return invoice, findings
 
@@ -384,3 +405,42 @@ def _urgency(draft: InvoiceDraft, finding, field_ev) -> None:
         if m is not None:
             finding(FindingCode.risk_signal_urgency, "notes", ev, observed=m[0])
             return
+
+
+def _evidence_lines(draft: InvoiceDraft):
+    """Every evidence reference with a snippet, roughly in document order, each once."""
+    refs = [*draft.evidence]
+    refs += [ref for issue in draft.issues for ref in issue.evidence]
+    refs += [ref for line in draft.lines for ref in line.evidence]
+    refs += [ref for field_refs in draft.field_evidence.values() for ref in field_refs]
+    seen: set[tuple[str, str]] = set()
+    for ref in refs:
+        if ref.snippet and (ref.location, ref.snippet) not in seen:
+            seen.add((ref.location, ref.snippet))
+            yield ref
+
+
+def detect_embedded_instructions(draft: InvoiceDraft) -> ValidationFinding | None:
+    """An info finding when the document holds text aimed at an AI system (all modes).
+
+    The evidence is the first matching source line; raw field values are checked too, for
+    formats whose snippets are truncated.
+    """
+    code = FindingCode.risk_signal_embedded_instructions
+    for ref in _evidence_lines(draft):
+        m = EMBEDDED_INSTRUCTIONS.search(ref.snippet or "")
+        if m is not None:
+            return ValidationFinding(
+                code=code, severity=DEFAULT_SEVERITY[code], observed=m[0], evidence=[ref]
+            )
+    for name, raw, ev in _all_raw(draft):
+        m = EMBEDDED_INSTRUCTIONS.search(raw)
+        if m is not None:
+            return ValidationFinding(
+                code=code,
+                severity=DEFAULT_SEVERITY[code],
+                field=name,
+                observed=m[0],
+                evidence=ev[:1],
+            )
+    return None

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { readinessFixture } from "../test/fixtures";
+import { detail1001, detail1002, readinessFixture } from "../test/fixtures";
 import { json } from "../test/mockApi";
 import { renderApp } from "../test/render";
 import * as wire from "../test/wire";
@@ -192,5 +192,106 @@ describe("Add invoice (P5-07, screen 2)", () => {
     });
     expect(await screen.findByText("Inventory is not set up. Restart the API to seed it.")).toBeInTheDocument();
     expect(processButton()).toBeDisabled();
+  });
+});
+
+describe("Add corrected invoice (?corrects=, P5-04 corrected-submission)", () => {
+  const rejected = {
+    ...detail1002,
+    current_version: 2,
+    review_actions: {
+      invoice_id: detail1002.invoice_id,
+      status: "rejected" as const,
+      current_version: 2,
+      allowed: ["correct" as const, "submit_corrected" as const],
+      refused: {},
+    },
+  };
+  const correctedButton = () => screen.getByRole("button", { name: "Process corrected invoice" });
+
+  it("posts the file with version, reason, reviewer and mode to corrected-submission, then follows the run", async () => {
+    const user = userEvent.setup();
+    const bodies: FormData[] = [];
+    const { calls, router } = renderApp(`/add?corrects=${rejected.invoice_id}`, {
+      "GET /api/invoices/:id": () => wire.detail(rejected),
+      "POST /api/invoices/:id/corrected-submission": (_url, init) => {
+        bodies.push(init?.body as FormData);
+        return json(accepted("run-corrected"), 202);
+      },
+      ...pendingRun,
+    });
+    expect(await screen.findByText(/Corrected invoice for INV-1002 · replaces version 2/)).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("Invoice file"), file("inv-1002-fixed.txt"));
+    await user.type(screen.getByLabelText("Reviewer"), "Ana");
+    await user.type(screen.getByLabelText(/Reason for the corrected invoice/), "Vendor reissued the invoice");
+    await waitFor(() => expect(correctedButton()).toBeEnabled());
+    await user.click(correctedButton());
+    await waitFor(() => expect(router.state.location.pathname).toBe("/runs/run-corrected"));
+    const sent = posts(calls);
+    expect(sent.map((c) => c.url)).toEqual([`/api/invoices/${rejected.invoice_id}/corrected-submission`]);
+    expect(sent[0]!.headers["Idempotency-Key"]).toMatch(/^[0-9a-f-]{36}$/);
+    const form = bodies[0]!;
+    expect(form.get("expected_version")).toBe("2");
+    expect(form.get("reason")).toBe("Vendor reissued the invoice");
+    expect(form.get("reviewer")).toBe("Ana");
+    expect(form.get("mode")).toBe("offline");
+    expect((form.get("file") as File).name).toBe("inv-1002-fixed.txt");
+    expect(calls.some((c) => c.method === "POST" && c.url === "/api/runs")).toBe(false);
+  });
+
+  it("requires a reason and a reviewer; nothing is sent without them", async () => {
+    const user = userEvent.setup();
+    const { calls } = renderApp(`/add?corrects=${rejected.invoice_id}`, {
+      "GET /api/invoices/:id": () => wire.detail(rejected),
+    });
+    await screen.findByText(/replaces version 2/);
+    await user.upload(screen.getByLabelText("Invoice file"), file("fixed.txt"));
+    await waitFor(() => expect(correctedButton()).toBeEnabled());
+    await user.click(correctedButton());
+    expect(screen.getByText("Enter why this corrected invoice replaces the earlier one.")).toBeInTheDocument();
+    expect(screen.getByText("Enter your name.")).toBeInTheDocument();
+    expect(posts(calls)).toHaveLength(0);
+  });
+
+  it("is disabled with the server's reason when the invoice cannot take a corrected invoice", async () => {
+    const paid = {
+      ...detail1001,
+      review_actions: {
+        invoice_id: detail1001.invoice_id,
+        status: "paid_mock" as const,
+        current_version: 1,
+        allowed: [],
+        refused: { submit_corrected: "already_paid" as const },
+      },
+    };
+    renderApp(`/add?corrects=${paid.invoice_id}`, { "GET /api/invoices/:id": () => wire.detail(paid) });
+    expect(
+      await screen.findByText("A corrected invoice cannot be added: This invoice is already mock paid. No additional payment."),
+    ).toBeInTheDocument();
+    expect(correctedButton()).toBeDisabled();
+  });
+
+  it("on 409 shows the stale notice and reloads the invoice; nothing is resubmitted", async () => {
+    const user = userEvent.setup();
+    let version = 2;
+    const { calls } = renderApp(`/add?corrects=${rejected.invoice_id}`, {
+      "GET /api/invoices/:id": () => wire.detail({ ...rejected, current_version: version }),
+      "POST /api/invoices/:id/corrected-submission": () => {
+        version = 3;
+        return json(
+          { code: "stale_version", message: "x", details: { current: { ...rejected.review_actions, current_version: 3 } } },
+          409,
+        );
+      },
+    });
+    await screen.findByText(/replaces version 2/);
+    await user.upload(screen.getByLabelText("Invoice file"), file("fixed.txt"));
+    await user.type(screen.getByLabelText("Reviewer"), "Ana");
+    await user.type(screen.getByLabelText(/Reason for the corrected invoice/), "Reissued");
+    await waitFor(() => expect(correctedButton()).toBeEnabled());
+    await user.click(correctedButton());
+    expect(await screen.findByText("This invoice changed since you opened it. Review the current version.")).toBeInTheDocument();
+    expect(await screen.findByText(/replaces version 3/)).toBeInTheDocument();
+    expect(posts(calls)).toHaveLength(1);
   });
 });

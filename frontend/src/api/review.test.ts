@@ -7,6 +7,7 @@ import { classifyReviewError, reviewApi, STALE_NOTICE } from "./review";
 import realCorrection from "../test/real/review-correction.json";
 import realRefused from "../test/real/review-refused-422.json";
 import realStale from "../test/real/review-stale-409.json";
+import realQueue from "../test/real/review-queue.json";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -58,6 +59,15 @@ describe("review API client", () => {
 });
 
 describe("review API client over real P5-04 bodies", () => {
+  it("reads the real review queue with each item's allowed actions", async () => {
+    stubFetch(ok(realQueue));
+    const q = await reviewApi.queue();
+    expect(Object.keys(q.groups)).toEqual(["correctable_extraction", "awaiting_human_approval", "unresolved_blocker"]);
+    const [item] = q.groups.awaiting_human_approval;
+    expect(item).toMatchObject({ invoice_number: "TH-10000-01", total: "10000.01", status: "awaiting_human_approval" });
+    expect([...item!.actions.allowed].sort()).toEqual(["approve", "correct", "decline"]);
+  });
+
   it("posts a correction to /corrections and returns the accepted revalidation run", async () => {
     const fetchMock = stubFetch(ok(realCorrection));
     const body = {

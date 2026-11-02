@@ -40,6 +40,8 @@ export interface Wire {
   CorrectionBody: S["CorrectionBody"];
   ProcessingResult: S["ProcessingResult"];
   ReviewDecisionBody: S["ReviewDecisionBody"];
+  QueueItem: S["QueueItem"];
+  ReviewQueue: S["ReviewQueue"];
 }
 
 export type ExecutionMode = S["ExecutionMode"];

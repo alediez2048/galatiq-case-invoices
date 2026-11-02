@@ -1,8 +1,12 @@
-import { useId, useRef, useState, type DragEvent } from "react";
+import { useCallback, useId, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import type { RunInput } from "../api/client";
-import { useSamples, useSubmitRun } from "../api/hooks";
+import { useInvoice, useSamples, useSubmitRun } from "../api/hooks";
+import { refusalMessage, reviewApi, type ReviewFailure } from "../api/review";
 import type { ExecutionMode } from "../api/types";
+import { ReviewerAndReason } from "../review/ReviewerAndReason";
+import { useReviewerName } from "../review/reviewer";
+import { useReviewAction } from "../review/useReviewAction";
 import { formatBytes, MODE_LABEL } from "../format";
 import { useWorkspace } from "../workspace";
 import { Icon } from "../components/Icon";
@@ -76,6 +80,29 @@ export function AddInvoiceView() {
   const reasonId = useId();
   const fileErrorId = useId();
 
+  // ?corrects=<invoice id>: a corrected invoice from the vendor, sent to
+  // POST /api/invoices/{id}/corrected-submission, bound to the version shown here.
+  const target = useInvoice(corrects ?? undefined);
+  const reloadTarget = target.reload;
+  const { reviewer, setReviewer, remember } = useReviewerName();
+  const [note, setNote] = useState("");
+  const [noteErrors, setNoteErrors] = useState<{ reason?: string; reviewer?: string }>({});
+  const [conflict, setConflict] = useState<string | null>(null);
+  const onConflict = useCallback(
+    (f: Extract<ReviewFailure, { kind: "conflict" }>) => {
+      setConflict(f.message);
+      reloadTarget(); // show the current version; nothing was submitted
+    },
+    [reloadTarget],
+  );
+  const corrected = useReviewAction(onConflict);
+  const busyAny = busy || corrected.busy;
+  const original = target.data;
+  const correctedRefusal =
+    original && !original.review_actions?.allowed.includes("submit_corrected")
+      ? refusalMessage(original.review_actions?.refused.submit_corrected ?? "action_not_allowed")
+      : null;
+
   const choose = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (files.length > 1) {
@@ -91,7 +118,7 @@ export function AddInvoiceView() {
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
-    if (!busy) choose(e.dataTransfer.files);
+    if (!busyAny) choose(e.dataTransfer.files);
   };
 
   const remove = () => {
@@ -101,9 +128,22 @@ export function AddInvoiceView() {
   };
 
   const r = readiness.data;
-  const reason: string | null = busy
+  const correctsReason: string | null = !corrects
+    ? null
+    : target.error && !original
+      ? "The invoice to correct could not be loaded."
+      : !original
+        ? "Loading the invoice to correct…"
+        : correctedRefusal
+          ? `A corrected invoice cannot be added: ${correctedRefusal}`
+          : selection?.kind === "sample"
+            ? "Choose the corrected file from the vendor."
+            : null;
+  const reason: string | null = busyAny
     ? "Submitting…"
-    : selection === null
+    : correctsReason
+      ? correctsReason
+      : selection === null
       ? "Choose a file or a sample first."
       : readiness.error && !r
         ? "Cannot reach the local API. Is the backend running?"
@@ -115,8 +155,35 @@ export function AddInvoiceView() {
               ? `Live mode is not configured${r.live_unavailable_reason ? `: ${r.live_unavailable_reason}` : ""}. Choose offline in Setup.`
               : null;
 
+  const submitCorrected = async (file: File) => {
+    if (!corrects || !original) return;
+    const next: typeof noteErrors = {};
+    if (!note.trim()) next.reason = "Enter why this corrected invoice replaces the earlier one.";
+    if (!reviewer.trim()) next.reviewer = "Enter your name.";
+    setNoteErrors(next);
+    if (Object.keys(next).length > 0) return;
+    setConflict(null);
+    const input = {
+      file,
+      expected_version: original.current_version,
+      reason: note.trim(),
+      reviewer: reviewer.trim(),
+      mode,
+    };
+    const signature = `corrected:${corrects}:${selectionId(selection)}:${JSON.stringify({ ...input, file: undefined })}`;
+    const out = await corrected.send(signature, (key) => reviewApi.correctedSubmission(corrects, input, key));
+    if (out) {
+      remember(input.reviewer);
+      navigate(`/runs/${encodeURIComponent(out.run_id)}`);
+    }
+  };
+
   const process = async () => {
     if (reason !== null || selection === null) return;
+    if (corrects) {
+      if (selection.kind === "file") await submitCorrected(selection.file);
+      return;
+    }
     const runInput: RunInput =
       selection.kind === "sample"
         ? { kind: "sample", sample: selection.name, mode }
@@ -139,9 +206,17 @@ export function AddInvoiceView() {
       </div>
       {corrects && (
         <p className="notice notice--muted">
-          Corrected invoice for {corrects}. It is submitted and checked like any other invoice; the
-          earlier result stays on record.
+          Corrected invoice for {original?.invoice_number ?? corrects}
+          {original ? ` · replaces version ${original.current_version}` : ""}. It is checked like any
+          other invoice and, once processed, supersedes the earlier versions; their results stay on
+          record.
         </p>
+      )}
+      {conflict && (
+        <div className="state-notice state-notice--warning" role="alert">
+          <p className="state-notice__title">{conflict}</p>
+          <p className="sub">Nothing was submitted for the earlier version.</p>
+        </div>
       )}
 
       <div
@@ -160,7 +235,7 @@ export function AddInvoiceView() {
             type="button"
             className="button button--secondary"
             onClick={() => input.current?.click()}
-            disabled={busy}
+            disabled={busyAny}
             aria-describedby={fileError ? fileErrorId : undefined}
           >
             Browse files
@@ -193,7 +268,7 @@ export function AddInvoiceView() {
             {selection.kind === "file" && <span className="sub"> · {formatBytes(selection.file.size)}</span>}
             {sampleInfo && <span className="sub"> · {sampleInfo.label}</span>}
           </p>
-          <button type="button" className="button button--ghost" onClick={remove} disabled={busy}>
+          <button type="button" className="button button--ghost" onClick={remove} disabled={busyAny}>
             Remove
           </button>
         </div>
@@ -216,6 +291,20 @@ export function AddInvoiceView() {
         <p className="sub">Eligible invoices up to USD 10,000 can auto-pay. No real money moves.</p>
       </div>
 
+      {corrects && (
+        <div className="review-form">
+          <ReviewerAndReason
+            reviewer={reviewer}
+            onReviewer={setReviewer}
+            reason={note}
+            onReason={setNote}
+            reasonLabel="Reason for the corrected invoice"
+            errors={noteErrors}
+            disabled={busyAny}
+          />
+        </div>
+      )}
+
       <div className="modal__actions">
         <Link to="/" className="button button--ghost">
           Cancel
@@ -233,13 +322,18 @@ export function AddInvoiceView() {
             disabled={reason !== null}
             aria-describedby={reason ? reasonId : undefined}
           >
-            Process invoice
+            {corrects ? "Process corrected invoice" : "Process invoice"}
           </button>
         </span>
       </div>
       {error && (
         <p className="field-error" role="alert">
           {submitErrorText(error.code, error.message)}
+        </p>
+      )}
+      {corrected.failure && (
+        <p className="field-error" role="alert">
+          {submitErrorText(corrected.failure.code, corrected.failure.message)}
         </p>
       )}
     </section>

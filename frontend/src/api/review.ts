@@ -1,13 +1,11 @@
 /**
  * Review queue and review action client (P5-09 on the P5-04 endpoints).
  *
- * Generated types (schema.d.ts, from openapi.json) for every shape the backend already
- * serves: ReviewAction, ReviewRefusal, AllowedActions, FieldChange, CorrectionBody,
- * ReviewDecisionBody and the RunAccepted a review action returns.
- *
- * TODO(P5-04 stage 3): the review queue and corrected-submission endpoints are not served
- * yet. QueueItem, ReviewQueue and CorrectedSubmissionInput below are HAND-WRITTEN mirrors of
- * schemas.py until they are; then replace them with `Wire[...]` aliases.
+ * Wire shapes are the generated types (schema.d.ts, from openapi.json): ReviewAction,
+ * ReviewRefusal, AllowedActions, QueueItem, ReviewQueue, FieldChange, CorrectionBody,
+ * ReviewDecisionBody and the RunAccepted every review action returns. The only local shapes
+ * are the normalised queue (every group present) and the corrected-submission form input,
+ * which is sent as multipart fields.
  */
 import { toInvoiceDetail } from "./adapters";
 import { ApiError, request } from "./client";
@@ -15,7 +13,6 @@ import type {
   ExecutionMode,
   FindingCode,
   InvoiceDetail,
-  InvoiceStatus,
   ReviewAllowedActions,
   ReviewRefusal,
   Wire,
@@ -33,21 +30,13 @@ export const QUEUE_GROUPS = [
 ] as const;
 export type QueueGroup = (typeof QUEUE_GROUPS)[number];
 
-/** schemas.QueueItem (hand-written until GET /api/review-queue is served). */
-export interface QueueItem {
-  invoice_id: string;
-  vendor_name: string | null;
-  invoice_number: string | null;
-  /** Decimal string. */
-  total: string | null;
-  currency: string | null;
-  status: InvoiceStatus;
-  current_version: number | null;
+/** schemas.QueueItem; `actions` is the server's AllowedActions for the item. */
+export type QueueItem = Omit<Wire["QueueItem"], "actions" | "reason_codes"> & {
   reason_codes: FindingCode[];
   actions: ReviewAllowedActions;
-}
+};
 
-/** schemas.ReviewQueue: every group present, even when empty. */
+/** schemas.ReviewQueue, normalised: every group present, even when empty. */
 export interface ReviewQueue {
   groups: Record<QueueGroup, QueueItem[]>;
 }
@@ -61,7 +50,7 @@ export type CorrectionBody = Wire["CorrectionBody"];
 /** POST /api/invoices/{id}/approve and /decline body. */
 export type ReviewDecisionBody = Wire["ReviewDecisionBody"];
 
-/** POST /api/invoices/{id}/corrected-submission (multipart) fields. */
+/** POST /api/invoices/{id}/corrected-submission (multipart): the form input. */
 export interface CorrectedSubmissionInput {
   file: File;
   expected_version: number;
@@ -171,7 +160,7 @@ export function classifyReviewError(error: unknown): ReviewFailure {
 
 const enc = encodeURIComponent;
 
-function normalizeQueue(body: Partial<ReviewQueue> | null | undefined): ReviewQueue {
+function normalizeQueue(body: Wire["ReviewQueue"] | null | undefined): ReviewQueue {
   const groups = (body?.groups ?? {}) as Partial<Record<QueueGroup, QueueItem[]>>;
   return {
     groups: Object.fromEntries(QUEUE_GROUPS.map((g) => [g, groups[g] ?? []])) as Record<
@@ -184,7 +173,7 @@ function normalizeQueue(body: Partial<ReviewQueue> | null | undefined): ReviewQu
 export const reviewApi = {
   /** GET /api/review-queue */
   queue: async (signal?: AbortSignal): Promise<ReviewQueue> =>
-    normalizeQueue(await request<ReviewQueue>("/review-queue", { signal })),
+    normalizeQueue(await request<Wire["ReviewQueue"]>("/review-queue", { signal })),
 
   /** POST /api/invoices/{id}/corrections — starts a revalidation run on a new version. */
   correct: (invoiceId: string, body: CorrectionBody, idempotencyKey: string) =>

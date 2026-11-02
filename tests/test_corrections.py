@@ -186,37 +186,40 @@ def test_json_line_cannot_be_cited_under_another_index_spelling(tmp_path):
 
 def test_correction_evidence_stores_the_canonical_location(tmp_path):
     db = seeded_db(tmp_path)
-    r1 = process(REVIEW / "source_error.txt", db)
-    correct(db, r1, change("stated.total", "5050.00", "line:014"))
+    r1 = process(REVIEW / "extraction_mistake.txt", db)
+    correct(db, r1, change("stated.total", "3500.00", "line:013"))
     (row,) = rows(db, "SELECT evidence_location FROM corrections")
-    assert row["evidence_location"] == "line:14"
+    assert row["evidence_location"] == "line:13"
     (v2,) = rows(db, "SELECT payload_json FROM invoice_versions WHERE version = 2")
     events = json.loads(v2["payload_json"])["normalization_events"]
     (event,) = [e for e in events if e["provenance"] == "review:correction"]
-    assert event["evidence"][0]["location"] == "line:14"
+    assert event["evidence"][0]["location"] == "line:13"
 
 
 def test_tax_correction_cites_the_tax_line(tmp_path):  # Minor 2
     db = seeded_db(tmp_path)
     r1 = process(REVIEW / "source_error.txt", db)
-    r2 = correct(db, r1, change("stated.tax", "0.00", "line:13"))
-    assert r2.version == 2
+    # The tax line supports 0.00 (no evidence refusal); the version already holds it.
+    e = refused(db, r1, change("stated.tax", "0.00", "line:13"))
+    assert e.code is ReviewRefusal.no_change
 
 
 def test_json_and_xml_money_supported_at_its_own_path(tmp_path):
+    # What the file says at its own path passes the evidence rule, so the only refusal left
+    # is no_change: the version already holds that value (a correction never "clears" a
+    # source error by restating it).
     db = seeded_db(tmp_path)
     r1 = process(REVIEW / "source_error.json", db)
-    r2 = correct(db, r1, change("stated.total", "5050.00", "$.total"))  # what the file says
-    assert r2.version == 2 and r2.status == "rejected"  # still total_mismatch: not cleared
-    assert "total_mismatch" in codes(r2.findings)
+    e = refused(db, r1, change("stated.total", "5050.00", "$.total"))
+    assert e.code is ReviewRefusal.no_change
     j = process(INVOICES / "invoice_1013.json", db)
     e = refused(db, j, change("stated.total", "22512.80", "$.total"))
     assert e.code is ReviewRefusal.correction_not_in_source
     x1 = process(INVOICES / "invoice_1014.xml", db)
     e = refused(db, x1, change("stated.total", "4120.00", "/invoice/totals/total"))
     assert e.code is ReviewRefusal.correction_not_in_source
-    x2 = correct(db, x1, change("stated.total", "4125.00", "/invoice/totals/total"))
-    assert x2.version == 2 and x2.status == "needs_review"  # EUR stays review-only
+    e = refused(db, x1, change("stated.total", "4125.00", "/invoice/totals/total"))
+    assert e.code is ReviewRefusal.no_change
     assert payment_count(db, x1.invoice_id) == 0
 
 
@@ -473,3 +476,140 @@ def test_retry_refused_when_the_corrected_version_is_no_longer_current(tmp_path)
         service.retry_run(r2.run_id, None, db, EVAL, provider=live_provider())
     assert e.value.reason == "not_current"
     assert counts(db) == before
+
+
+AFTER_REC = REVIEW / "correction_after_recommendation.txt"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "loc"),
+    [("due_date", "2026-03-15", "line:6"), ("stated.total", "12,000.00", "line:14")],
+)
+def test_no_op_correction_after_decline_is_refused(tmp_path, field, value, loc):  # Final I1
+    """A correction to the value the version already holds would re-queue a declined
+    invoice for approval under a new version without changing anything."""
+    db = seeded_db(tmp_path)
+    r1 = process(AFTER_REC, db)
+    assert r1.status == "awaiting_human_approval"
+    assert review.decline(r1.invoice_id, 1, "Ana", "Not ours", db_path=db).status == "rejected"
+    e = refused(db, r1, change(field, value, loc), reason="noop", reviewer="Bob")
+    assert e.code is ReviewRefusal.no_change
+    assert e.current is not None and e.current.current_version == 1
+    with pytest.raises(review.ReviewRefused) as stale:  # v2 never existed
+        review.approve(r1.invoice_id, 2, "Bob", "fine", db_path=db)
+    assert stale.value.code is ReviewRefusal.stale_version
+    assert payment_count(db, r1.invoice_id) == 0
+
+
+def test_no_op_change_refuses_the_whole_request(tmp_path):  # all or nothing
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "extraction_mistake.txt", db)
+    e = refused(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        change("due_date", "2026-03-01", "line:6"),
+    )
+    assert e.code is ReviewRefusal.no_change
+
+
+def test_real_change_after_decline_is_a_new_version_needing_approval(tmp_path):  # Final I1
+    db = seeded_db(tmp_path)
+    r1 = process(AFTER_REC, db)
+    review.decline(r1.invoice_id, 1, "Ana", "Not ours", db_path=db)
+    r2 = correct(db, r1, change("due_date", "2026-03-31", "line:16"), reason="extended")
+    assert r2.version == 2 and r2.status == "awaiting_human_approval"
+    assert payment_count(db, r1.invoice_id) == 0
+
+
+def test_failed_live_review_runs_offer_retry_only(tmp_path):  # Final Minor 1
+    db = seeded_db(tmp_path)
+    base = live_provider(Parsed({"proposals": []}), Parsed(rec()), Parsed(crit()))
+    r1 = process(REVIEW / "extraction_mistake.txt", db, mode=LIVE, provider=base)
+    r2 = correct(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        provider=live_provider(UNAVAILABLE, UNAVAILABLE),
+    )
+    assert r2.status is RunStatus.failed and r2.recoverable
+    assert r2.next_actions == ["retry"]
+    r3 = service.retry_run(
+        r2.run_id, None, db, EVAL, provider=live_provider(UNAVAILABLE, UNAVAILABLE)
+    )
+    assert r3.status is RunStatus.failed and r3.next_actions == ["retry"]
+    # A failed live submission still offers the offline simulation.
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    other = process(
+        REVIEW / "extraction_mistake.txt",
+        seeded_db(fresh),
+        mode=LIVE,
+        provider=live_provider(Parsed({"proposals": []}), UNAVAILABLE, UNAVAILABLE),
+    )
+    assert other.status is RunStatus.failed
+    assert other.next_actions == list(service.RECOVERY_ACTIONS)
+    # So does a failed live corrected submission: its retry keeps the supersede link.
+    third = tmp_path / "third"
+    third.mkdir()
+    db3 = seeded_db(third)
+    base3 = process(REVIEW / "extraction_mistake.txt", db3)
+    resent = review.submit_corrected_invoice(
+        base3.invoice_id,
+        REVIEW / "extraction_mistake.txt",
+        "resent",
+        "Ana",
+        db_path=db3,
+        evaluation_date=EVAL,
+        mode=LIVE,
+        provider=live_provider(Parsed({"proposals": []}), UNAVAILABLE, UNAVAILABLE),
+    )
+    assert resent.status is RunStatus.failed and resent.next_actions == ["retry"]
+
+
+def test_reupload_after_a_paying_correction_retry_returns_the_receipt(tmp_path):  # Final I2
+    """Decision 17: the original bytes return the latest outcome, the corrected version's
+    receipt, even when a retry of the correction run paid."""
+    db = seeded_db(tmp_path)
+    base = live_provider(Parsed({"proposals": []}), Parsed(rec()), Parsed(crit()))
+    src = REVIEW / "extraction_mistake.txt"
+    r1 = process(src, db, mode=LIVE, provider=base)
+    r2 = correct(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        provider=live_provider(UNAVAILABLE, UNAVAILABLE),
+    )
+    r3 = service.retry_run(
+        r2.run_id, None, db, EVAL, provider=live_provider(Parsed(rec()), Parsed(crit()))
+    )
+    assert r3.status == "paid_mock"
+    d = process(src, db, mode=LIVE, provider=live_provider())  # no model call expected
+    assert d.status is RunStatus.duplicate and d.prior_run_id == r3.run_id
+    assert d.receipt is not None and d.receipt.receipt_id == r3.receipt.receipt_id
+    assert payment_count(db, r1.invoice_id) == 1
+
+
+def test_restating_a_value_confirms_the_parser_after_a_disagreement(tmp_path):  # Final I1
+    """The one accepted no-op: it drops a carried review finding on that field, here the
+    model's disagreeing (but source-supported) invoice date, so the parser's reading stands."""
+    db = seeded_db(tmp_path)
+    wrong_date = {
+        "field": "invoice_date",
+        "value": "2026-03-01",
+        "quote": "2026-03-01",
+        "location": "line:6",
+    }
+    base = live_provider(Parsed({"proposals": [wrong_date]}), Parsed(rec()), Parsed(crit()))
+    r1 = process(REVIEW / "extraction_mistake.txt", db, mode=LIVE, provider=base)
+    flagged = [(f.code.value, f.field) for f in r1.findings if f.severity == "review"]
+    assert ("model_parser_disagreement", "invoice_date") in flagged
+    r2 = correct(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        change("invoice_date", "2026-01-20", "line:5"),  # the value v1 already holds
+        provider=live_provider(Parsed(rec()), Parsed(crit())),
+    )
+    assert r2.version == 2 and r2.status == "paid_mock"
+    assert "model_parser_disagreement" not in codes(r2.findings)

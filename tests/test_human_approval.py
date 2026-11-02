@@ -445,3 +445,63 @@ def _due_date_request(result):
         reason="Due date extended",
         reviewer="Ana",
     )
+
+
+def test_reupload_after_crashed_approve_paid_on_retry_returns_the_receipt(tmp_path, monkeypatch):
+    """Final I2: the approve run paid, then died; its retry repoints the payment. The original
+    bytes then return the paying run and its receipt, not the waiting base run."""
+    db = seeded_db(tmp_path)
+    hv = THRESHOLD / "valid_10000_01.json"
+    r1 = process(hv, db)
+    real = payments.pay
+
+    def pay_then_die(*a, **k):
+        real(*a, **k)
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as m:
+        m.setattr(payments, "pay", pay_then_die)
+        with pytest.raises(KeyboardInterrupt):
+            review.approve(r1.invoice_id, 1, "Ana", "Checked", db_path=db)
+    conn = storage.connect(db)
+    try:
+        (crashed,) = conn.execute("SELECT run_id FROM runs WHERE trigger = 'human_review'")
+    finally:
+        conn.close()
+    r = service.retry_run(crashed["run_id"], None, db, EVAL)
+    assert r.status == "paid_mock" and r.receipt is not None
+    d = process(hv, db)
+    assert d.status is RunStatus.duplicate and d.prior_run_id == r.run_id
+    assert d.receipt is not None and d.receipt.receipt_id == r.receipt.receipt_id
+    assert payment_count(db, r1.invoice_id) == 1
+
+
+def test_cli_retry_of_live_approve_needs_no_credentials(tmp_path, capsys, monkeypatch):
+    """Final Minor 2: an approve/decline run calls no model, so its CLI retry builds no live
+    provider (no XAI_* env here) and sends nothing to xAI."""
+    import json
+
+    import main
+
+    db = seeded_db(tmp_path)
+    client = FakeXaiClient(
+        [
+            Parsed(_live_rec("Total 10,000.01 is above the 10,000.00 threshold")),
+            Parsed(_live_crit()),
+        ]
+    )
+    provider = XaiProvider(
+        LiveSettings(api_key="sk-SENTINEL-123", model="grok-test"), factory(client)
+    )
+    r1 = process(THRESHOLD / "valid_10000_01.json", db, ExecutionMode.live, provider)
+    run_id = _interrupted_approve(db, r1.invoice_id, monkeypatch)
+    later = FakeXaiClient([])
+    monkeypatch.setattr("invoice_processing.reasoning.xai.real_client_factory", lambda s: later)
+    common = [f"--db={db}", f"--events={tmp_path / 'e.jsonl'}"]
+    assert main.main([*common, f"--retry={run_id}"]) == 0
+    out, err = capsys.readouterr()
+    result = json.loads(out)
+    assert result["status"] == "paid_mock" and result["mode"] == "live"
+    assert "human review (no model call)" in err
+    assert "sent to xAI" not in err and later.requests == []
+    assert payment_count(db, r1.invoice_id) == 1

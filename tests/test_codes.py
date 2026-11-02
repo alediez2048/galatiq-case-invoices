@@ -137,6 +137,7 @@ def test_review_enums():
         "evidence_unavailable",
         "source_text_unavailable",
         "corrected_identity_mismatch",
+        "no_change",
     }
 
 

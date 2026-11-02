@@ -47,8 +47,11 @@ def _call_budget(provider: ReasoningProvider) -> int | None:
 def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingResult:
     error_code = state.get("error_code")
     source = state.get("source")
+    # A review run's work lives in its version, not its file: processing the file offline
+    # would only re-extract the original version, so a failed review run offers retry alone.
+    review_run = state.get("trigger", "submission") != "submission" or bool(state.get("supersede"))
     if error_code in _MODEL_ERROR_CODES:
-        next_actions = list(RECOVERY_ACTIONS)
+        next_actions = ["retry"] if review_run else list(RECOVERY_ACTIONS)
     elif error_code == "unexpected_error":
         next_actions = ["retry"]  # an offline simulation would not fix it
     else:

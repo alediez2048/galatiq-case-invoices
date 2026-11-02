@@ -232,10 +232,11 @@ def latest_run_in_other_mode(
     return None if row is None or row["mode"] == mode.value else row["run_id"]
 
 
-def payment_outside_retry_chain(conn: sqlite3.Connection, run_id: str) -> str | None:
-    """Receipt id of a same-version payment for this run's identity made by a run that is
-    outside this run's retry chain and did not fail; None otherwise (also when the run never
-    reached an identity). A payer that failed (paid, then crashed) is a replay, not this."""
+def payment_by_another_run(conn: sqlite3.Connection, run_id: str) -> str | None:
+    """Receipt id of a same-version payment for this run's identity made by any other run
+    that did not fail (a retry in this run's own chain included); None otherwise (also when
+    the run never reached an identity). A payer that failed (paid, then crashed) is a replay,
+    not this."""
     run = conn.execute(
         "SELECT r.invoice_id, v.version FROM runs r "
         "JOIN invoice_versions v ON v.version_id = r.version_id WHERE r.run_id = ?",
@@ -243,12 +244,10 @@ def payment_outside_retry_chain(conn: sqlite3.Connection, run_id: str) -> str | 
     ).fetchone()
     if run is None:
         return None
-    chain = [run_id, *_retry_chain(conn, run_id)]
-    slots = ",".join("?" * len(chain))
     row = conn.execute(
         "SELECT p.receipt_id FROM payments p JOIN runs r ON r.run_id = p.run_id "
-        f"WHERE p.invoice_id = ? AND p.version = ? AND r.status != ? AND r.run_id NOT IN ({slots})",
-        (run["invoice_id"], run["version"], RunStatus.failed.value, *chain),
+        "WHERE p.invoice_id = ? AND p.version = ? AND r.status != ? AND r.run_id != ?",
+        (run["invoice_id"], run["version"], RunStatus.failed.value, run_id),
     ).fetchone()
     return None if row is None else row["receipt_id"]
 
@@ -555,9 +554,10 @@ def check_identity(
        this run a duplicate; failed and duplicate runs never count.
     3. Failing that, such an outcome of another version is a version conflict.
 
-    A retry run (retry_of set) is never a duplicate: rule 1 sends a same-version payment
-    back through pay() and rule 2 is skipped, but revisions and version conflicts still
-    apply, with the run being retried and its retry chain excluded from prior outcomes.
+    For a retry run (retry_of set) rule 1 applies unchanged (a same-version payment by a
+    run that did not fail makes it a duplicate carrying the receipt) and rule 2 is skipped;
+    revisions and version conflicts still apply, with the run being retried and its retry
+    chain excluded from prior outcomes.
     """
     new = IdentityCheck("new", None)
     this = conn.execute("SELECT retry_of FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -585,7 +585,9 @@ def check_identity(
         if payment["version"] != version["version"]:
             return IdentityCheck("revision_after_payment", _prior(conn, payment))
         # The payment outranks every other run of this identity, so history is not consulted.
-        if is_retry or payment["status"] == RunStatus.failed.value:
+        # A failed payer (paid, then crashed) is replayed; any other payer makes this run,
+        # retry or not, a duplicate carrying the existing receipt.
+        if payment["status"] == RunStatus.failed.value:
             return new
         return IdentityCheck("duplicate", _prior(conn, payment))
 

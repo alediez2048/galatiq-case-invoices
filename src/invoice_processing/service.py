@@ -101,7 +101,7 @@ def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> le
         raise RetryRefused("source_mismatch", run_id)
     # Another (non-failed) run already paid this version: a retry would only re-decide a
     # paid identity. A payer that crashed after paying is retried and re-pointed instead.
-    receipt_id = ledger.payment_outside_retry_chain(conn, run_id)
+    receipt_id = ledger.payment_by_another_run(conn, run_id)
     if receipt_id is not None:
         raise RetryRefused("already_paid", run_id, receipt_id)
     return run

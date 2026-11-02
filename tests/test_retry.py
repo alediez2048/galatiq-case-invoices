@@ -236,6 +236,41 @@ def test_retry_refused_when_another_run_already_paid(db, decision):
     assert rows(db, "SELECT run_id FROM payments") == [{"run_id": offline.run_id}]
 
 
+def test_second_retry_of_a_failed_run_after_its_retry_paid_is_refused(db):
+    failed = process_invoice(INV_1001, LIVE, db, EVAL, provider=failing())
+    paid = retry_run(failed.run_id, INV_1001, db, EVAL, provider=working())
+    assert paid.status is RunStatus.paid_mock
+    client = FakeXaiClient([Parsed(rec("reject")), Parsed(crit())])
+    runs_before = rows(db, "SELECT run_id FROM runs")
+    with pytest.raises(RetryRefused) as exc:
+        retry_run(
+            failed.run_id, INV_1001, db, EVAL, provider=XaiProvider(SETTINGS, factory(client))
+        )
+    assert exc.value.reason == "already_paid"
+    assert exc.value.receipt_id == paid.receipt.receipt_id
+    assert client.requests == []
+    assert rows(db, "SELECT run_id FROM runs") == runs_before
+    assert n_payments(db) == 1
+
+
+def test_retry_of_versionless_crash_after_another_run_paid_is_a_duplicate(db):
+    # the run crashed before reaching an identity, so the refusal cannot see the payment;
+    # the identity check then finds it and the retry ends duplicate with the receipt.
+    c = connect(db)
+    source_id, _ = ledger.record_source(c, _source(INV_1001))
+    stale = ledger.start_run(c, OFF, source_id, EVAL)
+    c.close()
+    paid = process_invoice(INV_1001, OFF, db, EVAL)  # the startup sweep interrupts `stale`
+    assert paid.status is RunStatus.paid_mock
+    assert run_row(db, stale)["error_code"] == "interrupted"
+    retried = retry_run(stale, INV_1001, db, EVAL)
+    assert retried.status is RunStatus.duplicate
+    assert retried.prior_run_id == paid.run_id
+    assert retried.receipt.receipt_id == paid.receipt.receipt_id
+    assert rows(db, "SELECT run_id FROM payments") == [{"run_id": paid.run_id}]
+    assert rows(db, "SELECT run_id FROM decisions") == [{"run_id": paid.run_id}]
+
+
 def _crash_after_paying(monkeypatch):
     real = ledger.update_run_status
 

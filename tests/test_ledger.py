@@ -433,12 +433,22 @@ def test_check_identity_ignores_failed_duplicate_and_retry_runs(conn, sid, two_v
     assert ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2)).kind == "new"
 
 
-def test_check_identity_retry_of_paid_same_version_is_new_never_duplicate(conn, sid, two_versions):
-    # pay() then returns the existing receipt; a retry is never a duplicate
+def test_check_identity_retry_of_paid_same_version_is_duplicate(conn, sid, two_versions):
+    # another run paid and did not fail: the retry must not re-decide a paid identity
     inv, v1, _ = two_versions
     paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
     add_payment(conn, inv, 1, paid)
     original = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    retry = current(conn, sid, inv, v1, retry_of=original)
+    check = ledger.check_identity(conn, inv, v1, retry)
+    assert check.kind == "duplicate" and check.prior.run_id == paid
+
+
+def test_check_identity_retry_of_failed_payer_is_new(conn, sid, two_versions):
+    # the payer paid, then crashed: the retry replays pay(), which returns the receipt
+    inv, v1, _ = two_versions
+    original = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    add_payment(conn, inv, 1, original)
     retry = current(conn, sid, inv, v1, retry_of=original)
     assert ledger.check_identity(conn, inv, v1, retry).kind == "new"
 

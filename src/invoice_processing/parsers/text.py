@@ -81,6 +81,9 @@ _ITEM_PATTERNS = (
 )
 
 
+_Entry = tuple[str, str, EvidenceRef]
+
+
 def _norm(label: str) -> str:
     return " ".join(label.casefold().split())
 
@@ -119,8 +122,8 @@ def parse_lines(source_id: str, lines: list[tuple[str, str]]) -> InvoiceDraft:
         title = _TITLE_NUMBER.match(line)
         if title:
             in_notes = False
-            _set_field(draft, "invoice_number", title["value"].strip(), ref)
-            _alias_event(draft, "invoice_number", "INVOICE #", ref)
+            if _set_field(draft, "invoice_number", title["value"].strip(), ref):
+                _alias_event(draft, "invoice_number", "INVOICE #", ref)
             continue
         labeled = _LABELED.match(line)
         known = labeled and _classify(labeled["label"])
@@ -173,7 +176,7 @@ def _classify(label: str) -> tuple[str, str] | None:
     return None
 
 
-def _skip_email_header(draft: InvoiceDraft, entries: list) -> int:
+def _skip_email_header(draft: InvoiceDraft, entries: list[_Entry]) -> int:
     """Return the index after a leading email header block (kept as evidence only)."""
     first = next((i for i, (_, line, _) in enumerate(entries) if line), None)
     if first is None:

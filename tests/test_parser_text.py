@@ -100,3 +100,93 @@ def test_every_value_has_line_evidence():
         assert all(
             refs and refs[0].location.startswith("line:") for refs in d.field_evidence.values()
         )
+
+
+def codes(d):
+    return [i.code for i in d.issues]
+
+
+def test_duplicate_title_number_records_no_alias_event():
+    d = parse_lines("s", [("line:1", "Invoice Number: 5"), ("line:2", "INVOICE #7")])
+    assert d.invoice_number_raw == "5"
+    assert codes(d) == ["duplicate_field"]
+    assert aliases(d) == set()
+
+
+def test_blank_line_ends_item_block():
+    d = parse_lines(
+        "s",
+        [
+            ("line:1", "Items:"),
+            ("line:2", "  A qty: 1 unit price: $1"),
+            ("line:3", ""),
+            ("line:4", "  B qty: 1 unit price: $1"),
+        ],
+    )
+    assert [x.raw_name for x in d.lines] == ["A"]
+    assert codes(d) == ["unparsed_line"]
+
+
+def test_blank_line_ends_notes_continuation():
+    d = parse_lines(
+        "s", [("line:1", "Notes: first"), ("line:2", "second"), ("line:3", ""), ("line:4", "third")]
+    )
+    assert d.notes_raw == "first second"
+    assert codes(d) == ["unparsed_line"]
+    assert [e.location for e in d.field_evidence["notes"]] == ["line:1", "line:2"]
+
+
+def test_ignored_labels_are_evidence_only():
+    d = parse_lines(
+        "s", [("line:1", "Bill To: ACME"), ("line:2", "Attn: AP"), ("line:3", "To: ACME Corp")]
+    )
+    assert d.issues == []
+    assert [e.location for e in d.evidence] == ["line:1", "line:2", "line:3"]
+    assert d.field_evidence == {} and d.vendor_raw is None
+
+
+def test_header_block_without_at_sign_is_not_skipped():
+    d = parse_lines(
+        "s", [("line:1", "From: Acme Supplies"), ("line:2", "To: Us"), ("line:3", "Subject: Hi")]
+    )
+    assert d.vendor_raw == "Acme Supplies"
+    assert codes(d) == ["unparsed_line"]
+
+
+def test_empty_value_on_non_notes_field_is_unparsed():
+    d = parse_lines("s", [("line:1", "Vendor:")])
+    assert d.vendor_raw is None
+    assert codes(d) == ["unparsed_line"]
+
+
+def test_nonmatching_line_in_item_block_is_unparsed():
+    d = parse_lines("s", [("line:1", "Items:"), ("line:2", "nothing like an item")])
+    assert d.lines == []
+    assert codes(d) == ["unparsed_line"]
+
+
+def test_item_patterns_a_and_b_multiword_names():
+    d = parse_lines(
+        "s",
+        [
+            ("line:1", "Items:"),
+            ("line:2", "  Big Widget  qty: 2  unit price: $5.00"),
+            ("line:3", "  Big Widget  qty 2 @ $5 ea"),
+        ],
+    )
+    assert [(x.raw_name, x.quantity_raw, x.unit_price_raw) for x in d.lines] == [
+        ("Big Widget", "2", "$5.00"),
+        ("Big Widget", "2", "$5"),
+    ]
+
+
+def test_1002_misspelled_title_is_one_unparsed_line():
+    d = draft("invoice_1002.txt")
+    assert codes(d) == ["unparsed_line"]
+    assert d.issues[0].evidence[0].location == "line:1"
+
+
+def test_1008_dates_via_aliases():
+    d = draft("invoice_1008.txt")
+    assert (d.invoice_date_raw, d.due_date_raw) == ("2026-01-10", "2026-01-20")
+    assert ("due_date", "Due") in aliases(d)

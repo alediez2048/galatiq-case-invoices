@@ -620,6 +620,20 @@ def source_original(source_id: str, request: Request) -> FileResponse:
     )
 
 
+class SpaStaticFiles(StaticFiles):
+    """The built UI. Client-side routes (/invoices/x, /runs/x) fall back to index.html so a
+    browser refresh or deep link works; unknown /api paths and missing assets stay 404."""
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            last = path.rsplit("/", 1)[-1]
+            if exc.status_code != 404 or path.split("/", 1)[0] == "api" or "." in last:
+                raise
+            return await super().get_response("index.html", scope)
+
+
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
     settings = settings or ApiSettings()
     ensure_database(Path(settings.db_path))
@@ -644,7 +658,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(router)
     dist = Path(settings.frontend_dist)
     if dist.is_dir():
-        app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
+        app.mount("/", SpaStaticFiles(directory=dist, html=True), name="frontend")
     return app
 
 

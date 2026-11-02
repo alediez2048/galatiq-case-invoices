@@ -26,7 +26,7 @@ function NavCount({ value, label }: { value: number | undefined; label: string }
 
 export function AppFrame() {
   const location = useLocation();
-  const overview = useOverview();
+  const overview = useOverview(location.pathname);
   const counts = overview.data?.counts;
   const reviewCount = counts ? counts.needs_review + counts.awaiting_human_approval : undefined;
 

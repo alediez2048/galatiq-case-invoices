@@ -54,7 +54,9 @@ export function useApiQuery<T>(
 
 export const useReadiness = () => useApiQuery("readiness", (s) => api.readiness(s));
 
-export const useOverview = () => useApiQuery("overview", (s) => api.overview(s));
+/** `refreshKey` refetches when it changes (the frame passes the route, so counts follow runs). */
+export const useOverview = (refreshKey = "") =>
+  useApiQuery(`overview:${refreshKey}`, (s) => api.overview(s));
 
 export function useInvoices(q: InvoiceListQuery) {
   const key = `invoices:${q.status ?? ""}:${q.mode ?? ""}:${q.q ?? ""}:${q.page ?? 1}`;

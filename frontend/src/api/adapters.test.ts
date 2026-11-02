@@ -41,9 +41,10 @@ describe("adapters over real API responses", () => {
     expect(d.evaluation_date).toBe("2026-01-31");
     expect(d.mode).toBe("offline");
     expect(d.source?.original_name).toBe("invoice_1001.txt");
-    expect(d.line_items.map((l) => [l.item, l.requested, l.available, l.shortfall])).toEqual([
-      ["WidgetA", "10", 15, null],
-      ["WidgetB", "5", 10, null],
+    expect(d.line_items.map((l) => [l.item, l.requested, l.available, l.line_total, l.shortfall])).toEqual([
+      // 1001 states no per-line totals and the ledger persists no computed ones: shown as missing.
+      ["WidgetA", "10", 15, null, null],
+      ["WidgetB", "5", 10, null, null],
     ]);
     expect(d.receipt?.amount).toBe("5000.00");
     expect(d.latest_result?.status).toBe("paid_mock");

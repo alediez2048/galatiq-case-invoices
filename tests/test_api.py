@@ -621,3 +621,21 @@ def test_openapi_refs_all_resolve(client):
                 walk(value)
 
     walk(spec)
+
+
+def test_built_frontend_is_served_with_client_side_route_fallback(settings, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>ui</title>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    settings.frontend_dist = dist
+    with TestClient(api.create_app(settings)) as c:
+        assert c.get("/").text.startswith("<!doctype html>")
+        assert c.get("/assets/app.js").text == "console.log(1)"
+        for route in ("/invoices/inv-1", "/runs/run-1", "/add"):
+            r = c.get(route)
+            assert r.status_code == 200 and "<title>ui</title>" in r.text, route
+        assert c.get("/assets/missing.js").status_code == 404
+        missing_api = c.get("/api/nope")
+        assert missing_api.status_code == 404 and missing_api.json()["code"] == "not_found"
+        assert c.get("/api/health").json() == {"status": "ok"}

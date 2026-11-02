@@ -45,9 +45,10 @@ def test_inv_1001_end_to_end_extraction():
     assert inv.stated.subtotal == inv.stated.total == Decimal("5000.00")
     assert inv.stated.tax == Decimal("0.00") and inv.stated.tax_rate == Decimal("0")
     assert inv.currency == "USD"
-    assert [f.code for f in findings] == [C.currency_assumed_usd]
+    # 1001 states Net 15 (Decision 17: a warning only).
+    assert [f.code for f in findings] == [C.terms_inconsistent, C.currency_assumed_usd]
     assert "rule:invoice_number_format" in [e.provenance for e in inv.normalization_events]
-    assert findings[0].severity == DEFAULT_SEVERITY[C.currency_assumed_usd]
+    assert findings[1].severity == DEFAULT_SEVERITY[C.currency_assumed_usd]
     assert any(e.provenance == "rule:dataset_usd_assumption" for e in inv.normalization_events)
 
 
@@ -57,7 +58,7 @@ def test_usd_assumption_cites_first_dollar_evidence():
     assert event.raw_value is None and event.normalized_value == "USD"
     assert event.evidence[0].location == "line:12"
     assert "$" in (event.evidence[0].snippet or "")
-    assert findings[0].evidence == event.evidence
+    assert findings[-1].evidence == event.evidence
 
 
 def test_crlf_bom_and_trailing_spaces_extract_identically(tmp_path):
@@ -73,29 +74,30 @@ def test_crlf_bom_and_trailing_spaces_extract_identically(tmp_path):
 
 
 def test_explicit_currency_no_assumption(tmp_path):
-    inv, findings = _norm(tmp_path, "Currency: EUR\nSubtotal: $10\n")
+    inv, findings = _norm(tmp_path, "Currency: EUR\nSubtotal: 10\n")
     assert inv.currency == "EUR"
-    assert findings == []
+    assert [f.code for f in findings] == [C.unsupported_currency]
     assert not any(e.field == "currency" for e in inv.normalization_events)
 
 
-def test_no_dollar_no_currency(tmp_path):
+def test_no_dollar_no_code_assumes_usd_without_evidence(tmp_path):
     inv, findings = _norm(tmp_path, "Subtotal: 10\n")
-    assert inv.currency is None
-    assert findings == []
+    assert inv.currency == "USD"
+    assert [f.code for f in findings] == [C.currency_assumed_usd]
+    assert findings[0].evidence == []
 
 
 def test_unparseable_values_stay_none_with_event(tmp_path):
     inv, _ = _norm(
         tmp_path,
-        "Date: 15/01/2026\nTotal: five\nItems:\n  W qty: many unit price: $1\n",
+        "Date: sometime\nTotal: five\nItems:\n  W qty: many unit price: $1\n",
     )
     assert inv.invoice_date is None
     assert inv.stated.total is None
     assert inv.lines[0].quantity is None
     assert inv.lines[0].unit_price == Decimal("1")
     events = {e.field: e for e in inv.normalization_events if e.provenance == "rule:unparseable"}
-    assert events["invoice_date"].raw_value == "15/01/2026"
+    assert events["invoice_date"].raw_value == "sometime"
     assert events["invoice_date"].normalized_value is None
     assert "total" in {f.split(".")[-1] for f in events}
     assert any(f.endswith("quantity") for f in events)
@@ -281,3 +283,101 @@ def test_unparseable_json_tax_rate_cites_its_own_path(tmp_path):
 def test_invoice_number_reducing_to_empty_key_has_no_key(raw):
     inv, _ = normalize(InvoiceDraft(source_id="s", invoice_number_raw=raw), ITEMS)
     assert inv.invoice_number_key is None
+
+
+def codes_of(fs):
+    return {f.code for f in fs}
+
+
+def test_1002_terms_inconsistent():
+    inv, fs = norm("invoice_1002.txt")
+    assert (inv.invoice_date, inv.due_date) == (date(2026, 1, 30), date(2026, 1, 30))
+    assert FindingCode.terms_inconsistent in codes_of(fs)
+
+
+def test_1003_unresolved_and_urgency():
+    inv, fs = norm("invoice_1003.txt")
+    assert inv.due_date is None
+    assert {FindingCode.due_date_unresolved, FindingCode.risk_signal_urgency} <= codes_of(fs)
+    assert [f.code for f in fs].count(FindingCode.risk_signal_urgency) == 1
+    assert next(f for f in fs if f.code == FindingCode.due_date_unresolved).field == "due_date"
+
+
+def test_1007_slash_dates():
+    inv, _ = norm("invoice_1007.csv")
+    assert (inv.invoice_date, inv.due_date) == (date(2026, 1, 28), date(2026, 2, 28))
+
+
+def test_1012_ocr_date():
+    inv, _ = norm("invoice_1012.txt")
+    assert inv.invoice_date == date(2026, 1, 26)
+    assert any(
+        e.provenance == "rule:ocr_digit" and e.field == "invoice_date"
+        for e in inv.normalization_events
+    )
+
+
+def test_1014_eur_not_converted():
+    inv, fs = norm("invoice_1014.xml")
+    assert inv.currency == "EUR" and FindingCode.unsupported_currency in codes_of(fs)
+
+
+def test_1013_json_and_pdf_same_currency_assumption_only_on_pdf():
+    j, jf = norm("invoice_1013.json")
+    p, pf = norm("invoice_1013.pdf")
+    assert j.currency == p.currency == "USD"
+    assert FindingCode.currency_assumed_usd not in codes_of(jf)
+    assert FindingCode.currency_assumed_usd in codes_of(pf)
+
+
+def test_csv_without_symbols_assumes_usd():
+    inv, fs = norm("invoice_1006.csv")
+    assert inv.currency == "USD" and FindingCode.currency_assumed_usd in codes_of(fs)
+
+
+def test_currency_conflict():
+    d = parse_lines("s", [("line:1", "Currency: USD"), ("line:2", "Total: €10.00")])
+    _, fs = normalize(d, ITEMS)
+    assert FindingCode.currency_conflict in codes_of(fs)
+
+
+def test_symbol_without_code_is_unsupported():
+    d = parse_lines("s", [("line:1", "Total: £10.00")])
+    inv, fs = normalize(d, ITEMS)
+    assert inv.currency == "GBP" and FindingCode.unsupported_currency in codes_of(fs)
+    assert FindingCode.currency_assumed_usd not in codes_of(fs)
+
+
+def test_due_before_invoice_date():
+    d = parse_lines("s", [("line:1", "Date: 2026-01-15"), ("line:2", "Due Date: 2026-01-01")])
+    _, fs = normalize(d, ITEMS)
+    f = next(f for f in fs if f.code == FindingCode.due_before_invoice_date)
+    assert (f.expected, f.observed) == ("2026-01-15", "2026-01-01")
+
+
+def test_ambiguous_due_date_suppresses_missing_due_date():
+    from invoice_processing import validation
+
+    d = parse_lines("s", [("line:1", "Date: 2026-01-15"), ("line:2", "Due Date: 02/03/2026")])
+    inv, fs = normalize(d, ITEMS)
+    assert inv.due_date is None
+    amb = next(f for f in fs if f.code == FindingCode.ambiguous_date)
+    assert amb.field == "due_date"
+    unresolved = {f.field for f in fs}
+    assert FindingCode.missing_due_date not in {
+        f.code for f in validation.check_required_fields(inv, unresolved=unresolved)
+    }
+
+
+def test_net_terms_consistent_and_urgency_in_unparsed_line():
+    d = parse_lines(
+        "s",
+        [
+            ("line:1", "Date: 2026-01-15"),
+            ("line:2", "Due Date: 2026-02-14"),
+            ("line:3", "Payment Terms: Net 30"),
+            ("line:4", "PAY BY WIRE TRANSFER now"),
+        ],
+    )
+    _, fs = normalize(d, ITEMS)
+    assert FindingCode.terms_inconsistent not in codes_of(fs)

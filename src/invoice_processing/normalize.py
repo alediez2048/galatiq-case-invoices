@@ -6,11 +6,12 @@ evidence it rests on. Values that cannot be converted stay None and raise a revi
 
 import re
 from collections.abc import Callable, Collection
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
 from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode
+from invoice_processing.dates import AmbiguousDate, RelativeDate, parse_date
 from invoice_processing.money import parse_decimal
 from invoice_processing.schemas import (
     DraftLine,
@@ -27,6 +28,11 @@ _AMOUNT = re.compile(r"(?P<pre>-)?(?P<sym>[$€£])?(?P<post>-)?(?P<body>.*)")
 _PLAIN = re.compile(r"\d+(\.\d+)?")
 _GROUPED = re.compile(r"\d{1,3}(,\d{3})+(\.\d+)?")
 _OCR_O = re.compile(r"(?<=[\d.,])O|O(?=[\d.,])")
+_NET_TERMS = re.compile(r"net\s*(\d+)", re.IGNORECASE)
+_URGENCY = re.compile(
+    r"\b(urgent|immediately|asap|wire transfer|penalt(y|ies)|final notice)\b", re.IGNORECASE
+)
+_SYMBOL_CODES = {"$": "USD", "€": "EUR", "£": "GBP"}
 _KEY_STRIP = re.compile(r"[\s\-_/#.]")
 _INV_PREFIX = re.compile(r"^INV(?=\d)")
 _QUALIFIER = re.compile(r"^(?P<base>.+?)\s*\((?P<q>[^()]+)\)$")
@@ -216,7 +222,29 @@ def normalize(
         return convert(name, raw, parse_amount, field_ev(name), ocr_ok=True)
 
     def day(name: str, raw: str | None) -> date | None:
-        return convert(name, raw, date.fromisoformat, field_ev(name), ocr_ok=True)
+        ev = field_ev(name)
+        if raw is None:
+            return None
+        corrected = ocr(raw, parse_date)
+        if corrected is not None:
+            fixed, value = corrected
+            event(name, raw, fixed, ev, "ocr_digit")
+            return value
+        try:
+            return parse_date(raw)
+        except RelativeDate:
+            if name == "due_date":
+                event(name, raw, None, ev, "unresolved_date")
+                finding(FindingCode.due_date_unresolved, name, ev, observed=raw)
+                return None
+        except AmbiguousDate:
+            event(name, raw, None, ev, "ambiguous_date")
+            finding(FindingCode.ambiguous_date, name, ev, observed=raw)
+            return None
+        except ValueError:
+            pass
+        unparseable(name, raw, ev)
+        return None
 
     invoice = NormalizedInvoice(
         source_id=draft.source_id,
@@ -240,12 +268,9 @@ def normalize(
         ),
     )
 
-    if draft.currency_raw is None:
-        dollar = next((e for e in draft.evidence if "$" in (e.snippet or "")), None)
-        if dollar is not None:
-            invoice.currency = "USD"
-            event("currency", None, "USD", [dollar], "dataset_usd_assumption")
-            finding(FindingCode.currency_assumed_usd, "currency", [dollar], observed="USD")
+    _check_dates(invoice, finding, field_ev)
+    _resolve_currency(draft, invoice, event, finding, field_ev)
+    _urgency(draft, finding, field_ev)
     invoice.normalization_events = events
     return invoice, findings
 
@@ -256,3 +281,106 @@ def _present(value: str | None) -> bool:
 
 def _text(value: str | None) -> str | None:
     return value.strip() if _present(value) else None
+
+
+def _check_dates(invoice: NormalizedInvoice, finding, field_ev) -> None:
+    issued, due = invoice.invoice_date, invoice.due_date
+    if issued is None or due is None:
+        return
+    ev = field_ev("due_date")
+    if due < issued:
+        finding(
+            FindingCode.due_before_invoice_date,
+            "due_date",
+            ev,
+            expected=issued.isoformat(),
+            observed=due.isoformat(),
+        )
+    terms = _NET_TERMS.fullmatch(invoice.payment_terms or "")
+    if terms is not None:
+        expected = issued + timedelta(days=int(terms[1]))
+        if due != expected:
+            finding(
+                FindingCode.terms_inconsistent,
+                "payment_terms",
+                field_ev("payment_terms"),
+                expected=expected.isoformat(),
+                observed=due.isoformat(),
+            )
+
+
+def _amount_fields(draft: InvoiceDraft):
+    """(field, raw, evidence) for every raw amount, in draft field order, then lines."""
+    for name in ("subtotal", "tax", "shipping", "total"):
+        raw = getattr(draft, f"{name}_raw")
+        if raw is not None:
+            yield name, raw, list(draft.field_evidence.get(name, []))
+    for i, line in enumerate(draft.lines):
+        for name, raw in (("unit_price", line.unit_price_raw), ("line_total", line.line_total_raw)):
+            if raw is not None:
+                yield f"lines[{i}].{name}", raw, line.evidence
+
+
+def _resolve_currency(draft, invoice, event, finding, field_ev) -> None:
+    seen = [
+        (_SYMBOL_CODES[sym], ev)
+        for _, raw, ev in _amount_fields(draft)
+        for sym in _SYMBOL_CODES
+        if sym in raw
+    ]
+    ev = field_ev("currency")
+    code = draft.currency_raw.strip().upper() if _present(draft.currency_raw) else None
+    if code is not None:
+        invoice.currency = code
+        if code != "USD":
+            finding(FindingCode.unsupported_currency, "currency", ev, observed=code)
+        clash = next(((c, e) for c, e in seen if c != code), None)
+        if clash is not None:
+            finding(
+                FindingCode.currency_conflict,
+                "currency",
+                clash[1],
+                expected=code,
+                observed=clash[0],
+            )
+        return
+    other = next(((c, e) for c, e in seen if c != "USD"), None)
+    if other is not None:
+        invoice.currency = other[0]
+        finding(FindingCode.unsupported_currency, "currency", other[1], observed=other[0])
+        return
+    dollar = next((e for _, raw, e in _all_raw(draft) if "$" in raw), None)
+    invoice.currency = "USD"
+    cited = dollar or []
+    event("currency", None, "USD", cited, "dataset_usd_assumption")
+    finding(FindingCode.currency_assumed_usd, "currency", cited, observed="USD")
+
+
+def _all_raw(draft: InvoiceDraft):
+    """(field, raw, evidence) for every raw field value, in draft field order, then lines."""
+    for name in type(draft).model_fields:
+        raw = getattr(draft, name)
+        if name.endswith("_raw") and isinstance(raw, str):
+            key = name.removesuffix("_raw")
+            yield key, raw, list(draft.field_evidence.get(key, []))
+    for line in draft.lines:
+        for raw in (line.unit_price_raw, line.line_total_raw):
+            if raw is not None:
+                yield "line", raw, line.evidence
+
+
+def _urgency(draft: InvoiceDraft, finding, field_ev) -> None:
+    sources = [
+        (draft.notes_raw, field_ev("notes")),
+        (draft.payment_terms_raw, field_ev("payment_terms")),
+    ]
+    sources += [
+        (issue.evidence[0].snippet, list(issue.evidence[:1]))
+        for issue in draft.issues
+        if issue.code == FindingCode.unparsed_line and issue.evidence
+    ]
+    for text, ev in sources:
+        m = _URGENCY.search(text or "")
+        if m is not None:
+            finding(FindingCode.risk_signal_urgency, "notes", ev, observed=m[0])
+            return

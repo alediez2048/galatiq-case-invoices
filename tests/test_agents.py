@@ -77,7 +77,10 @@ def test_ingestion_extracts_inv_1001(deps, received_state):
     update = ingestion.run(received_state, deps)
     assert update["status"] == RunStatus.extracted
     assert update["version"] == 1
-    assert [f.code for f in update["findings"]] == [FindingCode.currency_assumed_usd]
+    assert [f.code for f in update["findings"]] == [
+        FindingCode.terms_inconsistent,
+        FindingCode.currency_assumed_usd,
+    ]
     assert update["invoice"].invoice_number == "INV-1001"
     assert "ingestion" in update["timings_ms"]
     assert _run_status(deps, received_state) == RunStatus.extracted
@@ -105,7 +108,7 @@ def test_validation_does_not_write_inventory(deps, extracted_state):
 def test_validation_keeps_normalization_findings_first_and_records(deps, extracted_state):
     update = validation.run(extracted_state, deps)
     assert update["status"] == RunStatus.validated
-    assert update["findings"][0].code == FindingCode.currency_assumed_usd
+    assert update["findings"][1].code == FindingCode.currency_assumed_usd
     assert update["invoice"].computed.total == Decimal("5000.00")
     assert _run_status(deps, extracted_state) == RunStatus.validated
     rows = deps.conn.execute(
@@ -231,7 +234,7 @@ def test_ingestion_records_normalization_findings_itself(deps, received_state):
     rows = deps.conn.execute(
         "SELECT code FROM findings WHERE run_id = ?", (received_state["run_id"],)
     ).fetchall()
-    assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+    assert [r["code"] for r in rows] == ["terms_inconsistent", "currency_assumed_usd"]
 
 
 def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monkeypatch):
@@ -244,7 +247,7 @@ def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monk
     rows = deps.conn.execute(
         "SELECT code FROM findings WHERE run_id = ?", (extracted_state["run_id"],)
     ).fetchall()
-    assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+    assert [r["code"] for r in rows] == ["terms_inconsistent", "currency_assumed_usd"]
 
 
 def test_pay_node_paid_event_reports_created(deps, approved_state):

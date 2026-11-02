@@ -279,7 +279,8 @@ def test_get_human_review_latest_matching(conn, sid):
         for action, reviewer in (("decline", "a"), ("approve", "b")):
             conn.execute(
                 "INSERT INTO human_reviews (invoice_id, version, action, reviewer, reason, "
-                "policy_version, created_at) VALUES (?, 1, ?, ?, 'r', 'p1', 't')",
+                "policy_version, created_at) VALUES (?, 1, ?, ?, 'r', 'p1', "
+                "'2026-01-31T00:00:00Z')",
                 (inv, action, reviewer),
             )
     review = ledger.get_human_review(conn, inv, 1, "p1")
@@ -843,3 +844,75 @@ def test_audit_actor_recorded(conn, rid):
     append_audit_event(conn, rid, "x", "y", {})
     rows = conn.execute("SELECT actor FROM audit_events ORDER BY event_id").fetchall()
     assert [r[0] for r in rows] == ["Ana", None]
+
+
+def test_superseding_a_paid_invoice_raises(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    ledger.set_invoice_status(conn, inv, InvoiceStatus.paid_mock)
+    with pytest.raises(ValueError, match="paid"):
+        ledger.record_correction_version(conn, inv, inv_1001(), sid, base_version=1)
+    with pytest.raises(ValueError, match="paid"):
+        ledger.record_version(
+            conn, inv, inv_1001().model_copy(update={"currency": "EUR"}), sid, supersede=True
+        )
+    assert versions(conn, inv) == [(1, None, "source", "current")]
+    # a plain revision after payment is still recorded (revision_after_payment), unsuperseded
+    ledger.record_version(conn, inv, inv_1001().model_copy(update={"currency": "EUR"}), sid)
+    assert [v[3] for v in versions(conn, inv)] == ["current", "current"]
+    assert current_version(conn, inv) == 1
+
+
+def _correction(inv, at):
+    from invoice_processing.schemas import Correction
+
+    return Correction(
+        invoice_id=inv,
+        base_version=1,
+        field="stated.total",
+        old_value=None,
+        new_value="1.00",
+        evidence_location="line:9",
+        reviewer="Ana",
+        reason="r",
+        created_at=at,
+        resulting_version=2,
+    )
+
+
+def test_review_timestamps_are_stored_in_utc(conn, sid, rid):
+    from datetime import datetime, timedelta, timezone
+
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    ledger.record_correction_version(conn, inv, inv_1001(), sid, base_version=1)
+    at = datetime(2026, 1, 31, 14, 30, tzinfo=timezone(timedelta(hours=2)))
+    cid = ledger.record_correction(conn, _correction(inv, at), rid)
+    stored = conn.execute(
+        "SELECT created_at FROM corrections WHERE correction_id = ?", (cid,)
+    ).fetchone()[0]
+    assert stored == "2026-01-31T12:30:00.000000Z"
+    with pytest.raises(ValueError, match="timezone"):
+        ledger.record_correction(conn, _correction(inv, datetime(2026, 1, 31)), rid)
+
+
+def test_get_human_review_returns_created_at(conn, sid, rid):
+    from datetime import UTC, datetime
+
+    from invoice_processing.codes import HumanReviewAction
+    from invoice_processing.schemas import HumanReview
+
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    at = datetime(2026, 1, 31, 12, tzinfo=UTC)
+    review = HumanReview(
+        invoice_id=inv,
+        version=1,
+        action=HumanReviewAction.approve,
+        reviewer="Ana",
+        reason="ok",
+        policy_version="p1",
+        created_at=at,
+    )
+    ledger.record_human_review(conn, review, rid)
+    assert ledger.get_human_review(conn, inv, 1, "p1") == review

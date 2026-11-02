@@ -239,6 +239,8 @@ def _immutability_triggers() -> tuple[str, ...]:
     return tuple(statements)
 
 
+# IF NOT EXISTS keeps init_schema idempotent, but it never replaces an existing trigger: a
+# later schema version that changes a trigger body must DROP TRIGGER it in its migration.
 _TRIGGERS = _immutability_triggers()
 
 
@@ -247,6 +249,9 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # INSERT OR REPLACE deletes the conflicting row without firing DELETE triggers unless
+    # recursive triggers are on, which would let it overwrite immutable history.
+    conn.execute("PRAGMA recursive_triggers = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
 

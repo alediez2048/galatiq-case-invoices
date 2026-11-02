@@ -157,6 +157,12 @@ def _insert_version(
     supersede: Literal["none", "base", "others"],
 ) -> tuple[str, int]:
     """Insert version max + 1 and move current_version to it (never off a paid version)."""
+    if supersede != "none":
+        status = conn.execute(
+            "SELECT status FROM invoices WHERE invoice_id = ?", (invoice_id,)
+        ).fetchone()
+        if status is not None and status["status"] == InvoiceStatus.paid_mock.value:
+            raise ValueError(f"cannot supersede a version of paid invoice {invoice_id}")
     latest = conn.execute(
         "SELECT COALESCE(MAX(version), 0) FROM invoice_versions WHERE invoice_id = ?",
         (invoice_id,),
@@ -558,7 +564,7 @@ def get_human_review(
     conn: sqlite3.Connection, invoice_id: str, version: int, policy_version: str
 ) -> HumanReview | None:
     row = conn.execute(
-        "SELECT invoice_id, version, action, reviewer, reason, policy_version "
+        "SELECT invoice_id, version, action, reviewer, reason, policy_version, created_at "
         "FROM human_reviews WHERE invoice_id = ? AND version = ? AND policy_version = ? "
         "AND action IN ('approve', 'decline') ORDER BY review_id DESC LIMIT 1",
         (invoice_id, version, policy_version),
@@ -567,7 +573,10 @@ def get_human_review(
 
 
 def _iso(at: datetime) -> str:
-    return at.isoformat(timespec="microseconds").replace("+00:00", "Z")
+    """ISO-8601 UTC text like utcnow(); a naive datetime is ambiguous and refused."""
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise ValueError("review timestamps need a timezone")
+    return at.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def record_correction(conn: sqlite3.Connection, correction: Correction, run_id: str) -> int:

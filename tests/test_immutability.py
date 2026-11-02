@@ -31,11 +31,18 @@ def conn_with_history(db_path):
     storage.init_schema(c)
     seed.seed_inventory(c)
     c.close()
-    result = process_invoice("data/invoices/invoice_1001.txt", ExecutionMode.offline, db_path, EVAL)
-    assert result.status is RunStatus.paid_mock
+    paid = process_invoice("data/invoices/invoice_1001.txt", ExecutionMode.offline, db_path, EVAL)
+    assert paid.status is RunStatus.paid_mock
+    # a paid invoice cannot be superseded, so the correction goes to a rejected one
+    rejected = process_invoice(
+        "data/invoices/invoice_1002.txt", ExecutionMode.offline, db_path, EVAL
+    )
+    assert rejected.status is RunStatus.rejected
     c = storage.connect(db_path)
     storage.init_schema(c)
-    run = c.execute("SELECT run_id, invoice_id, source_id FROM runs").fetchone()
+    run = c.execute(
+        "SELECT run_id, invoice_id, source_id FROM runs WHERE run_id = ?", (rejected.run_id,)
+    ).fetchone()
     base = ledger.get_version(c, run["invoice_id"], 1)
     _, v2 = ledger.record_correction_version(
         c, run["invoice_id"], base.invoice, run["source_id"], base_version=1
@@ -47,8 +54,8 @@ def conn_with_history(db_path):
             invoice_id=run["invoice_id"],
             base_version=1,
             field="stated.total",
-            old_value="5000.00",
-            new_value="5000.00",
+            old_value=None,
+            new_value="1.00",
             evidence_location="line:9",
             reviewer="Ana",
             reason="check",
@@ -141,15 +148,18 @@ def test_noop_update_rejected(conn_with_history):
 def test_version_status_current_to_superseded_allowed(conn_with_history):
     c = conn_with_history
     write(c, "UPDATE invoice_versions SET version_status = 'superseded' WHERE version = 2")
-    statuses = [r[0] for r in c.execute("SELECT version_status FROM invoice_versions")]
-    assert statuses == ["superseded", "superseded"]
+    statuses = c.execute(
+        "SELECT version, version_status FROM invoice_versions WHERE origin = 'correction'"
+    ).fetchall()
+    assert [tuple(r) for r in statuses] == [(2, "superseded")]
 
 
 def test_version_status_superseded_to_current_rejected(conn_with_history):
     with pytest.raises(sqlite3.DatabaseError, match="immutable:invoice_versions"):
         write(
             conn_with_history,
-            "UPDATE invoice_versions SET version_status = 'current' WHERE version = 1",
+            "UPDATE invoice_versions SET version_status = 'current' "
+            "WHERE version_status = 'superseded'",
         )
 
 
@@ -164,15 +174,22 @@ def test_version_status_change_with_another_column_rejected(conn_with_history):
 
 def test_extracted_text_fill_allowed_once(conn_with_history):
     c = conn_with_history
-    source_id = c.execute("SELECT source_id FROM sources").fetchone()[0]
-    assert c.execute("SELECT extracted_text FROM sources").fetchone()[0] is None
+    source_id = c.execute("SELECT source_id FROM sources ORDER BY rowid").fetchone()[0]
+
+    def text():
+        row = c.execute("SELECT extracted_text FROM sources WHERE source_id = ?", (source_id,))
+        return row.fetchone()[0]
+
+    assert text() is None
     ledger.set_extracted_text(c, source_id, "INVOICE text")
     ledger.set_extracted_text(c, source_id, "other")  # guarded by the WHERE: a no-op
-    assert c.execute("SELECT extracted_text FROM sources").fetchone()[0] == "INVOICE text"
-    with pytest.raises(sqlite3.DatabaseError, match="immutable:sources"):
-        write(c, "UPDATE sources SET extracted_text = 'other'")
-    with pytest.raises(sqlite3.DatabaseError, match="immutable:sources"):
-        write(c, "UPDATE sources SET extracted_text = NULL")
+    assert text() == "INVOICE text"
+    for value in ("other", None):
+        with pytest.raises(sqlite3.DatabaseError, match="immutable:sources"):
+            write(
+                c, "UPDATE sources SET extracted_text = ? WHERE source_id = ?", (value, source_id)
+            )
+    assert text() == "INVOICE text"
 
 
 def test_extracted_text_fill_with_another_column_rejected(conn_with_history):
@@ -220,3 +237,24 @@ def test_mutable_tables_stay_mutable(conn_with_history):
     write(c, "UPDATE invoices SET updated_at = 'now'")
     write(c, "UPDATE inventory SET stock = stock")
     ledger.mark_interrupted_runs(c, started_before="9999")
+
+
+def _replace_existing_row(conn, table):
+    """INSERT OR REPLACE a copy of the table's first row (same key): a hidden DELETE."""
+    row = conn.execute(f"SELECT * FROM {table} LIMIT 1").fetchone()
+    cols = row.keys()
+    slots = ",".join("?" * len(cols))
+    write(conn, f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({slots})", tuple(row))
+
+
+@pytest.mark.parametrize("table", IMMUTABLE)
+def test_insert_or_replace_rejected(conn_with_history, table):
+    # REPLACE deletes the conflicting row; delete triggers fire only with recursive_triggers.
+    before = [tuple(r) for r in conn_with_history.execute(f"SELECT * FROM {table}")]
+    with pytest.raises(sqlite3.DatabaseError, match=f"immutable:{table}"):
+        _replace_existing_row(conn_with_history, table)
+    assert [tuple(r) for r in conn_with_history.execute(f"SELECT * FROM {table}")] == before
+
+
+def test_connections_enable_recursive_triggers(conn):
+    assert conn.execute("PRAGMA recursive_triggers").fetchone()[0] == 1

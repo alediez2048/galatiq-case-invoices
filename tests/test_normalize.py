@@ -265,3 +265,19 @@ def test_terms_notes_and_fraction_tax_rate_are_copied():
     inv, _ = norm("invoice_1012.txt")
     assert inv.notes and inv.notes.startswith("Ref PO-20260115")
     assert inv.stated.tax_rate == Decimal("0.05")
+
+
+def test_unparseable_json_tax_rate_cites_its_own_path(tmp_path):
+    p = tmp_path / "t.json"
+    p.write_text('{"invoice_number": "INV-9", "tax_rate": "abc"}')
+    inv, findings = normalize(parse_document(*read_source(p), DEFAULT_LIMITS).draft, ITEMS)
+    f = next(f for f in findings if f.code is FindingCode.unparseable_value)
+    assert f.field == "tax_rate" and [e.location for e in f.evidence] == ["$.tax_rate"]
+    event = next(e for e in inv.normalization_events if e.provenance == "rule:unparseable")
+    assert [e.location for e in event.evidence] == ["$.tax_rate"]
+
+
+@pytest.mark.parametrize("raw", ["#", " - ", "./_"])
+def test_invoice_number_reducing_to_empty_key_has_no_key(raw):
+    inv, _ = normalize(InvoiceDraft(source_id="s", invoice_number_raw=raw), ITEMS)
+    assert inv.invoice_number_key is None

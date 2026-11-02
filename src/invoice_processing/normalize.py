@@ -194,8 +194,9 @@ def normalize(
 
     number_key = None
     if _present(draft.invoice_number_raw):
-        number_key = invoice_number_key(draft.invoice_number_raw)
-        if number_key != draft.invoice_number_raw.strip():
+        # A number made only of separators has no identity; the ledger uses a provisional one.
+        number_key = invoice_number_key(draft.invoice_number_raw) or None
+        if number_key is not None and number_key != draft.invoice_number_raw.strip():
             event(
                 "invoice_number",
                 draft.invoice_number_raw,
@@ -207,9 +208,9 @@ def normalize(
     if draft.tax_rate_raw is not None:
         tax_rate = convert("tax_rate", draft.tax_rate_raw, _tax_rate_percent, field_ev("tax_rate"))
     else:
-        tax_rate = convert(
-            "tax_rate", draft.tax_rate_fraction_raw, parse_decimal, field_ev("tax_rate")
-        )
+        # JSON/XML/CSV parsers file the fraction's evidence under "tax_rate_fraction".
+        fraction_ev = field_ev("tax_rate_fraction") or field_ev("tax_rate")
+        tax_rate = convert("tax_rate", draft.tax_rate_fraction_raw, parse_decimal, fraction_ev)
 
     def amount(name: str, raw: str | None) -> Decimal | None:
         return convert(name, raw, parse_amount, field_ev(name), ocr_ok=True)

@@ -339,3 +339,18 @@ def test_line_cap_fails_run_and_records_no_version(tmp_path):
     assert result.errors == ["too_many_lines"]
     assert result.error_message == "The invoice has 3 lines; the limit is 2."
     assert result.receipt is None and result.invoice_id is None
+
+
+def test_validation_skips_missing_total_when_total_is_unparseable(deps, tmp_path):
+    path = tmp_path / "bad_total.txt"
+    text = INV_1001.read_text()
+    assert "Total Amount: $5,000.00" in text
+    path.write_text(text.replace("Total Amount: $5,000.00", "Total Amount: $abc"))
+    source, raw = intake.read_source(path)
+    state = _received(deps.conn, source, raw)
+    state = {**state, **ingestion.run(state, deps)}
+    assert state["invoice"].stated.total is None
+    update = validation.run(state, deps)
+    got = [(f.code, f.field) for f in update["findings"]]
+    assert (FindingCode.unparseable_value, "total") in got
+    assert FindingCode.missing_total not in [c for c, _ in got]

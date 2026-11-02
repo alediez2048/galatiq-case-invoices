@@ -66,6 +66,9 @@ class ReasoningProvider(Protocol):
     ) -> ExtractionProposals: ...
 
 
+_NO_MODEL_CALLS = "human-review runs make no model calls"
+
+
 class NoModelProvider:
     """The provider of a human-review run (Decision 13): it carries the run's mode and makes
     no model call. Any call is a bug, so every method raises."""
@@ -79,7 +82,37 @@ class NoModelProvider:
     def __init__(self, mode: ExecutionMode) -> None:
         self.mode = mode
 
-    def _refuse(self, *args: object, **kwargs: object) -> NoReturn:
-        raise AssertionError("human-review runs make no model calls")
+    def recommend(
+        self,
+        invoice: NormalizedInvoice,
+        findings: list[ValidationFinding],
+        policy: PolicyContext,
+        session: ModelSession,
+    ) -> NoReturn:
+        raise AssertionError(_NO_MODEL_CALLS)
 
-    recommend = critique = revise = assist_extraction = _refuse
+    def critique(
+        self,
+        invoice: NormalizedInvoice,
+        findings: list[ValidationFinding],
+        recommendation: ApprovalRecommendation,
+        policy: PolicyContext,
+        session: ModelSession,
+    ) -> NoReturn:
+        raise AssertionError(_NO_MODEL_CALLS)
+
+    def revise(
+        self,
+        invoice: NormalizedInvoice,
+        findings: list[ValidationFinding],
+        recommendation: ApprovalRecommendation,
+        critique: Critique,
+        policy: PolicyContext,
+        session: ModelSession,
+    ) -> NoReturn:
+        raise AssertionError(_NO_MODEL_CALLS)
+
+    def assist_extraction(
+        self, request: ExtractionAssistRequest, session: ModelSession
+    ) -> NoReturn:
+        raise AssertionError(_NO_MODEL_CALLS)

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from invoice_processing import ledger, payments, review, storage
+from invoice_processing import ledger, payments, review, service, storage
 from invoice_processing.codes import (
     ExecutionMode,
     FindingCode,
@@ -24,6 +24,7 @@ from invoice_processing.schemas import ApprovalDecision, HumanReview
 from invoice_processing.settings import LiveSettings
 from tests.fakes.xai_client import FakeXaiClient, Parsed, factory
 from tests.review_helpers import (
+    EVAL,
     INVOICES,
     REVIEW,
     change,
@@ -251,7 +252,8 @@ def test_crossed_and_late_actions(tmp_path):
     third = review.approve(r1.invoice_id, 1, "Bo", "double click", db_path=db)
     assert again.receipt.receipt_id == third.receipt.receipt_id == paid.receipt.receipt_id
     assert payment_count(db, r1.invoice_id) == 1
-    assert count(db, "SELECT COUNT(*) FROM payments") <= 1
+    # INV-1014 never paid; the 10000.01 invoice paid exactly once
+    assert count(db, "SELECT COUNT(*) FROM payments") == 1
 
 
 def _live_rec(summary: str) -> dict:
@@ -333,6 +335,113 @@ def test_no_model_provider_refuses_every_call():
         "none",
         None,
     )
-    for method in (p.recommend, p.critique, p.revise, p.assist_extraction):
+    calls = [
+        (p.recommend, 4),
+        (p.critique, 5),
+        (p.revise, 6),
+        (p.assist_extraction, 2),
+    ]
+    for method, arity in calls:
         with pytest.raises(AssertionError, match="human-review runs make no model calls"):
-            method(None, None)
+            method(*[None] * arity)
+
+
+def _interrupted_approve(db, invoice_id, monkeypatch, action="approve") -> str:
+    """Commit the approve/decline transaction, then stop before the graph runs (a crash):
+    the next retry's startup sweep marks the run `interrupted`."""
+    with monkeypatch.context() as m:
+        m.setattr(service, "run_existing_version", lambda run_id, **kw: run_id)
+        return getattr(review, action)(invoice_id, 1, "Ana", "Checked", db_path=db)
+
+
+class NoCalls(OfflineSimulator):
+    def recommend(self, *a, **k):
+        raise AssertionError("retry of a human-review run called the model")
+
+
+def test_interrupted_approve_is_retried_without_a_model_or_file(tmp_path, monkeypatch):
+    db = seeded_db(tmp_path)
+    r1 = process(THRESHOLD / "valid_10000_01.json", db)
+    run_id = _interrupted_approve(db, r1.invoice_id, monkeypatch)
+    checked = service.check_retry(run_id, None, db)  # checked without a file too
+    assert checked.trigger == "human_review" and checked.error_code == "interrupted"
+    r = service.retry_run(run_id, None, db, EVAL, provider=NoCalls())
+    assert r.status == "paid_mock" and r.receipt.amount == Decimal("10000.01")
+    assert r.decision.reasons == ["R4_human_approved"] and r.decision.model_calls_used == 0
+    row = review_run(db, r.run_id)
+    assert (row["trigger"], row["review_of"], row["retry_of"]) == (
+        "human_review",
+        r1.run_id,
+        run_id,
+    )
+    assert review_run(db, run_id)["error_code"] == "interrupted"
+    assert payment_count(db, r1.invoice_id) == 1
+    assert count(db, "SELECT COUNT(*) FROM human_reviews") == 1
+
+
+def test_interrupted_decline_retry_rejects(tmp_path, monkeypatch):
+    db = seeded_db(tmp_path)
+    r1 = process(THRESHOLD / "valid_10000_01.json", db)
+    run_id = _interrupted_approve(db, r1.invoice_id, monkeypatch, action="decline")
+    r = service.retry_run(run_id, None, db, EVAL)
+    assert r.status == "rejected" and r.decision.reasons == ["R3_human_declined"]
+    assert payment_count(db, r1.invoice_id) == 0
+
+
+def test_interrupted_live_approve_retries_with_no_credentials(tmp_path, monkeypatch):
+    db = seeded_db(tmp_path)
+    client = FakeXaiClient(
+        [
+            Parsed(_live_rec("Total 10,000.01 is above the 10,000.00 threshold")),
+            Parsed(_live_crit()),
+        ]
+    )
+    settings = LiveSettings(api_key="sk-SENTINEL-123", model="grok-test")
+    provider = XaiProvider(settings, factory(client))
+    r1 = process(THRESHOLD / "valid_10000_01.json", db, ExecutionMode.live, provider)
+    assert r1.status == "awaiting_human_approval"
+    seen = len(client.requests)
+    later = FakeXaiClient([])
+    monkeypatch.setattr("invoice_processing.reasoning.xai.real_client_factory", lambda s: later)
+    run_id = _interrupted_approve(db, r1.invoice_id, monkeypatch)
+    r = service.retry_run(run_id, None, db, EVAL)  # no XAI_* env, no provider given
+    assert r.status == "paid_mock" and r.mode == "live"
+    assert len(client.requests) == seen and later.requests == []
+    assert payment_count(db, r1.invoice_id) == 1
+
+
+def test_interrupted_approve_with_a_file_still_skips_ingestion(tmp_path, monkeypatch):
+    db = seeded_db(tmp_path)
+    r1 = process(THRESHOLD / "valid_10000_01.json", db)
+    run_id = _interrupted_approve(db, r1.invoice_id, monkeypatch)
+    r = service.retry_run(run_id, THRESHOLD / "valid_10000_01.json", db, EVAL, provider=NoCalls())
+    assert r.status == "paid_mock"
+    assert review_run(db, r.run_id)["trigger"] == "human_review"
+
+
+def test_on_run_started_fires_with_the_result_run_id(tmp_path):
+    db = seeded_db(tmp_path)
+    started: list[str] = []
+    r1 = process(AFTER_REC, db)
+    r2 = review.submit_correction(_due_date_request(r1), db_path=db, on_run_started=started.append)
+    assert started == [r2.run_id]
+    r3 = review.approve(r1.invoice_id, 2, "Ana", "ok", db_path=db, on_run_started=started.append)
+    assert started == [r2.run_id, r3.run_id] and r3.status == "paid_mock"
+    # a repeated approve of the paid version starts no run, so the hook does not fire
+    review.approve(r1.invoice_id, 2, "Ana", "again", db_path=db, on_run_started=started.append)
+    assert len(started) == 2
+    r4 = process(THRESHOLD / "valid_10000_01.json", db)
+    r5 = review.decline(r4.invoice_id, 1, "Ana", "no", db_path=db, on_run_started=started.append)
+    assert started[-1] == r5.run_id and len(started) == 3
+
+
+def _due_date_request(result):
+    from invoice_processing.schemas import CorrectionRequest
+
+    return CorrectionRequest(
+        invoice_id=result.invoice_id,
+        expected_version=result.version,
+        changes=[change("due_date", "2026-03-31", NOTE_LINE)],
+        reason="Due date extended",
+        reviewer="Ana",
+    )

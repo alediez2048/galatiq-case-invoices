@@ -8,6 +8,7 @@ Refusals raise `ReviewRefused` with a stable code and the invoice's current acti
 import logging
 import re
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -295,12 +296,14 @@ def submit_correction(
     db_path: str | Path,
     events: logging.Logger | None = None,
     provider: ReasoningProvider | None = None,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
     """Apply evidence-backed field corrections as a new version and revalidate it.
 
     All changes are checked before anything is written (all or nothing). The new run uses the
     base run's mode and evaluation date; a live invoice without credentials raises
-    ConfigurationError before any row is written."""
+    ConfigurationError before any row is written. `on_run_started(run_id)` is called once,
+    after the new run is committed and before it executes."""
     conn = connect(db_path)
     try:
         init_schema(conn)
@@ -311,6 +314,8 @@ def submit_correction(
             run_id = _record_correction(conn, request, seen)
     finally:
         conn.close()
+    if on_run_started is not None:
+        on_run_started(run_id)
     return service.run_existing_version(run_id, db_path=db_path, events=events, provider=provider)
 
 
@@ -457,10 +462,13 @@ def approve(
     *,
     db_path: str | Path,
     events: logging.Logger | None = None,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
     """Approve the waiting `expected_version` and run the human-review run: it revalidates
     and reaches the gate with this approval, and pays only if the gate approves. A repeated
-    approve of the paid version returns the paying run's result and writes nothing."""
+    approve of the paid version returns the paying run's result and writes nothing (and starts
+    no run, so `on_run_started` is not called). `on_run_started(run_id)` is called once, after
+    the review run is committed and before it executes."""
     return _review(
         HumanReviewAction.approve,
         invoice_id,
@@ -469,6 +477,7 @@ def approve(
         reason,
         db_path=db_path,
         events=events,
+        on_run_started=on_run_started,
     )
 
 
@@ -480,6 +489,7 @@ def decline(
     *,
     db_path: str | Path,
     events: logging.Logger | None = None,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
     """Decline the waiting `expected_version`: the human-review run rejects it at the gate
     (`R3_human_declined`, Decision 14)."""
@@ -491,6 +501,7 @@ def decline(
         reason,
         db_path=db_path,
         events=events,
+        on_run_started=on_run_started,
     )
 
 
@@ -503,6 +514,7 @@ def _review(
     *,
     db_path: str | Path,
     events: logging.Logger | None,
+    on_run_started: Callable[[str], None] | None,
 ) -> ProcessingResult:
     # The contract validates reviewer and reason before the database is touched.
     review = HumanReview(
@@ -524,6 +536,8 @@ def _review(
     if isinstance(outcome, ProcessingResult):
         return outcome
     run_id, mode = outcome
+    if on_run_started is not None:
+        on_run_started(run_id)
     return service.run_existing_version(
         run_id,
         db_path=db_path,
@@ -539,11 +553,7 @@ def _record_review(
     """Check and record one approve/decline inside the caller's write transaction. Returns
     the new run (id, mode), or the paying run's result for a repeated approve."""
     invoice_id, action = review.invoice_id, review.action
-    try:
-        row = ledger.get_invoice(conn, invoice_id)
-    except KeyError:
-        raise _refuse(R.unknown_invoice, None) from None
-    current = _allowed(conn, invoice_id)
+    current = _allowed(conn, invoice_id)  # unknown_invoice when there is no such invoice
     paid = conn.execute(
         "SELECT run_id, version FROM payments WHERE invoice_id = ?", (invoice_id,)
     ).fetchone()
@@ -552,11 +562,11 @@ def _record_review(
             return _load_result(conn, paid["run_id"])  # Decision 20: no writes
         code = R.already_paid if action is HumanReviewAction.decline else R.stale_version
         raise _refuse(code, current)
-    if review.version != row.current_version:
+    if review.version != current.current_version:
         raise _refuse(R.stale_version, current)
     if ReviewAction(action.value) not in current.allowed:
         raise _refuse(R.action_not_allowed, current)
-    version = ledger.get_version(conn, invoice_id, row.current_version)
+    version = ledger.get_version(conn, invoice_id, review.version)
     waiting = ledger.latest_outcome_run(conn, version.version_id)
     if waiting is None or waiting.status is not RunStatus.awaiting_human_approval:
         raise _refuse(R.action_not_allowed, current)

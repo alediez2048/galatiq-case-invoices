@@ -418,6 +418,36 @@ def test_real_client_factory_builds_a_lazy_channel_and_sends_nothing(monkeypatch
         client.close()
 
 
+@pytest.mark.real_xai_factory
+def test_real_client_factory_disables_grpc_retries_and_sdk_tracing(monkeypatch):
+    # The SDK's default channel retries UNAVAILABLE up to 5 times inside one call, which
+    # would break the 2-attempt bound; its OpenTelemetry tracer would see request content.
+    import xai_sdk
+
+    built = []
+    monkeypatch.setattr(xai_sdk, "Client", lambda **kwargs: built.append(kwargs) or "client")
+    monkeypatch.delenv("XAI_SDK_DISABLE_TRACING", raising=False)
+    assert real_client_factory(SETTINGS) == "client"
+    (kwargs,) = built
+    assert ("grpc.enable_retries", 0) in kwargs["channel_options"]
+    assert kwargs["timeout"] == SETTINGS.timeout_seconds
+    import os
+
+    assert os.environ["XAI_SDK_DISABLE_TRACING"] == "1"
+
+
+@pytest.mark.real_xai_factory
+def test_real_client_factory_keeps_an_explicit_tracing_choice(monkeypatch):
+    import os
+
+    import xai_sdk
+
+    monkeypatch.setattr(xai_sdk, "Client", lambda **kwargs: "client")
+    monkeypatch.setenv("XAI_SDK_DISABLE_TRACING", "0")
+    real_client_factory(SETTINGS)
+    assert os.environ["XAI_SDK_DISABLE_TRACING"] == "0"
+
+
 def test_real_factory_is_blocked_without_the_marker():
     from invoice_processing.reasoning import xai
 

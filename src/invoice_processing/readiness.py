@@ -6,24 +6,26 @@ import sys
 import time
 
 from invoice_processing import settings as settings_module
-from invoice_processing.settings import ConfigurationError, load_live_settings
+from invoice_processing.settings import ConfigurationError, LiveSettings, load_live_settings
 
 
-def _ping(api_key: str, model: str, timeout: float) -> str:
+def _ping(settings: LiveSettings) -> str:
+    """One minimal call through the same client factory the live provider uses."""
+    from invoice_processing.reasoning import xai  # lazy: the only path that may touch the network
+    from invoice_processing.reasoning.errors import classify
+
     try:
-        from xai_sdk import Client  # lazy: the only path that may touch the network
-
-        client = Client(api_key=api_key, timeout=timeout)
-        chat = client.chat.create(model=model, max_tokens=1)
+        client = xai.real_client_factory(settings)
+        chat = client.chat.create(model=settings.model, max_tokens=1)
         from xai_sdk.chat import user
 
         chat.append(user("ping"))
         started = time.perf_counter()
         chat.sample()
         ms = round((time.perf_counter() - started) * 1000)
-        return f"ping: ok ({model}, {ms} ms)"
+        return f"ping: ok ({settings.model}, {ms} ms)"
     except Exception as exc:  # report a code only; messages could echo request details
-        return f"ping: failed ({type(exc).__name__})"
+        return f"ping: failed ({classify(exc).code.value})"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"XAI_TIMEOUT_SECONDS: {settings.timeout_seconds}")
     print(f"MODEL_CALL_BUDGET: {settings.call_budget}")
     if args.ping:
-        line = _ping(settings.api_key, settings.model, settings.timeout_seconds)
+        line = _ping(settings)
         print(line)
         return 0 if line.startswith("ping: ok") else 2
     return 0

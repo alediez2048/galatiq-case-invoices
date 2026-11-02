@@ -6,7 +6,7 @@ bounded tool loop when the agent has tools, then ask for structured output with
 `ModelErrorCode`s; a transient one is retried once as a new, separately charged attempt.
 
 Only this subset of the SDK is used (and mirrored by `tests/fakes/xai_client.py`):
-`Client(api_key, timeout)`, `client.chat.create(model, messages, tools)`, `chat.append`,
+`Client(api_key, timeout, channel_options)`, `client.chat.create(model, messages, tools)`, `chat.append`,
 `chat.sample`, `chat.parse`, `response.tool_calls[*].id / .function.name / .function.arguments`,
 `response.usage.prompt_tokens / .completion_tokens`, and the `xai_sdk.chat` message builders
 `system`, `user`, `tool`, `tool_result`. `reasoning_content` is never read.
@@ -22,6 +22,7 @@ transport retries within the budget of 6.
 
 import importlib.metadata
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -62,11 +63,25 @@ def _system_prompt(step: str) -> str:
     return load_prompt(_ASSIST_PROMPT if step == _ASSIST_STEP else step)[0]
 
 
+# The SDK's default channel turns on gRPC's own retries (up to 5 attempts on UNAVAILABLE
+# inside one call), which would break the bound of 2 transport attempts per step.
+_CHANNEL_OPTIONS = [("grpc.enable_retries", 0)]
+
+
 def real_client_factory(settings: LiveSettings) -> Any:
-    """Build the official SDK client. Construction is lazy: no RPC until the first call."""
+    """Build the official SDK client. Construction is lazy: no RPC until the first call.
+
+    The SDK's OpenTelemetry tracer is created when its modules are imported and would see
+    request content, so it is switched off first unless the environment says otherwise.
+    """
+    os.environ.setdefault("XAI_SDK_DISABLE_TRACING", "1")
     import xai_sdk
 
-    return xai_sdk.Client(api_key=settings.api_key, timeout=settings.timeout_seconds)
+    return xai_sdk.Client(
+        api_key=settings.api_key,
+        timeout=settings.timeout_seconds,
+        channel_options=list(_CHANNEL_OPTIONS),
+    )
 
 
 def _sdk_version() -> str | None:

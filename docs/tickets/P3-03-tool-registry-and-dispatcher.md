@@ -1,6 +1,6 @@
 # P3-03 — Whitelisted tool registry and dispatcher
 
-Phase: 3 · Status: todo · Depends on: P1-06, P0-08, P1-02 · Requirements: A07
+Phase: 3 · Status: done · Depends on: P1-06, P0-08, P1-02 · Requirements: A07
 
 ## Context
 

@@ -26,9 +26,10 @@ packages = ["src/invoice_processing"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-addopts = "-q"
+addopts = "-q -m 'not live'"
 markers = [
     "real_xai_factory: keep the real xai_sdk client factory (gRPC channels stay blocked)",
+    "live: real xAI calls; needs RUN_LIVE_TESTS=1",
     "real_dotenv: keep the real .env loader (the test must chdir to a tmp .env)",
 ]
 

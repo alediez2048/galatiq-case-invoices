@@ -1,6 +1,6 @@
 # P3-01 — Live mode configuration and credentials
 
-Phase: 3 · Status: todo · Depends on: P1-09, P1-03 · Requirements: A06, P11, P08
+Phase: 3 · Status: done · Depends on: P1-09, P1-03 · Requirements: A06, P11, P08
 
 ## Context
 

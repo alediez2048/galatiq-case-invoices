@@ -50,6 +50,21 @@ Running the same file in the other mode (for example `--mode offline` after a fa
 
 Live mode reads `XAI_API_KEY`, `XAI_MODEL` (no default), `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6) from the environment, falling back to a git-ignored `.env` (copy `.env.example`; real variables win). Missing or invalid settings exit 2 before any run is created, naming the variable but never its value. `python -m invoice_processing.readiness [--ping]` reports the setup (exit 0 ready, 2 not); `--ping` makes one minimal SDK call and is the only path that touches the network. LangSmith tracing is forced off in both modes. Tests block `connect`, `connect_ex`, `create_connection` and `getaddrinfo`.
 
+### Verify against real Grok (opt-in)
+
+Default `uv run pytest` never touches the network: the live path is covered by a scripted fake client (`tests/test_live_contract.py`: every `ModelErrorCode`, tool authorization, and offline parity for all 20 samples). The real-API smoke test is skipped unless you ask for it:
+
+```bash
+# 1. Set a spending limit in the xAI console first (USD 10 is recommended for the first run).
+# 2. XAI_API_KEY and XAI_MODEL in the environment or .env (no default model); check:
+python -m invoice_processing.readiness --ping
+# 3. Optional, for a cost estimate in the record (USD per million tokens, xAI pricing page):
+export XAI_PRICE_INPUT_PER_MTOK=... XAI_PRICE_OUTPUT_PER_MTOK=...
+RUN_LIVE_TESTS=1 uv run pytest -m live
+```
+
+It runs 11 invoices on fresh databases (INV-1001, 1002, 1003, 1012, 1013, 1014, the USD 10,000.01 fixture and the four adversarial fixtures) plus one invalid-key run, asserts business invariants only, and writes `docs/verification/live-<date>.md` (model id, SDK version, calls, latency, tool calls, tokens, cost estimate, divergences; never keys or prompts). Expect up to 6 model steps per invoice, so roughly 60 requests in total. Commit the record after reading it.
+
 ## Run every sample
 
 ```bash

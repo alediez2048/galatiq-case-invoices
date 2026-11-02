@@ -1,6 +1,6 @@
 # P3-04 — Bounded agent loops and per-invoice model budget
 
-Phase: 3 · Status: todo · Depends on: P3-02, P3-03, P1-07 · Requirements: P09
+Phase: 3 · Status: done · Depends on: P3-02, P3-03, P1-07 · Requirements: P09
 
 ## Context
 

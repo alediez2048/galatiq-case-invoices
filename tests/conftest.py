@@ -21,7 +21,10 @@ def conn(db_path):
 
 
 @pytest.fixture(autouse=True)
-def no_network(monkeypatch):
+def no_network(request, monkeypatch):
+    if request.node.get_closest_marker("live") is not None:
+        return  # opt-in real xAI calls (tests/live); skipped unless RUN_LIVE_TESTS=1
+
     def blocked(*args, **kwargs):
         raise RuntimeError("network access blocked in tests")
 

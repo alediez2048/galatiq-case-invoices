@@ -1,6 +1,6 @@
 # P3-06 — Live approval recommendation and critique loop
 
-Phase: 3 · Status: todo · Depends on: P3-02, P3-03, P3-04, P1-04 · Requirements: A04, A07, P11
+Phase: 3 · Status: done · Depends on: P3-02, P3-03, P3-04, P1-04 · Requirements: A04, A07, P11
 
 ## Context
 

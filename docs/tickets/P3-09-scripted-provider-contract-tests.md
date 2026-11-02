@@ -1,6 +1,6 @@
 # P3-09 — Scripted fake provider and live-path contract tests
 
-Phase: 3 · Status: todo · Depends on: P3-02 – P3-08 · Requirements: P10, A07
+Phase: 3 · Status: done · Depends on: P3-02 – P3-08 · Requirements: P10, A07
 
 ## Context
 

@@ -1,6 +1,6 @@
 # P3-02 — xAI reasoning adapter
 
-Phase: 3 · Status: todo · Depends on: P3-01, P1-03 · Requirements: A06, A07, P09
+Phase: 3 · Status: done · Depends on: P3-01, P1-03 · Requirements: A06, A07, P09
 
 ## Context
 

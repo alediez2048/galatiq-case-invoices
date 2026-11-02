@@ -133,7 +133,14 @@ def _decide(
     review = ledger.get_human_review(
         conn, state["invoice_id"], state["version"], policy.POLICY_VERSION
     )
-    gate = policy.evaluate(state["invoice"], findings, final, review, version=state["version"])
+    gate = policy.evaluate(
+        state["invoice"],
+        findings,
+        final,
+        review,
+        version=state["version"],
+        invoice_id=state["invoice_id"],
+    )
     ledger.record_findings(conn, run_id, state.get("version_id"), gate.findings)
     decision = ApprovalDecision(
         initial_recommendation=initial.recommendation,
@@ -192,4 +199,78 @@ def run(state: InvoiceState, deps: Deps) -> dict:
         else:
             _emit_model_calls(deps, state, session)
             update = _decide(deps, state, findings, session, loop)
+    return {**update, "timings_ms": {**timings, STAGE: t["duration_ms"]}}
+
+
+def resume(state: InvoiceState, deps: Deps) -> dict:
+    """The approval node of a human-review run (Decision 13): no model call. The waiting
+    run's final recommendation and the latest human review of this version go into the
+    same deterministic gate; the decision copies the waiting run's recommendation loop."""
+    timings = state.get("timings_ms", {})
+    with stage_timer() as t:
+        conn, run_id = deps.conn, state["run_id"]
+        findings = list(state.get("findings", []))
+        ledger.update_run_status(conn, run_id, RunStatus.approval_pending)
+        waiting = ledger.get_decision(conn, state["review_of"])
+        if waiting is None:
+            raise ValueError(f"run {state['review_of']} has no decision to resume")
+        final = waiting.revised_recommendation or waiting.initial_recommendation
+        review = ledger.get_human_review(
+            conn, state["invoice_id"], state["version"], policy.POLICY_VERSION
+        )
+        if review is None:
+            raise ValueError(f"run {run_id} has no human review for its version")
+        ledger.append_audit_event(
+            conn,
+            run_id,
+            STAGE,
+            "human_review_applied",
+            {"action": review.action.value, "version": review.version},
+            invoice_id=state["invoice_id"],
+            version_id=state.get("version_id"),
+            actor=review.reviewer,
+        )
+        gate = policy.evaluate(
+            state["invoice"],
+            findings,
+            final,
+            review,
+            version=state["version"],
+            invoice_id=state["invoice_id"],
+        )
+        ledger.record_findings(conn, run_id, state.get("version_id"), gate.findings)
+        decision = ApprovalDecision(
+            initial_recommendation=waiting.initial_recommendation,
+            critique_summary=waiting.critique_summary,
+            critique_issues=waiting.critique_issues,
+            revised_recommendation=waiting.revised_recommendation,
+            final_decision=gate.outcome,
+            reasons=gate.rule_ids,
+            policy_version=policy.POLICY_VERSION,
+            mode=state["mode"],
+            provider=waiting.provider,
+            model=waiting.model,
+            prompt_version=waiting.prompt_version,
+            model_calls_used=0,
+            human_review=review,
+        )
+        ledger.record_decision(conn, run_id, state.get("version_id"), decision)
+        status = RunStatus(gate.outcome.value)
+        ledger.update_run_status(conn, run_id, status)
+        update = {
+            "findings": [*findings, *gate.findings],
+            "gate": gate,
+            "decision": decision,
+            "status": status,
+        }
+        emit(
+            deps,
+            {**state, **update},
+            STAGE,
+            "decision",
+            policy_version=policy.POLICY_VERSION,
+            final_decision=gate.outcome.value,
+            rule_ids=gate.rule_ids,
+            human_review=review.action.value,
+        )
     return {**update, "timings_ms": {**timings, STAGE: t["duration_ms"]}}

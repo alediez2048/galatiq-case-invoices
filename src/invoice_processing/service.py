@@ -20,6 +20,7 @@ from invoice_processing.codes import (
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
+from invoice_processing.reasoning.base import NoModelProvider
 from invoice_processing.schemas import ProcessingResult, SourceDocument
 from invoice_processing.storage import connect, init_schema, write_transaction
 from invoice_processing.workflow import build_graph
@@ -137,13 +138,14 @@ def check_retry(
     run_id: str, path: str | Path | None, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
 ) -> ledger.RunSummary:
     """The failed run `retry_run` would retry, or RetryRefused. Creates no run; the only
-    write is the startup sweep (see `_open_for_retry`). A correction run is checked without
-    a file (`path` is ignored); any other run without one raises RetryNeedsFile."""
+    write is the startup sweep (see `_open_for_retry`). A review run (correction or human
+    review) is checked without a file (`path` is ignored); any other run without one raises
+    RetryNeedsFile."""
     source = None if path is None else intake.read_source(path, limits)[0]
     conn = _open_for_retry(db_path, run_id)
     try:
         run = ledger.get_run(conn, run_id)
-        if run is not None and run.trigger == "correction":
+        if run is not None and run.trigger in _REVIEW_RETRY_TRIGGERS:
             return _check_retry(conn, run_id, None)
         if source is None:
             raise RetryNeedsFile(run_id)
@@ -152,11 +154,16 @@ def check_retry(
         conn.close()
 
 
-def _is_correction_run(db_path: str | Path, run_id: str) -> bool:
+# Review runs are retried on their own version from validation, never from the file.
+_REVIEW_RETRY_TRIGGERS = frozenset({"correction", "human_review"})
+
+
+def _review_trigger(db_path: str | Path, run_id: str) -> str | None:
+    """The trigger of a review run retried without its file; None for any other run."""
     conn = _open_for_retry(db_path, run_id)
     try:
         run = ledger.get_run(conn, run_id)
-        return run is not None and run.trigger == "correction"
+        return run.trigger if run is not None and run.trigger in _REVIEW_RETRY_TRIGGERS else None
     finally:
         conn.close()
 
@@ -178,11 +185,14 @@ def retry_run(
     A failed correction run is instead retried on its own (corrected) version from
     validation (Decision 18): `path` is ignored, since re-extracting the source would
     recreate the uncorrected version, and so is `evaluation_date` (a review run keeps the
-    base run's, Decision 16). A path that is given is still read first, so a bad
-    file is refused before the ledger is opened, as for any retry."""
+    base run's, Decision 16). A failed human-review (approve/decline) run is retried the
+    same way and, like the action itself, calls no model (Decision 13): `provider` is
+    ignored and no credentials are needed. A path that is given is still read first, so a
+    bad file is refused before the ledger is opened, as for any retry."""
     read = None if path is None else intake.read_source(path, limits)
-    if _is_correction_run(db_path, run_id):
-        return _retry_correction(run_id, db_path, events, provider, on_run_started)
+    trigger = _review_trigger(db_path, run_id)
+    if trigger is not None:
+        return _retry_review(run_id, trigger, db_path, events, provider, on_run_started)
     if read is None:
         raise RetryNeedsFile(run_id)
     source, raw = read
@@ -205,15 +215,18 @@ def retry_run(
     )
 
 
-def _retry_correction(
+def _retry_review(
     run_id: str,
+    trigger: str,
     db_path: str | Path,
     events: logging.Logger | None,
     provider: ReasoningProvider | None,
     on_run_started: Callable[[str], None] | None,
 ) -> ProcessingResult:
-    """A new correction run on the failed run's version (same mode, evaluation date, trigger
-    and review_of), carrying its ingestion-stage findings, executed from validation."""
+    """A new review run on the failed run's version (same mode, evaluation date, trigger
+    and review_of), carrying its ingestion-stage findings, executed from validation. A
+    human-review retry reuses the recorded human review of the version and calls no model."""
+    human = trigger == "human_review"
     conn = _open_for_retry(db_path, run_id)
     try:
         original = _check_retry(conn, run_id, None)
@@ -222,7 +235,10 @@ def _retry_correction(
         # could only reach a payment guard that refuses a non-current version.
         if ledger.get_invoice(conn, original.invoice_id).current_version != version.version:
             raise RetryRefused("not_current", run_id)
-        provider = provider or get_provider(original.mode)  # before anything is written
+        if human:
+            provider = NoModelProvider(original.mode)
+        else:
+            provider = provider or get_provider(original.mode)  # before anything is written
         with write_transaction(conn):
             new_run_id = ledger.start_run(
                 conn,
@@ -251,7 +267,13 @@ def _retry_correction(
         conn.close()
     if on_run_started is not None:
         on_run_started(new_run_id)
-    return run_existing_version(new_run_id, db_path=db_path, events=events, provider=provider)
+    return run_existing_version(
+        new_run_id,
+        db_path=db_path,
+        events=events,
+        provider=provider,
+        approval="human" if human else "agent",
+    )
 
 
 def process_invoice(
@@ -357,12 +379,15 @@ def _process(
 
 
 def _invoke(
-    deps: Deps, state: InvoiceState, start: Literal["ingestion", "validation"]
+    deps: Deps,
+    state: InvoiceState,
+    start: Literal["ingestion", "validation"],
+    approval: Literal["agent", "human"] = "agent",
 ) -> InvoiceState:
     # LangSmith tracing is forced off in every mode: invoice bytes must not reach a
     # third-party tracer through LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 by accident.
     with langsmith.tracing_context(enabled=False):
-        return build_graph(deps, start=start).invoke(state)
+        return build_graph(deps, start=start, approval=approval).invoke(state)
 
 
 def _finish(conn: sqlite3.Connection, deps: Deps, state: InvoiceState) -> ProcessingResult:
@@ -421,9 +446,9 @@ def run_existing_version(
     """Execute a review-created run (status `extracted`, attached to its version, carried
     findings recorded) from the validation node on, then finish it like `process_invoice`.
 
-    The caller has committed the run; no transaction is held while the graph runs."""
-    if approval != "agent":
-        raise NotImplementedError("human approval runs arrive with the approve/decline actions")
+    The caller has committed the run; no transaction is held while the graph runs.
+    `approval="human"` (an approve/decline run) resumes the waiting run's decision in the
+    approval node and calls no model: its provider defaults to `NoModelProvider`."""
     if events is None:
         events = observability.configure_events(None)
     conn = connect(db_path)
@@ -432,7 +457,8 @@ def run_existing_version(
         run = ledger.get_run(conn, run_id)
         if run is None or run.status is not RunStatus.extracted or run.version_id is None:
             raise ValueError(f"run {run_id} is not a review run ready for validation")
-        provider = provider or get_provider(run.mode)
+        if provider is None:
+            provider = NoModelProvider(run.mode) if approval == "human" else get_provider(run.mode)
         version = ledger.get_version_by_id(conn, run.version_id)
         source = ledger.get_source(conn, version.source_id)
         deps = Deps(conn=conn, provider=provider, events=events)
@@ -453,7 +479,7 @@ def run_existing_version(
         if run.review_of is not None:
             state["review_of"] = run.review_of
         try:
-            return _finish(conn, deps, _invoke(deps, state, "validation"))
+            return _finish(conn, deps, _invoke(deps, state, "validation", approval))
         except Exception as e:  # as in _process
             return _fail(conn, deps, state, e)
     finally:

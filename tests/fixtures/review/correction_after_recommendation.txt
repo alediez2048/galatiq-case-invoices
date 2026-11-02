@@ -1,0 +1,16 @@
+INVOICE
+
+Vendor: Review Path Supply
+Invoice Number: RP-2001
+Date: 2026-01-20
+Due Date: 2026-03-15
+
+Items:
+  WidgetA    qty: 10    unit price: $1,000.00
+  WidgetB    qty: 4     unit price: $500.00
+
+Subtotal: $12,000.00
+Tax (0%): $0.00
+Total Amount: $12,000.00
+
+Remittance note: due date extended to 2026-03-31 by agreement

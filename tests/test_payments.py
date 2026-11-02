@@ -376,3 +376,40 @@ def test_payment_for_other_version_raises_revision_after_payment(conn, calls):
     assert e.value.reason == "revision_after_payment"
     assert len(calls) == 1 and count_payments(conn) == 1
     assert payments.pay(conn, invoice_id, v1, run1).receipt == first.receipt
+
+
+def _second_version(conn, invoice_id, run1, total="6000.00"):
+    source_id = conn.execute("SELECT source_id FROM runs WHERE run_id = ?", (run1,)).fetchone()[0]
+    revised = inv_1001().model_copy(deep=True)
+    revised.stated.total = Decimal(total)
+    v2, version = ledger.record_version(conn, invoice_id, revised, source_id)
+    assert version == 2
+    return v2
+
+
+def test_pay_refuses_a_version_that_is_not_current(conn, calls):
+    invoice_id, v1, run1 = approved_run(conn)
+    _second_version(conn, invoice_id, run1)  # a plain revision moves current_version to 2
+    with pytest.raises(payments.PaymentNotAuthorized) as exc:
+        payments.pay(conn, invoice_id, v1, run1)
+    assert exc.value.reason == "stale_version"
+    assert count_payments(conn) == 0 and calls == []
+
+
+def test_pay_refuses_a_superseded_version(conn, calls):
+    invoice_id, v1, run1 = approved_run(conn)
+    conn.execute(
+        "UPDATE invoice_versions SET version_status = 'superseded' WHERE version_id = ?", (v1,)
+    )
+    with pytest.raises(payments.PaymentNotAuthorized) as exc:
+        payments.pay(conn, invoice_id, v1, run1)
+    assert exc.value.reason == "stale_version"
+    assert count_payments(conn) == 0 and calls == []
+
+
+def test_stale_version_checked_after_approval_checks(conn, calls):
+    invoice_id, v1, run1 = approved_run(conn, total="10000.01")
+    _second_version(conn, invoice_id, run1)
+    with pytest.raises(payments.PaymentNotAuthorized) as exc:
+        payments.pay(conn, invoice_id, v1, run1)
+    assert exc.value.reason == "human_approval_required"

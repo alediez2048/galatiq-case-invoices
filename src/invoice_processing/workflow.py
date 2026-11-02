@@ -5,7 +5,8 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 
-from invoice_processing.agents import approval, ingestion, payment, validation
+from invoice_processing.agents import approval as approval_agent
+from invoice_processing.agents import ingestion, payment, validation
 from invoice_processing.agents.state import Deps, InvoiceState
 from invoice_processing.codes import RunStatus
 from invoice_processing.transitions import RUN_TRANSITIONS
@@ -35,13 +36,20 @@ def route_after_approval(state: InvoiceState) -> Literal["payment", "outcome", "
     return "outcome"
 
 
-def build_graph(deps: Deps, start: Literal["ingestion", "validation"] = "ingestion"):
+def build_graph(
+    deps: Deps,
+    start: Literal["ingestion", "validation"] = "ingestion",
+    approval: Literal["agent", "human"] = "agent",
+):
+    """`approval="human"` runs `approval.resume` (a human-review run: no model call) in the
+    approval node; the edges after it are the same."""
     # Node functions are resolved from their modules here so tests can patch them.
     graph = StateGraph(InvoiceState)
     if start == "ingestion":
         graph.add_node("ingestion", partial(ingestion.run, deps=deps))
     graph.add_node("validation", partial(validation.run, deps=deps))
-    graph.add_node("approval", partial(approval.run, deps=deps))
+    node = approval_agent.resume if approval == "human" else approval_agent.run
+    graph.add_node("approval", partial(node, deps=deps))
     graph.add_node("payment", partial(payment.pay_node, deps=deps))
     graph.add_node("outcome", partial(payment.outcome_node, deps=deps))
 

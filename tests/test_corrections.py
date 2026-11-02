@@ -380,9 +380,9 @@ def test_failed_live_correction_retried_on_same_version(tmp_path):
     assert e.value.reason == "not_failed"
 
 
-def test_run_existing_version_human_approval_not_yet_available(tmp_path):
+def test_run_existing_version_human_approval_needs_a_ready_review_run(tmp_path):
     db = seeded_db(tmp_path)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="not a review run"):
         service.run_existing_version("run-any", db_path=db, approval="human")
 
 

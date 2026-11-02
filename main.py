@@ -24,6 +24,8 @@ def _install_network_guard() -> None:
 
     socket.socket.connect = blocked  # type: ignore[method-assign]
     socket.create_connection = blocked  # type: ignore[assignment]
+    socket.socket.connect_ex = blocked  # type: ignore[method-assign]
+    socket.getaddrinfo = blocked  # type: ignore[assignment]
 
 
 if os.environ.get("INVOICE_NETWORK_GUARD") == "1":
@@ -104,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     mode = ExecutionMode(args.mode)
     try:
-        get_provider(mode)
+        provider = get_provider(mode)
     except ProviderUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -113,12 +115,21 @@ def main(argv: list[str] | None = None) -> int:
     except intake.IntakeError as exc:
         print(f"error: {exc.code}: {exc}", file=sys.stderr)
         return 2
-    label = "offline simulation" if mode is ExecutionMode.offline else "live"
-    print(f"Mode: {label}", file=sys.stderr)
+    if mode is ExecutionMode.offline:
+        print("Mode: offline simulation", file=sys.stderr)
+    else:
+        # Only reached once a live provider exists (Task 2); the model name is not a secret.
+        print(
+            f"Mode: live model ({getattr(provider, 'model', '?')})"
+            " \u2014 invoice text will be sent to xAI",
+            file=sys.stderr,
+        )
     try:
         _ensure_database(args.db)
         events = configure_events(Path(args.events))
-        result = process_invoice(args.invoice_path, mode, args.db, evaluation_date, events)
+        result = process_invoice(
+            args.invoice_path, mode, args.db, evaluation_date, events, provider=provider
+        )
     except intake.IntakeError as exc:
         print(f"error: {exc.code}: {exc}", file=sys.stderr)
         return 2

@@ -1,7 +1,10 @@
 import json
+from pathlib import Path
 
 import main
 import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
 
 INVOICE = "data/invoices/invoice_1001.txt"
 
@@ -49,11 +52,28 @@ def test_output_option_writes_file_and_keeps_stdout_empty(tmp_path, capsys):
     assert "status=paid_mock" in err
 
 
-def test_live_mode_fails_clearly_and_touches_nothing(tmp_path, capsys):
-    code = main.main(_args(tmp_path, "--mode=live"))
+def test_live_mode_without_env_names_variable_and_touches_nothing(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # no .env
+    for k in ("XAI_API_KEY", "XAI_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    code = main.main(_args(tmp_path, "--mode=live", invoice=str(ROOT / INVOICE)))
     out, err = capsys.readouterr()
     assert code == 2 and out == ""
-    assert "not available" in err and not (tmp_path / "i.db").exists()
+    assert "XAI_API_KEY" in err and not (tmp_path / "i.db").exists()
+
+
+def test_live_mode_never_leaks_key(tmp_path, capsys, monkeypatch):
+    # Until Task 2 lands the live provider, get_provider raises after settings load, so the
+    # "Mode: live model (...)" banner (printed only once a provider exists) is not testable yet.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XAI_API_KEY", "sk-SENTINEL-123")
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    code = main.main(_args(tmp_path, "--mode=live", invoice=str(ROOT / INVOICE)))
+    out, err = capsys.readouterr()
+    assert code == 2
+    assert "arrives in Task 2" in err
+    assert "sk-SENTINEL-123" not in out + err
+    assert not (tmp_path / "i.db").exists() and not (tmp_path / "e.jsonl").exists()
 
 
 def test_missing_file_is_usage_error(tmp_path, capsys):

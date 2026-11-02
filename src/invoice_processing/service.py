@@ -1,6 +1,5 @@
 """Shared processing service: one entry point used by the CLI and tests."""
 
-import contextlib
 import logging
 from datetime import date
 from pathlib import Path
@@ -16,7 +15,7 @@ from invoice_processing.codes import (
     RunStatus,
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
-from invoice_processing.reasoning import get_provider
+from invoice_processing.reasoning import ReasoningProvider, get_provider
 from invoice_processing.schemas import ProcessingResult
 from invoice_processing.storage import connect, init_schema
 from invoice_processing.workflow import build_graph
@@ -59,11 +58,12 @@ def process_invoice(
     evaluation_date: date,
     events: logging.Logger | None = None,
     limits: Limits = DEFAULT_LIMITS,
+    provider: ReasoningProvider | None = None,
 ) -> ProcessingResult:
     source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
     if events is None:
         events = observability.configure_events(None)
-    provider = get_provider(mode)  # config errors propagate before any run exists
+    provider = provider or get_provider(mode)  # config errors propagate before any run exists
     conn = connect(db_path)
     try:
         init_schema(conn)
@@ -101,13 +101,9 @@ def process_invoice(
                     prior_run_id=prior.run_id,
                 )
 
-            # Offline mode must open no socket and upload no invoice data: force
-            # LangSmith tracing off even if LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 are set.
-            trace_off = (
-                langsmith.tracing_context(enabled=False)
-                if mode is ExecutionMode.offline
-                else contextlib.nullcontext()
-            )
+            # LangSmith tracing is forced off in every mode: invoice bytes must not reach a
+            # third-party tracer through LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 by accident.
+            trace_off = langsmith.tracing_context(enabled=False)
             with trace_off:
                 final: InvoiceState = build_graph(deps).invoke(state)
             status = final["status"]

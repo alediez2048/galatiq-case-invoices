@@ -181,6 +181,9 @@ def test_redact_recurses_into_lists():
         "apiKey",
         "accessToken",
         "authToken",
+        "clientSecret",
+        "sessionToken",
+        "xai_api_key",
     ],
 )
 def test_redacted_key_matches_credentials(key):
@@ -198,6 +201,8 @@ def test_redacted_key_matches_credentials(key):
         "input_tokens",
         "prompt_tokens",
         "total_tokens",
+        "inputTokens",
+        "tokenizer",
     ],
 )
 def test_redacted_key_keeps_business_fields(key):

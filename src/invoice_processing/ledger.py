@@ -36,6 +36,7 @@ from invoice_processing.schemas import (
 REDACTED_KEY = re.compile(
     r"^key$"
     r"|(api|access|private|auth)[_-]?(key|token)"  # also matches camelCase (apiKey, accessToken)
+    r"|(?-i:[a-z](?:Secret|Token|Password|Passwd|Credential|Cookie|Bearer)(?:$|[A-Z]))"  # camelCase
     r"|(^|[_-])(token|(secret|password|passwd|authorization|credential|cookie|bearer)s?)($|[_-])",
     re.I,
 )

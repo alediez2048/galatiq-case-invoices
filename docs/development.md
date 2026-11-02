@@ -32,7 +32,11 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt | python -m json.to
 python main.py --invoice_path=data/invoices/invoice_1001.txt --mode=offline --db=demo.db --output=result.json
 ```
 
-Options: `--mode {offline,live}` (live is unavailable until Phase 3), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
+Options: `--mode {offline,live}` (live needs `XAI_API_KEY` and `XAI_MODEL`; see below), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
+
+## Live mode configuration
+
+Live mode reads `XAI_API_KEY`, `XAI_MODEL` (no default), `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6) from the environment, falling back to a git-ignored `.env` (copy `.env.example`; real variables win). Missing or invalid settings exit 2 before any run is created, naming the variable but never its value. `python -m invoice_processing.readiness [--ping]` reports the setup (exit 0 ready, 2 not); `--ping` makes one minimal SDK call and is the only path that touches the network. LangSmith tracing is forced off in both modes. Tests block `connect`, `connect_ex`, `create_connection` and `getaddrinfo`.
 
 ## Run every sample
 

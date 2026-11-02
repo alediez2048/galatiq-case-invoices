@@ -886,7 +886,7 @@ export interface components {
          * @description Why a review action was refused. Stable identifiers for the UI and API.
          * @enum {string}
          */
-        ReviewRefusal: "unknown_invoice" | "stale_version" | "action_not_allowed" | "already_paid" | "field_not_correctable" | "identity_correction_deferred" | "invalid_value" | "correction_not_in_source" | "evidence_location_mismatch" | "evidence_unavailable" | "source_text_unavailable" | "corrected_identity_mismatch";
+        ReviewRefusal: "unknown_invoice" | "stale_version" | "action_not_allowed" | "already_paid" | "field_not_correctable" | "identity_correction_deferred" | "invalid_value" | "correction_not_in_source" | "evidence_location_mismatch" | "evidence_unavailable" | "source_text_unavailable" | "corrected_identity_mismatch" | "no_change";
         /** RunAccepted */
         RunAccepted: {
             /**

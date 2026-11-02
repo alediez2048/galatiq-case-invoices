@@ -92,6 +92,7 @@ const REFUSAL_COPY: Record<ReviewRefusal, string> = {
   identity_correction_deferred:
     "Vendor and invoice number cannot be changed by a correction. Submit a corrected invoice from the vendor.",
   invalid_value: "The corrected value is not valid for this field.",
+  no_change: "The corrected value is the same as the current value. Change it or cancel.",
   correction_not_in_source:
     "This value is not what the invoice says. Submit a corrected invoice from the vendor.",
   evidence_location_mismatch: "The cited location is not where the invoice states this field.",

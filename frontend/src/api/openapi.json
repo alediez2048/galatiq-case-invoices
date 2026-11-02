@@ -1893,7 +1893,8 @@
           "evidence_location_mismatch",
           "evidence_unavailable",
           "source_text_unavailable",
-          "corrected_identity_mismatch"
+          "corrected_identity_mismatch",
+          "no_change"
         ],
         "title": "ReviewRefusal",
         "type": "string"

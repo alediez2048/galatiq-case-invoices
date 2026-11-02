@@ -19,7 +19,7 @@
     ],
     "revised_recommendation": null
   },
-  "decision_run_id": "run-1368bfb347fc43e5b415a9800de627e5",
+  "decision_run_id": "run-723566bf9dba47cc8aae534ed4e4004e",
   "evaluation_date": "2026-01-31",
   "findings": [
     {
@@ -156,7 +156,7 @@
     "vendor_key": "summit manufacturing co.",
     "vendor_name": "Summit Manufacturing Co."
   },
-  "invoice_id": "inv-3550fc94ce8649aea7081e8ded5e8c8a",
+  "invoice_id": "inv-aa03035299fd434f979676e123a82128",
   "invoice_number": "INV-1011",
   "latest_result": {
     "decision": {
@@ -197,7 +197,7 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-3550fc94ce8649aea7081e8ded5e8c8a",
+    "invoice_id": "inv-aa03035299fd434f979676e123a82128",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -206,17 +206,17 @@
     "receipt": {
       "amount": "3000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T16:13:09.820254Z",
-      "receipt_id": "rcpt-8e77977a9a7a"
+      "paid_at": "2026-11-02T17:07:52.453552Z",
+      "receipt_id": "rcpt-4a6d3c4ee9c4"
     },
     "recoverable": false,
-    "run_id": "run-1368bfb347fc43e5b415a9800de627e5",
+    "run_id": "run-723566bf9dba47cc8aae534ed4e4004e",
     "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
     "status": "paid_mock",
     "timings_ms": {},
     "version": 1
   },
-  "latest_run_id": "run-1368bfb347fc43e5b415a9800de627e5",
+  "latest_run_id": "run-723566bf9dba47cc8aae534ed4e4004e",
   "line_items": [
     {
       "available": 15,
@@ -282,13 +282,13 @@
   "receipt": {
     "amount": "3000.00",
     "currency": "USD",
-    "paid_at": "2026-11-02T16:13:09.820254Z",
-    "receipt_id": "rcpt-8e77977a9a7a"
+    "paid_at": "2026-11-02T17:07:52.453552Z",
+    "receipt_id": "rcpt-4a6d3c4ee9c4"
   },
   "review_actions": {
     "allowed": [],
     "current_version": 1,
-    "invoice_id": "inv-3550fc94ce8649aea7081e8ded5e8c8a",
+    "invoice_id": "inv-aa03035299fd434f979676e123a82128",
     "refused": {
       "approve": "already_paid",
       "correct": "already_paid",
@@ -304,7 +304,7 @@
       "evaluation_date": "2026-01-31",
       "events": [
         {
-          "created_at": "2026-11-02T16:13:09.798458Z",
+          "created_at": "2026-11-02T17:07:52.402600Z",
           "event": "received",
           "payload": {
             "mode": "offline",
@@ -317,7 +317,7 @@
           "stage": "intake"
         },
         {
-          "created_at": "2026-11-02T16:13:09.813468Z",
+          "created_at": "2026-11-02T17:07:52.448433Z",
           "event": "extracted",
           "payload": {
             "codes": [
@@ -332,7 +332,7 @@
           "stage": "ingestion"
         },
         {
-          "created_at": "2026-11-02T16:13:09.815448Z",
+          "created_at": "2026-11-02T17:07:52.449098Z",
           "event": "validated",
           "payload": {
             "codes": [
@@ -345,7 +345,7 @@
           "stage": "validation"
         },
         {
-          "created_at": "2026-11-02T16:13:09.816050Z",
+          "created_at": "2026-11-02T17:07:52.449634Z",
           "event": "recommendation",
           "payload": {
             "codes": [],
@@ -358,7 +358,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T16:13:09.817755Z",
+          "created_at": "2026-11-02T17:07:52.449799Z",
           "event": "critique",
           "payload": {
             "agrees": true,
@@ -374,7 +374,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T16:13:09.818740Z",
+          "created_at": "2026-11-02T17:07:52.450223Z",
           "event": "decision",
           "payload": {
             "final_decision": "approved",
@@ -389,31 +389,31 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T16:13:09.820307Z",
+          "created_at": "2026-11-02T17:07:52.453613Z",
           "event": "payment_succeeded",
           "payload": {
             "amount": "3000.00",
             "currency": "USD",
-            "receipt_id": "rcpt-8e77977a9a7a"
+            "receipt_id": "rcpt-4a6d3c4ee9c4"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T16:13:09.820575Z",
+          "created_at": "2026-11-02T17:07:52.455550Z",
           "event": "paid",
           "payload": {
             "amount": "3000.00",
             "created": true,
             "currency": "USD",
             "mode": "offline",
-            "receipt_id": "rcpt-8e77977a9a7a",
+            "receipt_id": "rcpt-4a6d3c4ee9c4",
             "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
             "status": "paid_mock"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T16:13:09.822250Z",
+          "created_at": "2026-11-02T17:07:52.455951Z",
           "event": "finished",
           "payload": {
             "errors": [],
@@ -424,16 +424,16 @@
           "stage": "service"
         }
       ],
-      "finished_at": "2026-11-02T16:13:09.821978Z",
+      "finished_at": "2026-11-02T17:07:52.455890Z",
       "mode": "offline",
       "model": "simulated",
       "original_name": "invoice_1011.pdf",
       "prior_run_id": null,
       "provider": "offline",
       "retry_of": null,
-      "run_id": "run-1368bfb347fc43e5b415a9800de627e5",
+      "run_id": "run-723566bf9dba47cc8aae534ed4e4004e",
       "source_id": "src-bf3d624f6dceec42",
-      "started_at": "2026-11-02T16:13:09.797886Z",
+      "started_at": "2026-11-02T17:07:52.402416Z",
       "status": "paid_mock",
       "trigger": "submission"
     }
@@ -449,7 +449,7 @@
   "vendor_name": "Summit Manufacturing Co.",
   "versions": [
     {
-      "created_at": "2026-11-02T16:13:09.810561Z",
+      "created_at": "2026-11-02T17:07:52.425989Z",
       "currency": "USD",
       "lines": [
         {
@@ -487,8 +487,8 @@
       "receipt": {
         "amount": "3000.00",
         "currency": "USD",
-        "paid_at": "2026-11-02T16:13:09.820254Z",
-        "receipt_id": "rcpt-8e77977a9a7a"
+        "paid_at": "2026-11-02T17:07:52.453552Z",
+        "receipt_id": "rcpt-4a6d3c4ee9c4"
       },
       "revision": null,
       "source_id": "src-bf3d624f6dceec42",

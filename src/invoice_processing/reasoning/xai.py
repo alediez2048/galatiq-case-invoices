@@ -7,7 +7,8 @@ bounded tool loop when the agent has tools, then ask for structured output with
 
 Only this subset of the SDK is used (and mirrored by `tests/fakes/xai_client.py`):
 `Client(api_key, timeout, channel_options)`, `client.chat.create(model, messages, tools)`,
-`chat.append`, `chat.sample`, `chat.parse`, `response.tool_calls[*].id / .function.name / .function.arguments`,
+`chat.append`, `chat.sample`, `chat.parse`,
+`response.tool_calls[*].id / .function.name / .function.arguments`,
 `response.usage.prompt_tokens / .completion_tokens`, and the `xai_sdk.chat` message builders
 `system`, `user`, `tool`, `tool_result`. `reasoning_content` is never read.
 
@@ -15,10 +16,10 @@ Bounds (P3-04). The session budget (`MODEL_CALL_BUDGET`, default 6) counts top-l
 and transport retries; tool follow-up turns do not count. A step with tools makes at most
 `tool_turn_cap + 2` requests (the first sample, one sample per tool turn, then the parse);
 a step without tools makes one. At most `MAX_TOOL_CALLS_PER_TURN` (8) tool calls run per
-turn; the rest of that turn's calls are answered `tool_rejected` without running. Worst case per invoice: `budget * (tool_turn_cap + 2)`
-requests (6 * 5 = 30 with the defaults). Normal call plan: extraction assist 0-2 (only when
-needed; one repair), recommendation 1, critique 1, revision 0-1, so at most 5 steps plus
-transport retries within the budget of 6.
+turn; the rest of that turn's calls are answered `tool_rejected` without running. Worst
+case per invoice: `budget * (tool_turn_cap + 2)` requests (6 * 5 = 30 with the defaults).
+Normal call plan: extraction assist 0-2 (only when needed; one repair), recommendation 1,
+critique 1, revision 0-1, so at most 5 steps plus transport retries within the budget of 6.
 """
 
 import importlib.metadata

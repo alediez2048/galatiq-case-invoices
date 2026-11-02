@@ -87,7 +87,7 @@ Prerequisite: xAI credentials, a confirmed model, and a live-testing budget. Onl
 | [P3-07](P3-07-untrusted-input-safeguards.md) (complete) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | done |
 | [P3-08](P3-08-live-failure-and-explicit-retry.md) (complete) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | done |
 | [P3-09](P3-09-scripted-provider-contract-tests.md) (complete) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | done |
-| [P3-10](P3-10-live-smoke-test-and-verification.md) (pending) | Live Grok smoke test and verification record | P3-01 – P3-09 | blocked |
+| [P3-10](P3-10-live-smoke-test-and-verification.md) (complete) | Live Grok smoke test and verification record | P3-01 – P3-09 | done |
 
 Suggested order: P3-01 and P3-03 in parallel → P3-02 → P3-04 → P3-05, P3-06, P3-08 in parallel → P3-07 → P3-09 → P3-10.
 
@@ -121,16 +121,16 @@ Goal: the approved mockup becomes a working React + TypeScript app backed by Fas
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P5-01](P5-01-fastapi-app-skeleton.md) (pending) | FastAPI application skeleton | P1-07, P2-11, P3-08 (retry only) | todo |
-| [P5-02](P5-02-submission-and-progress-endpoints.md) (pending) | Submission and processing-progress endpoints | P2-01, P5-01 | todo |
-| [P5-03](P5-03-read-and-dashboard-endpoints.md) (pending) | Invoice, detail, and dashboard read endpoints | P5-01 | todo |
-| [P5-04](P5-04-review-action-endpoints.md) (pending) | Review action endpoints | P4-02 – P4-05, P5-01 | todo |
-| [P5-05](P5-05-frontend-scaffold-and-app-frame.md) (pending) | Frontend scaffold, design tokens, and app frame | P5-01 | todo |
-| [P5-06](P5-06-overview-and-invoice-list.md) (pending) | Empty workspace, overview, and invoice list | P5-03, P5-05 | todo |
-| [P5-07](P5-07-add-invoice-and-processing.md) (pending) | Add invoice and processing views | P5-02, P5-05 | todo |
-| [P5-08](P5-08-invoice-detail-and-states.md) (pending) | Invoice detail and outcome states | P5-03, P5-05 | todo |
-| [P5-09](P5-09-needs-review-and-actions.md) (pending) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | todo |
-| [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) (pending) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | todo |
+| [P5-01](P5-01-fastapi-app-skeleton.md) (complete) | FastAPI application skeleton | P1-07, P2-11, P3-08 (retry only) | done |
+| [P5-02](P5-02-submission-and-progress-endpoints.md) (complete) | Submission and processing-progress endpoints | P2-01, P5-01 | done |
+| [P5-03](P5-03-read-and-dashboard-endpoints.md) (complete) | Invoice, detail, and dashboard read endpoints | P5-01 | done |
+| [P5-04](P5-04-review-action-endpoints.md) (complete) | Review action endpoints | P4-02 – P4-05, P5-01 | done |
+| [P5-05](P5-05-frontend-scaffold-and-app-frame.md) (complete) | Frontend scaffold, design tokens, and app frame | P5-01 | done |
+| [P5-06](P5-06-overview-and-invoice-list.md) (complete) | Empty workspace, overview, and invoice list | P5-03, P5-05 | done |
+| [P5-07](P5-07-add-invoice-and-processing.md) (complete) | Add invoice and processing views | P5-02, P5-05 | done |
+| [P5-08](P5-08-invoice-detail-and-states.md) (complete) | Invoice detail and outcome states | P5-03, P5-05 | done |
+| [P5-09](P5-09-needs-review-and-actions.md) (complete) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | done |
+| [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) (complete) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | done |
 
 Suggested order: P5-01 → P5-02, P5-03, P5-05 in parallel → P5-06, P5-07, P5-08 in parallel (these need only Phase 2, so they can run alongside Phases 3–4) → P5-04 and P5-09 after Phase 4 → P5-10.
 

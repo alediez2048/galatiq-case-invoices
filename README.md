@@ -95,7 +95,7 @@ uv run python main.py --mode live --invoice_path=data/invoices/invoice_1001.txt
 
 Developer details (retry refusal reasons, test coverage of the live path) are in [docs/development.md](docs/development.md#live-mode-configuration).
 
-<!-- TODO(P6-04): add live verification results (model id, SDK version, per-invoice status, calls, tokens, cost) from docs/verification/live-<date>.md once P3-10 runs. -->
+**Live verification (2026-11-02, `grok-4.7`, xai-sdk 1.21.0):** all 11 invoices in the live smoke set ended in their expected status: INV-1001 and INV-1012 paid, INV-1002, INV-1003 and INV-1013 rejected, the EUR invoice INV-1014 in review, the USD 10,000.01 invoice waiting for human approval, and all four prompt-injection fixtures rejected. Every decision recorded a critique, Grok used its read-only tools on every invoice, no run used more than 3 of its 6 model steps, and a deliberately invalid key failed as `model_auth_error` with no payment. The run used about 273k input / 6k output tokens. Full record: [docs/verification/live-2026-11-02.md](docs/verification/live-2026-11-02.md). An earlier run the same day timed out on 5 invoices at the old 30 s request limit (they failed safe, unpaid); the default is now 120 s.
 
 ## Architecture
 

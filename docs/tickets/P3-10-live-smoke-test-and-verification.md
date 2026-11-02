@@ -1,6 +1,6 @@
 # P3-10 — Live Grok smoke test and verification record
 
-Phase: 3 · Status: blocked (needs xAI credentials, confirmed model, live-testing budget) · Depends on: P3-01 – P3-09 · Requirements: A06, P11
+Phase: 3 · Status: done · Depends on: P3-01 – P3-09 · Requirements: A06, P11
 
 ## Context
 
@@ -21,6 +21,6 @@ The harness is built (`tests/live/test_live_smoke.py`, task 7 of Phase 3) and sk
 
 ## Acceptance criteria
 
-- [ ] `RUN_LIVE_TESTS=1 pytest -m live` passes against real Grok.
-- [ ] Verification record committed and linked from the PRD Phase 3 exit criteria.
-- [ ] Any divergence (e.g. model rejects a clean invoice) is explained in the record, not hidden by changing expectations.
+- [x] `RUN_LIVE_TESTS=1 pytest -m live` passes against real Grok.
+- [x] Verification record committed and linked from the PRD Phase 3 exit criteria.
+- [x] Any divergence (e.g. model rejects a clean invoice) is explained in the record, not hidden by changing expectations.

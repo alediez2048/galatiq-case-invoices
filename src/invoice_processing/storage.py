@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 # 4: identity keys and normalization changed meaning (Phase 2); no DDL change.
-SCHEMA_VERSION = 4
+# 5: idempotency_keys table for the HTTP API (P5-01).
+SCHEMA_VERSION = 5
 
 
 class SchemaVersionError(RuntimeError):
@@ -126,6 +127,12 @@ _DDL = (
         actor TEXT,
         payload_json TEXT,
         created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS idempotency_keys (
+        key TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (key, endpoint))""",
 )
 
 

@@ -16,6 +16,7 @@ TABLES = {
     "human_reviews",
     "payments",
     "audit_events",
+    "idempotency_keys",
 }
 
 
@@ -180,7 +181,7 @@ def test_atomic_opens_and_rolls_back_alone(conn):
 
 
 def test_phase_1_schema_version_3_is_refused(db_path):
-    assert storage.SCHEMA_VERSION == 4
+    assert storage.SCHEMA_VERSION >= 4
     c = storage.connect(db_path)
     c.execute("PRAGMA user_version = 3")
     with pytest.raises(storage.SchemaVersionError):

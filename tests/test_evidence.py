@@ -77,15 +77,20 @@ def _invoice(field_evidence: dict[str, list[str]], lines: list[list[str]]) -> No
     )
 
 
+LINES = "\n".join(f"source line {i}" for i in range(1, 41))  # 40 plain text lines
+
+
 def test_claimed_by_other_subtotal_line_for_total():
     inv = _invoice({"subtotal": ["line:12"], "total": ["line:14"]}, [["line:9"], ["line:10"]])
-    assert evidence.claimed_by_other("stated.total", "line:12", inv) is True
-    assert evidence.claimed_by_other("stated.total", "line:14", inv) is False
-    assert evidence.claimed_by_other("stated.subtotal", "line:12", inv) is False
-    assert evidence.claimed_by_other("stated.total", "line:9", inv) is True  # a line's evidence
-    assert evidence.claimed_by_other("lines[0].quantity", "line:9", inv) is False
-    assert evidence.claimed_by_other("lines[1].quantity", "line:9", inv) is True
-    assert evidence.claimed_by_other("due_date", "line:30", inv) is False  # nobody's
+    assert evidence.claimed_by_other("stated.total", "line:12", inv, LINES) is True
+    assert evidence.claimed_by_other("stated.total", "line:14", inv, LINES) is False
+    assert evidence.claimed_by_other("stated.subtotal", "line:12", inv, LINES) is False
+    assert (
+        evidence.claimed_by_other("stated.total", "line:9", inv, LINES) is True
+    )  # a line's evidence
+    assert evidence.claimed_by_other("lines[0].quantity", "line:9", inv, LINES) is False
+    assert evidence.claimed_by_other("lines[1].quantity", "line:9", inv, LINES) is True
+    assert evidence.claimed_by_other("due_date", "line:30", inv, LINES) is False  # nobody's
 
 
 def test_claimed_by_other_json_and_xml_paths_match_by_prefix():
@@ -93,15 +98,23 @@ def test_claimed_by_other_json_and_xml_paths_match_by_prefix():
         {"subtotal": ["$.subtotal"], "total": ["$.total"], "vendor": ["/invoice/header/vendor"]},
         [["$.line_items[0]"], ["$.line_items[1]"]],
     )
-    assert evidence.claimed_by_other("stated.total", "$.subtotal", inv) is True
-    assert evidence.claimed_by_other("stated.total", "$.total", inv) is False
-    assert evidence.claimed_by_other("stated.total", "$.line_items[0].amount", inv) is True
-    assert evidence.claimed_by_other("lines[0].line_total", "$.line_items[0].amount", inv) is False
-    assert evidence.claimed_by_other("lines[0].line_total", "$.line_items[1].amount", inv) is True
-    assert evidence.claimed_by_other("stated.total", "$", inv) is True  # contains every field
-    assert evidence.claimed_by_other("stated.total", "$.subtotal_note", inv) is False
-    assert evidence.claimed_by_other("invoice_number", "/invoice/header/vendor", inv) is True
-    assert evidence.claimed_by_other("vendor", "/invoice/header/vendor", inv) is False
+    assert evidence.claimed_by_other("stated.total", "$.subtotal", inv, LINES) is True
+    assert evidence.claimed_by_other("stated.total", "$.total", inv, LINES) is False
+    assert evidence.claimed_by_other("stated.total", "$.line_items[0].amount", inv, LINES) is True
+    assert (
+        evidence.claimed_by_other("lines[0].line_total", "$.line_items[0].amount", inv, LINES)
+        is False
+    )
+    assert (
+        evidence.claimed_by_other("lines[0].line_total", "$.line_items[1].amount", inv, LINES)
+        is True
+    )
+    assert (
+        evidence.claimed_by_other("stated.total", "$", inv, LINES) is True
+    )  # contains every field
+    assert evidence.claimed_by_other("stated.total", "$.subtotal_note", inv, LINES) is False
+    assert evidence.claimed_by_other("invoice_number", "/invoice/header/vendor", inv, LINES) is True
+    assert evidence.claimed_by_other("vendor", "/invoice/header/vendor", inv, LINES) is False
 
 
 @pytest.mark.parametrize(
@@ -134,3 +147,104 @@ def test_ocr_fix_only_for_numbers_and_dates():
     assert evidence.supports("currency", "USD", "Currency: USD") is True
     assert evidence.supports("lines[0].quantity", "10", "qty: 1O") is True
     assert evidence.supports("due_date", "2026-03-10", "Due: 2026-03-1O") is True
+
+
+TXT = "INVOICE\nVendor: A\nSubtotal: $5,000.00\nTotal: $5,050.00\n"
+PAGED = "INVOICE\nVendor: A\n\f\nSubtotal: $5,000.00\nTotal: $5,050.00"  # two PDF pages
+
+
+@pytest.mark.parametrize(
+    "location,text,canonical",
+    [
+        ("line:3", TXT, "line:3"),
+        ("line:003", TXT, "line:3"),
+        ("page:1,line:3", TXT, "line:3"),  # non-paged text has no page
+        ("page:01,line:03", TXT, "line:3"),
+        ("page:2,line:1", TXT, None),
+        ("line:99", TXT, None),
+        ("line:0", TXT, None),
+        ("page:2,line:1", PAGED, "page:2,line:1"),
+        ("page:002,line:01", PAGED, "page:2,line:1"),
+        ("page:1,line:2", PAGED, "page:1,line:2"),
+        ("line:2", PAGED, "page:1,line:2"),  # a whole-text line maps to its page
+        ("line:5", PAGED, "page:2,line:1"),
+        ("line:3", PAGED, None),  # the page break itself is no source line
+        ("row:3", "", "row:3"),
+        ("row:03,col:total", "", "row:3"),
+        ("$.total", "", "$.total"),
+        ("$.line_items[00].amount", "", "$.line_items[0].amount"),
+        ("$", "", "$"),
+        ("$.a..b", "", None),
+        ("/invoice/totals/subtotal", "", "/invoice/totals[1]/subtotal[1]"),
+        ("//invoice//totals/subtotal/", "", None),  # an empty step is not a path
+        ("//invoice/totals/subtotal", "", "/invoice/totals[1]/subtotal[1]"),
+        ("/invoice/totals[01]/subtotal", "", "/invoice/totals[1]/subtotal[1]"),
+        ("/invoice/line_items/item[2]/name", "", "/invoice/line_items[1]/item[2]/name[1]"),
+        ("nonsense", "", None),
+        ("line:3\n", TXT, None),
+    ],
+)
+def test_canonical_location(location, text, canonical):
+    assert evidence.canonical_location(location, text) == canonical
+
+
+def test_locate_reads_every_spelling_like_its_canonical_form():
+    xml = (INVOICES / "invoice_1014.xml").read_text()
+    js = (INVOICES / "invoice_1013.json").read_text()
+    for a, b, text in [
+        ("line:3", "page:1,line:003", TXT),
+        ("page:2,line:1", "line:5", PAGED),
+        ("/invoice/totals/subtotal", "//invoice/totals[1]/subtotal", xml),
+        ("$.line_items[0].amount", "$.line_items[00].amount", js),
+    ]:
+        assert evidence.locate(text, a) == evidence.locate(text, b) is not None
+    assert evidence.locate(PAGED, "line:3") is None
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["line:3", "line:03", "page:1,line:3", "page:01,line:3"],
+)
+def test_claimed_by_other_sees_through_line_spellings(location):
+    inv = _invoice({"subtotal": ["line:3"], "total": ["line:4"]}, [])
+    assert evidence.claimed_by_other("stated.total", location, inv, TXT) is True
+
+
+def test_claimed_by_other_sees_through_path_and_row_spellings():
+    inv = _invoice(
+        {"subtotal": ["/invoice/totals/subtotal", "$.subtotal"], "total": ["row:5"]},
+        [["$.line_items[0]"]],
+    )
+    for loc in ("//invoice/totals/subtotal", "/invoice/totals[1]/subtotal[1]"):
+        assert evidence.claimed_by_other("stated.total", loc, inv, "") is True
+    assert evidence.claimed_by_other("stated.total", "$.line_items[00].amount", inv, "") is True
+    assert evidence.claimed_by_other("stated.subtotal", "row:05,col:x", inv, "") is True
+    assert evidence.claimed_by_other("stated.total", "row:5,col:total", inv, "") is False
+
+
+def test_tax_and_tax_rate_share_the_tax_line():
+    # The text parser records the "Tax (8%): $40.00" line under both tax and tax_rate.
+    inv = _invoice({"tax": ["line:13"], "tax_rate": ["line:13"], "total": ["line:14"]}, [])
+    assert evidence.claimed_by_other("stated.tax", "line:13", inv, LINES) is False
+    assert evidence.claimed_by_other("stated.total", "line:13", inv, LINES) is True
+    assert evidence.claimed_by_other("stated.tax", "line:99", inv, LINES) is True  # no such line
+
+
+@pytest.mark.parametrize(
+    "value,text,ok",
+    [
+        ("-50.00", "Discount: $50.00", False),  # a negative value needs a negative amount
+        ("-50.00", "Discount: -$50.00", True),
+        ("-50.00", "Discount: - 50.00", True),
+        ("50.00", "Discount: -$50.00", False),
+        ("50.00", "Discount: $50.00", True),
+        ("-5000.00", "Subtotal: $5,000.00", False),
+    ],
+)
+def test_money_sign_must_match(value, text, ok):
+    assert evidence.supports("stated.shipping", value, text) is ok
+
+
+def test_structured_money_sign_must_match():
+    assert evidence.supports("stated.total", "-250.00", "250.0", structured=True) is False
+    assert evidence.supports("stated.total", "-250.00", "-250.0", structured=True) is True

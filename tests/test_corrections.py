@@ -34,12 +34,9 @@ SETTINGS = LiveSettings(api_key="sk-SENTINEL-123", model="grok-test")
 UNAVAILABLE = Raise(grpc.StatusCode.UNAVAILABLE)
 
 
-def counts(db) -> tuple[int, int, int]:
-    return (
-        count(db, "SELECT COUNT(*) FROM invoice_versions"),
-        count(db, "SELECT COUNT(*) FROM corrections"),
-        count(db, "SELECT COUNT(*) FROM runs"),
-    )
+def counts(db) -> tuple[int, ...]:
+    tables = ("invoice_versions", "corrections", "runs", "audit_events", "findings")
+    return tuple(count(db, f"SELECT COUNT(*) FROM {t}") for t in tables)
 
 
 def rows(db, sql, *args) -> list[dict]:
@@ -136,6 +133,53 @@ def test_source_error_cannot_cite_subtotal(tmp_path):  # Review Focus 1
     assert e.code is ReviewRefusal.correction_not_in_source
     e = refused(db, r1, change("stated.total", "5000.00", "$.nowhere"))
     assert e.code is ReviewRefusal.evidence_location_mismatch
+
+
+@pytest.mark.parametrize("loc", ["line:12", "line:012", "page:1,line:12", "page:01,line:0012"])
+def test_txt_subtotal_line_cannot_be_cited_under_another_spelling(tmp_path, loc):  # Critical 1
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "source_error.txt", db)
+    assert r1.status == "rejected" and "total_mismatch" in codes(r1.findings)
+    e = refused(db, r1, change("stated.total", "5000.00", loc))
+    assert e.code is ReviewRefusal.evidence_location_mismatch
+    assert payment_count(db, r1.invoice_id) == 0
+
+
+@pytest.mark.parametrize(
+    "loc",
+    ["//invoice/totals/subtotal", "/invoice/totals[1]/subtotal[1]", "/invoice/totals/subtotal[01]"],
+)
+def test_xml_subtotal_cannot_be_cited_under_another_spelling(tmp_path, loc):
+    db = seeded_db(tmp_path)
+    r1 = process(INVOICES / "invoice_1014.xml", db)
+    e = refused(db, r1, change("stated.total", "3750.00", loc))
+    assert e.code is ReviewRefusal.evidence_location_mismatch
+
+
+def test_json_line_cannot_be_cited_under_another_index_spelling(tmp_path):
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "source_error.json", db)
+    e = refused(db, r1, change("stated.total", "2500.00", "$.line_items[00].amount"))
+    assert e.code is ReviewRefusal.evidence_location_mismatch
+
+
+def test_correction_evidence_stores_the_canonical_location(tmp_path):
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "source_error.txt", db)
+    correct(db, r1, change("stated.total", "5050.00", "page:1,line:014"))
+    (row,) = rows(db, "SELECT evidence_location FROM corrections")
+    assert row["evidence_location"] == "line:14"
+    (v2,) = rows(db, "SELECT payload_json FROM invoice_versions WHERE version = 2")
+    events = json.loads(v2["payload_json"])["normalization_events"]
+    (event,) = [e for e in events if e["provenance"] == "review:correction"]
+    assert event["evidence"][0]["location"] == "line:14"
+
+
+def test_tax_correction_cites_the_tax_line(tmp_path):  # Minor 2
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "source_error.txt", db)
+    r2 = correct(db, r1, change("stated.tax", "0.00", "line:13"))
+    assert r2.version == 2
 
 
 def test_json_and_xml_money_supported_at_its_own_path(tmp_path):
@@ -382,3 +426,29 @@ def test_cli_retry_of_a_submission_still_needs_the_path(tmp_path, capsys):
     with pytest.raises(SystemExit):  # without --retry the path stays required
         main.main(common)
     assert count(db, "SELECT COUNT(*) FROM runs") == 1
+
+
+def test_retry_refused_when_the_corrected_version_is_no_longer_current(tmp_path):  # Minor 4
+    db = seeded_db(tmp_path)
+    base = live_provider(Parsed({"proposals": []}), Parsed(rec()), Parsed(crit()))
+    r1 = process(REVIEW / "extraction_mistake.txt", db, mode=LIVE, provider=base)
+    r2 = correct(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        provider=live_provider(UNAVAILABLE, UNAVAILABLE),
+    )
+    assert r2.status is RunStatus.failed
+    conn = storage.connect(db)  # a later version became current (e.g. a corrected submission)
+    try:
+        conn.execute(
+            "UPDATE invoices SET current_version = 3 WHERE invoice_id = ?", (r1.invoice_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    before = counts(db)
+    with pytest.raises(service.RetryRefused) as e:
+        service.retry_run(r2.run_id, None, db, EVAL, provider=live_provider())
+    assert e.value.reason == "not_current"
+    assert counts(db) == before

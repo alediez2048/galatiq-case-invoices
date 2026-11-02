@@ -217,8 +217,12 @@ def _retry_correction(
     conn = _open_for_retry(db_path, run_id)
     try:
         original = _check_retry(conn, run_id, None)
-        provider = provider or get_provider(original.mode)  # before anything is written
         version = ledger.get_version_by_id(conn, original.version_id)
+        # A later version (e.g. a corrected submission) replaced this one: revalidating it
+        # could only reach a payment guard that refuses a non-current version.
+        if ledger.get_invoice(conn, original.invoice_id).current_version != version.version:
+            raise RetryRefused("not_current", run_id)
+        provider = provider or get_provider(original.mode)  # before anything is written
         with write_transaction(conn):
             new_run_id = ledger.start_run(
                 conn,

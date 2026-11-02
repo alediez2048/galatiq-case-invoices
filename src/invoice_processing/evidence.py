@@ -94,20 +94,81 @@ def _xml_text(text: str, path: str) -> str | None:
     return " ".join(f"{c.tag}={''.join(c.itertext()).strip()}" for c in node)
 
 
-_LINE_LOC = re.compile(r"^(?:page:(\d+),)?line:(\d+)$")
-_ROW_LOC = re.compile(r"^row:(\d+)(?:,col:.+)?$")
+_LINE_LOC = re.compile(r"(?:page:(\d+),)?line:(\d+)")
+_ROW_LOC = re.compile(r"row:(\d+)(?:,col:.+)?")
+
+
+def _canonical_line(text: str, page: int | None, line: int) -> str | None:
+    """`line:N` for non-paged text, `page:P,line:N` for paged (PDF) text; a whole-text line
+    number is mapped to its page. None when the line does not exist (a page break is not a
+    source line)."""
+    pages = text.split(_PAGE_BREAK)
+    counts = [len(p.splitlines()) for p in pages]
+    if page is None:
+        start = 0  # whole-text lines before the current page
+        for index in range(len(pages)):
+            if start < line <= start + counts[index]:
+                page, line = index + 1, line - start
+                break
+            start = len((_PAGE_BREAK.join(pages[: index + 1]) + _PAGE_BREAK).splitlines())
+        else:
+            return None
+    if not (1 <= page <= len(pages) and 1 <= line <= counts[page - 1]):
+        return None
+    return f"line:{line}" if len(pages) == 1 else f"page:{page},line:{line}"
+
+
+def _canonical_json(path: str) -> str | None:
+    rest = path[1:]
+    steps = list(_JSON_STEP.finditer(rest))
+    if "".join(m.group(0) for m in steps) != rest:
+        return None
+    return "$" + "".join(
+        f".{key}" if key is not None else f"[{int(i)}]" for key, i in (m.groups() for m in steps)
+    )
+
+
+def _canonical_xml(path: str) -> str | None:
+    steps = path.strip("/").split("/")
+    if not steps[0] or _XML_STEP.fullmatch(steps[0]) is None or "[" in steps[0]:
+        return None
+    out = [steps[0]]
+    for step in steps[1:]:
+        m = _XML_STEP.match(step)
+        if m is None:
+            return None
+        out.append(f"{m[1]}[{int(m[2]) if m[2] else 1}]")
+    return "/" + "/".join(out)
+
+
+def canonical_location(location: str, text: str) -> str | None:
+    """The one spelling of a location, so that two spellings `locate` reads the same way
+    compare equal (Decision 8): line numbers without leading zeros, `page:1` dropped for
+    non-paged text and added for paged text, CSV rows without the column, JSON indices as
+    integers, XML paths with single slashes and explicit `[1]` indices. None when the
+    location has no meaning (or, for lines, does not exist in `text`)."""
+    if m := _LINE_LOC.fullmatch(location):
+        return _canonical_line(text, int(m[1]) if m[1] else None, int(m[2]))
+    if m := _ROW_LOC.fullmatch(location):
+        return f"row:{int(m[1])}"
+    if location.startswith("$"):
+        return _canonical_json(location)
+    if location.startswith("/"):
+        return _canonical_xml(location)
+    return None
 
 
 def locate(text: str, location: str) -> str | None:
-    if m := _LINE_LOC.match(location):
+    canonical = canonical_location(location, text)
+    if canonical is None:
+        return None
+    if m := _LINE_LOC.fullmatch(canonical):
         return _text_line(text, int(m[1]) if m[1] else None, int(m[2]))
-    if m := _ROW_LOC.match(location):
+    if m := _ROW_LOC.fullmatch(canonical):
         return _csv_row(text, int(m[1]))
-    if location.startswith("$"):
-        return _json_value(text, location)
-    if location.startswith("/"):
-        return _xml_text(text, location)
-    return None
+    if canonical.startswith("$"):
+        return _json_value(text, canonical)
+    return _xml_text(text, canonical)
 
 
 # --- Which field owns a location (Decision 8) ----------------------------------------------
@@ -115,10 +176,15 @@ def locate(text: str, location: str) -> str | None:
 _LINE_FIELD = re.compile(r"^(lines\[\d+\])\.")
 
 
+# The text parser records the "Tax (8%): $40.00" line under both keys: one owner.
+_SAME_OWNER = {"tax_rate": "tax", "tax_rate_fraction": "tax"}
+
+
 def _owner(field: str) -> str:
     """`lines[i]` for a line field; otherwise the field_evidence key (no `stated.`)."""
     m = _LINE_FIELD.match(field)
-    return m[1] if m else field.removeprefix("stated.")
+    name = m[1] if m else field.removeprefix("stated.")
+    return _SAME_OWNER.get(name, name)
 
 
 def _contains(outer: str, inner: str) -> bool:
@@ -134,20 +200,30 @@ def _same_place(a: str, b: str) -> bool:
     return _contains(a, b) or _contains(b, a)
 
 
-def claimed_by_other(field: str, location: str, invoice: NormalizedInvoice) -> bool:
+def claimed_by_other(field: str, location: str, invoice: NormalizedInvoice, text: str) -> bool:
     """Whether `location` is a recorded evidence location of a field other than `field`:
-    another header field's `field_evidence` or another line's evidence. JSON and XML paths
-    also match a path above or below them."""
+    another header field's `field_evidence` or another line's evidence. Both sides are
+    compared in their canonical spelling (against `text`, the source text); JSON and XML
+    paths also match a path above or below them. A location with no canonical spelling is
+    treated as claimed."""
+    cited = canonical_location(location, text)
+    if cited is None:
+        return True
     mine = _owner(field)
     owned: list[tuple[str, str]] = [
-        (name, ref.location) for name, refs in invoice.field_evidence.items() for ref in refs
+        (_owner(name), ref.location)
+        for name, refs in invoice.field_evidence.items()
+        for ref in refs
     ]
     owned += [
         (f"lines[{i}]", ref.location)
         for i, line in enumerate(invoice.lines)
         for ref in line.evidence
     ]
-    return any(owner != mine and _same_place(loc, location) for owner, loc in owned)
+    return any(
+        owner != mine and _same_place(canonical_location(loc, text) or loc, cited)
+        for owner, loc in owned
+    )
 
 
 # --- Does the located text support the value -----------------------------------------------
@@ -182,7 +258,19 @@ def _supports_money(value: str, text: str, structured: bool) -> bool:
         except (ArithmeticError, ValueError):
             return False
     wanted = f"{abs(amount):f}".replace(".", "").lstrip("0")
-    return any(_token_digits(m[0]) == wanted for m in _MONEY_TOKEN.finditer(text))
+    negative = amount < 0
+    return any(
+        _token_digits(m[0]) == wanted and _negative_before(text, m.start()) == negative
+        for m in _MONEY_TOKEN.finditer(text)
+    )
+
+
+_SIGN_BEFORE = re.compile(r"-\s*[$€£]?\s*$")
+
+
+def _negative_before(text: str, start: int) -> bool:
+    """A minus sign (optionally with a currency symbol) right before the amount."""
+    return _SIGN_BEFORE.search(text[:start]) is not None
 
 
 def _supports_quantity(value: str, text: str) -> bool:

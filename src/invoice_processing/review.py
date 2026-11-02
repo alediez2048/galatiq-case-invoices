@@ -238,8 +238,9 @@ def _check_change(
     text: str | None,
     base_findings: list[dict],
     current: AllowedActions,
-) -> tuple[Any, str]:
-    """The parsed value and the located source text, or ReviewRefused (in the brief's order)."""
+) -> tuple[Any, str, str]:
+    """The parsed value, the located source text and the canonical location, or
+    ReviewRefused (in the brief's order)."""
     field = change.field
     if _target(invoice, field) is None or (
         field == "currency" and not _currency_correctable(invoice, base_findings)
@@ -255,14 +256,14 @@ def _check_change(
         raise _refuse(R.source_text_unavailable, current)
     if not invoice.field_evidence and not any(line.evidence for line in invoice.lines):
         raise _refuse(R.evidence_unavailable, current)
-    location = change.evidence_location
-    located = evidence.locate(text, location)
-    if located is None or evidence.claimed_by_other(field, location, invoice):
+    location = evidence.canonical_location(change.evidence_location, text)
+    located = None if location is None else evidence.locate(text, location)
+    if located is None or evidence.claimed_by_other(field, location, invoice, text):
         raise _refuse(R.evidence_location_mismatch, current)
     structured = evidence.is_structured(location)
     if not evidence.supports(field, _text(value), located, structured=structured):
         raise _refuse(R.correction_not_in_source, current)
-    return value, located
+    return value, located, location
 
 
 def _base_run(conn: sqlite3.Connection, invoice_id: str) -> ledger.RunRow | None:
@@ -333,8 +334,8 @@ def _record_correction(
     ]
 
     invoice = base.invoice.model_copy(deep=True, update={"computed": None})
-    applied: list[tuple[FieldChange, str | None, str]] = []
-    for change, value, located in checked:
+    applied: list[tuple[FieldChange, str | None, str, str]] = []
+    for change, value, located, location in checked:
         holder, attr = _target(invoice, change.field)
         old = _text(getattr(holder, attr))
         setattr(holder, attr, value)
@@ -349,14 +350,14 @@ def _record_correction(
                 evidence=[
                     EvidenceRef(
                         source_id=base.source_id,
-                        location=change.evidence_location,
+                        location=location,
                         snippet=located[:200],
                     )
                 ],
                 provenance="review:correction",
             )
         )
-        applied.append((change, old, new))
+        applied.append((change, old, new, location))
     invoice = NormalizedInvoice.model_validate(invoice.model_dump())
 
     version_id, version = ledger.record_correction_version(
@@ -372,7 +373,7 @@ def _record_correction(
     )
     ledger.attach_run(conn, run_id, invoice_id, version_id)
     now = datetime.now(UTC)
-    for change, old, new in applied:
+    for change, old, new, location in applied:
         ledger.record_correction(
             conn,
             Correction(
@@ -381,7 +382,7 @@ def _record_correction(
                 field=change.field,
                 old_value=old,
                 new_value=new,
-                evidence_location=change.evidence_location,
+                evidence_location=location,
                 reviewer=request.reviewer,
                 reason=request.reason,
                 created_at=now,

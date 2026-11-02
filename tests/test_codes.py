@@ -168,7 +168,8 @@ def test_corpus_findings_respect_stage_sets(tmp_path, monkeypatch):
 
     monkeypatch.setattr(validation_node, "run", spy_validation)
     monkeypatch.setattr(policy, "evaluate", spy_evaluate)
-    files = sorted(Path("data/invoices").iterdir())
+    root = Path(__file__).resolve().parent.parent
+    files = sorted((root / "data" / "invoices").iterdir())
     for i, path in enumerate(files):
         db = tmp_path / f"{i}.db"
         conn = storage.connect(db)

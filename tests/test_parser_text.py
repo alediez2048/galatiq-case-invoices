@@ -190,3 +190,112 @@ def test_1008_dates_via_aliases():
     d = draft("invoice_1008.txt")
     assert (d.invoice_date_raw, d.due_date_raw) == ("2026-01-10", "2026-01-20")
     assert ("due_date", "Due") in aliases(d)
+
+
+def rows(d):
+    return [(x.raw_name, x.quantity_raw, x.unit_price_raw, x.line_total_raw) for x in d.lines]
+
+
+def test_1010_table_and_footer():
+    d = draft("invoice_1010.txt")
+    assert d.invoice_number_raw == "INV-1010" and d.vendor_raw == "Consolidated Materials Group"
+    assert rows(d) == [
+        ("WidgetA", "8", "$250.00", "$2,000.00"),
+        ("WidgetB", "4", "$500.00", "$2,000.00"),
+        ("GadgetX", "2", "$750.00", "$1,500.00"),
+        ("WidgetA (rush order)", "4", "$300.00", "$1,200.00"),
+    ]
+    assert (d.subtotal_raw, d.tax_raw, d.tax_rate_raw, d.shipping_raw, d.total_raw) == (
+        "$6,700.00",
+        "$335.00",
+        None,
+        "$150.00",
+        "$7,185.00",
+    )
+
+
+def test_1011_txt():
+    d = draft("invoice_1011.txt")
+    assert [r[:2] for r in rows(d)] == [("WidgetA", "6"), ("WidgetB", "3")]
+    assert (d.subtotal_raw, d.tax_rate_raw, d.tax_raw, d.total_raw) == (
+        "$3,000.00",
+        "0",
+        "$0.00",
+        "$3,000.00",
+    )
+
+
+def test_1012_raw_tokens_preserved():
+    d = draft("invoice_1012.txt")
+    assert d.vendor_raw == "QuickShip Distributers" and d.invoice_number_raw == "INV 1012"
+    assert d.invoice_date_raw == "26-Jan-2O26"
+    assert rows(d) == [
+        ("Widget A", "12", "$250", "$3,000.00"),
+        ("WidgetB", "7", "$500", "$3,500.O0"),
+        ("Gadget X", "4", "$750", "$3,000.00"),
+    ]
+    assert (d.subtotal_raw, d.tax_rate_raw, d.tax_raw, d.total_raw) == (
+        "$9,500.00",
+        "5",
+        "$475.00",
+        "$9,975.00",
+    )
+    assert d.notes_raw == (
+        "Ref PO-20260115. Deliver to warehouse dock B. Contact Jim at ext 4421 with questions."
+    )
+    assert d.payment_terms_raw == "Net 30"
+
+
+TABLE = [("line:1", "Item  Qty  Unit Price  Amount")]
+
+
+def test_row_with_missing_column_is_malformed():
+    d = parse_lines("s", TABLE + [("line:2", "WidgetA  6  $1,500.00")])
+    assert d.lines == [] and [i.code for i in d.issues] == ["malformed_row"]
+
+
+def test_item_name_with_digits():
+    d = parse_lines("s", TABLE + [("line:2", "Model 3000 Bracket  2  $10.00  $20.00")])
+    assert rows(d) == [("Model 3000 Bracket", "2", "$10.00", "$20.00")]
+
+
+def test_two_fields_on_one_line():
+    d = parse_lines(
+        "s",
+        [
+            ("line:1", "Invoice: INV-9      Date: 2026-01-24"),
+            ("line:2", "Vendor: Atlas Supply Due: 2026-03-24"),
+        ],
+    )
+    assert (d.invoice_number_raw, d.invoice_date_raw) == ("INV-9", "2026-01-24")
+    assert (d.vendor_raw, d.due_date_raw) == ("Atlas Supply", "2026-03-24")
+
+
+def test_label_words_inside_values_do_not_split():
+    d = parse_lines("s", [("line:1", "Due Date: 2026-02-01"), ("line:2", "Vendor: Due North Ltd.")])
+    assert (d.due_date_raw, d.vendor_raw) == ("2026-02-01", "Due North Ltd.")
+    assert d.invoice_date_raw is None
+
+
+def test_pdf_style_lines_with_notes_column():
+    d = parse_lines(
+        "s",
+        [
+            ("p1:1", "Invoice: INV-1013      Date: 2026-01-24"),
+            ("p1:2", "Terms: Net 60"),
+            ("p1:3", "Item                    Qty     Unit Price Amount      Notes"),
+            ("p1:4", "WidgetA                    5          $240.00   $1,200.00 Volume discount"),
+            ("p1:5", "Subtotal: $21,040.00"),
+            ("p1:6", "Tax (7%):   $1,472.80"),
+            ("p1:7", "Grand Total: $22,562.80"),
+        ],
+    )
+    assert d.lines[0].note == "Volume discount"
+    assert rows(d) == [("WidgetA", "5", "$240.00", "$1,200.00")]
+    assert (d.subtotal_raw, d.tax_rate_raw, d.total_raw) == ("$21,040.00", "7", "$22,562.80")
+    assert d.issues == []
+
+
+def test_trailing_text_without_notes_column_is_malformed():
+    d = parse_lines("s", TABLE + [("line:2", "WidgetA  6  $1.00  $6.00  extra")])
+    assert d.lines == [] and [i.code for i in d.issues] == ["malformed_row"]

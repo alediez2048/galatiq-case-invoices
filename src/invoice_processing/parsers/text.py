@@ -81,6 +81,13 @@ _ITEM_PATTERNS = (
 )
 
 
+_TABLE_HEADER = re.compile(
+    r"^(item|description)\s+(qty|quantity)\s+(unit price|rate|price)"
+    r"\s+(amount|total|line total)(\s+notes)?$"
+)
+_SEPARATOR = re.compile(r"^[\s\-=_]+$")
+_NUMERIC = re.compile(r"^-?\$?[\dO][\dO,]*(\.[\dO]+)?$")
+
 _Entry = tuple[str, str, EvidenceRef]
 
 
@@ -92,6 +99,11 @@ _FIELD_BY_LABEL = {_norm(s): field for field, spellings in LABELS.items() for s 
 _ITEM_LABELS = {_norm(s) for s in ITEM_BLOCK_LABELS}
 _IGNORED = {_norm(s) for s in IGNORED_LABELS}
 _CANONICAL = {_norm(s) for s in CANONICAL_LABELS}
+_SPELLINGS = sorted({s for spellings in LABELS.values() for s in spellings}, key=len, reverse=True)
+_NEXT_FIELD = re.compile(
+    r"\s+(?=(?:" + "|".join(re.escape(s) for s in _SPELLINGS) + r"|Tax\s*\([^%()]*%\))\s*:)",
+    re.IGNORECASE,
+)
 
 
 def parse_lines(source_id: str, lines: list[tuple[str, str]]) -> InvoiceDraft:
@@ -103,12 +115,29 @@ def parse_lines(source_id: str, lines: list[tuple[str, str]]) -> InvoiceDraft:
     start = _skip_email_header(draft, entries)
     in_items = False
     in_notes = False
+    in_table = False
+    table_notes = False
     after_vendor = False
     for _, line, ref in entries[start:]:
         was_after_vendor, after_vendor = after_vendor, False
         if not line:
-            in_items = in_notes = False
+            in_items = in_notes = in_table = False
             continue
+        if _SEPARATOR.match(line):
+            continue
+        if _TABLE_HEADER.match(_norm(line)):
+            in_items = in_notes = False
+            in_table = True
+            table_notes = _norm(line).endswith("notes")
+            draft.evidence.append(ref)
+            continue
+        labeled = _LABELED.match(line)
+        known = labeled and _classify(labeled["label"])
+        if in_table and not known:
+            _table_row(draft, line, ref, table_notes)
+            continue
+        if known:
+            in_table = False
         if in_items:
             item = _match_item(line)
             if item:
@@ -125,8 +154,6 @@ def parse_lines(source_id: str, lines: list[tuple[str, str]]) -> InvoiceDraft:
             if _set_field(draft, "invoice_number", title["value"].strip(), ref):
                 _alias_event(draft, "invoice_number", "INVOICE #", ref)
             continue
-        labeled = _LABELED.match(line)
-        known = labeled and _classify(labeled["label"])
         if not known:
             if in_notes and not in_items:
                 _append_notes(draft, line, ref)
@@ -139,28 +166,61 @@ def parse_lines(source_id: str, lines: list[tuple[str, str]]) -> InvoiceDraft:
             continue
         in_notes = False
         kind, field = known
-        label, value = labeled["label"].strip(), labeled["value"].strip()
-        if kind == "items":
-            in_items = True
-            continue
-        in_items = False
-        if kind == "ignored":
-            draft.evidence.append(ref)
-            continue
-        if not value and field != "notes":
-            _unparsed(draft, ref)
-            continue
-        if field == "tax" and (tax := _TAX_LABEL.match(label)):
-            if _set_field(draft, "tax", value, ref):
-                draft.tax_rate_raw = tax["rate"].strip()
-                draft.field_evidence.setdefault("tax_rate", []).append(ref)
-            continue
-        if _set_field(draft, field, value, ref):
-            if _norm(label) not in _CANONICAL:
-                _alias_event(draft, field, label, ref)
-            in_notes = field == "notes"
-            after_vendor = field == "vendor"
+        segments = [(labeled["label"].strip(), labeled["value"].strip())]
+        if kind == "field" and field != "notes":
+            first, *rest = _NEXT_FIELD.split(segments[0][1])
+            segments = [(segments[0][0], first.strip())]
+            for part in rest:
+                sub = _LABELED.match(part)
+                segments.append((sub["label"].strip(), sub["value"].strip()))
+        for label, value in segments:
+            kind, field = _classify(label)
+            if kind == "items":
+                in_items = True
+                continue
+            in_items = False
+            if kind == "ignored":
+                draft.evidence.append(ref)
+                continue
+            if not value and field != "notes":
+                _unparsed(draft, ref)
+                continue
+            if field == "tax" and (tax := _TAX_LABEL.match(label)):
+                if _set_field(draft, "tax", value, ref):
+                    draft.tax_rate_raw = tax["rate"].strip()
+                    draft.field_evidence.setdefault("tax_rate", []).append(ref)
+                continue
+            if _set_field(draft, field, value, ref):
+                if _norm(label) not in _CANONICAL:
+                    _alias_event(draft, field, label, ref)
+                in_notes = field == "notes"
+                after_vendor = field == "vendor"
     return draft
+
+
+def _table_row(draft: InvoiceDraft, line: str, ref: EvidenceRef, has_notes: bool) -> None:
+    """Read a column row right to left: amount, price and qty end at the last numeric token."""
+    tokens = line.split()
+    numeric = [i for i, t in enumerate(tokens) if _NUMERIC.match(t) and any(c.isdigit() for c in t)]
+    k = numeric[-1] if numeric else -1
+    note = " ".join(tokens[k + 1 :]) or None
+    if k < 3 or not {k, k - 1, k - 2} <= set(numeric) or (note and not has_notes):
+        draft.issues.append(
+            ExtractionIssue(
+                code=FindingCode.malformed_row, message="table row not understood", evidence=[ref]
+            )
+        )
+        return
+    draft.lines.append(
+        DraftLine(
+            raw_name=" ".join(tokens[: k - 2]),
+            quantity_raw=tokens[k - 2],
+            unit_price_raw=tokens[k - 1],
+            line_total_raw=tokens[k],
+            note=note,
+            evidence=[ref],
+        )
+    )
 
 
 def _classify(label: str) -> tuple[str, str] | None:

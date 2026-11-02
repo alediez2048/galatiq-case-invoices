@@ -110,10 +110,10 @@ def test_txt_rejects_pdf_and_nul_bytes(tmp_path, data):
 
 
 def test_unregistered_parser_version_placeholder(tmp_path):
-    p = tmp_path / "c.xml"
-    p.write_text("<invoice/>")
+    p = tmp_path / "c.pdf"
+    p.write_bytes(b"%PDF-1.4\n")
     source, _ = read_source(p)
-    assert source.parser_version  # registered or "xml-unavailable"
+    assert source.parser_version == "pdf-unavailable"
 
 
 def test_all_supplied_files_pass_intake():

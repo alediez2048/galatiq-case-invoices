@@ -11,12 +11,15 @@ from invoice_processing.parsers.json_parser import PARSER_VERSION as JSON_VERSIO
 from invoice_processing.parsers.json_parser import parse_json
 from invoice_processing.parsers.txt import PARSER_VERSION as TXT_VERSION
 from invoice_processing.parsers.txt import parse_txt
+from invoice_processing.parsers.xml_parser import PARSER_VERSION as XML_VERSION
+from invoice_processing.parsers.xml_parser import parse_xml
 from invoice_processing.schemas import InvoiceDraft, SourceDocument
 
 PARSER_VERSIONS: dict[SourceFormat, str] = {
     SourceFormat.txt: TXT_VERSION,
     SourceFormat.json: JSON_VERSION,
     SourceFormat.csv: CSV_VERSION,
+    SourceFormat.xml: XML_VERSION,
 }
 
 
@@ -33,6 +36,8 @@ def parse_document(source: SourceDocument, data: bytes, limits: Limits) -> Parse
         return ParsedDocument(draft=parse_json(source, data))
     if source.format is SourceFormat.csv:
         return ParsedDocument(draft=parse_csv(source, data))
+    if source.format is SourceFormat.xml:
+        return ParsedDocument(draft=parse_xml(source, data))
     raise ExtractionError("unsupported_format", f"no parser for {source.format.value} yet")
 
 

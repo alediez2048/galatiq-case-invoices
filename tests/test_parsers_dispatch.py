@@ -22,5 +22,5 @@ def test_dispatch_txt():
 def test_dispatch_without_parser_raises():
     source, data = read_source("data/invoices/invoice_1001.txt")
     with pytest.raises(ExtractionError) as e:
-        parse_document(source.model_copy(update={"format": SourceFormat.xml}), data, DEFAULT_LIMITS)
+        parse_document(source.model_copy(update={"format": SourceFormat.pdf}), data, DEFAULT_LIMITS)
     assert e.value.code == "unsupported_format"

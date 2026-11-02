@@ -462,7 +462,7 @@
           "unit_price": "500.00"
         }
       ],
-      "origin": "extracted",
+      "origin": "source",
       "original_name": "invoice_1001.txt",
       "parent_version": null,
       "receipt": {

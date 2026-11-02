@@ -428,7 +428,7 @@
           "unit_price": "500.00"
         }
       ],
-      "origin": "extracted",
+      "origin": "source",
       "original_name": "invoice_1011.pdf",
       "parent_version": null,
       "receipt": {

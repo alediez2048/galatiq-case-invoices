@@ -491,7 +491,7 @@
           "unit_price": "750.00"
         }
       ],
-      "origin": "extracted",
+      "origin": "source",
       "original_name": "invoice_1007.csv",
       "parent_version": null,
       "receipt": null,

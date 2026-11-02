@@ -17,6 +17,7 @@ from invoice_processing.schemas import (
     MockReceipt,
     NormalizedInvoice,
     SourceDocument,
+    SupersedeLink,
     ValidationFinding,
 )
 from invoice_processing.tools import Dispatcher, ReadOnlyConnection, ToolContext
@@ -45,6 +46,7 @@ class InvoiceState(TypedDict, total=False):
     model_calls_used: int  # budget units spent so far this run, carried between nodes
     trigger: str  # what created the run: submission, correction, human_review, ...
     review_of: str  # for a review-created run: the run it continues
+    supersede: SupersedeLink | None  # a corrected submission: the invoice it replaces
 
 
 @dataclass

@@ -74,6 +74,14 @@ def record_source(conn: sqlite3.Connection, source: SourceDocument) -> tuple[str
         return source.source_id, False
 
 
+def set_extracted_text(conn: sqlite3.Connection, source_id: str, text: str) -> None:
+    with storage.atomic(conn):
+        conn.execute(
+            "UPDATE sources SET extracted_text = ? WHERE source_id = ? AND extracted_text IS NULL",
+            (text, source_id),
+        )
+
+
 def upsert_invoice(
     conn: sqlite3.Connection,
     vendor_key: str | None,

@@ -1,0 +1,9 @@
+                                     INVOICE
+    Invoice Number:   INV-1011
+    Vendor:           Summit Manufacturing Co.
+    Date:             2026-01-20
+    Due Date:         2026-02-20
+    Item                               Qty         Unit Price     Amount
+    WidgetA                             6            $250.00     $1,500.00
+    WidgetB                             3            $500.00     $1,500.00
+                                                      Total:     $3,000.00

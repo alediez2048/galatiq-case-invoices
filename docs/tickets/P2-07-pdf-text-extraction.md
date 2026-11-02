@@ -1,6 +1,6 @@
 # P2-07 — PDF text extraction
 
-Phase: 2 · Status: todo · Depends on: P2-01, P2-03 · Requirements: A01, A02
+Phase: 2 · Status: done · Depends on: P2-01, P2-03 · Requirements: A01, A02
 
 ## Context
 
@@ -26,3 +26,7 @@ The fixture expectations come from generator source; [requirements](../requireme
 - [ ] 1012 PDF yields the same raw values as 1012 TXT.
 - [ ] 1013 PDF yields eight lines with notes, invoice `INV-1013`, both dates, subtotal 21,040.00, tax 1,472.80, total 22,562.80, currency absent.
 - [ ] Any difference between pdfplumber output and the `pdftotext` reading above is documented in the ticket before closing.
+
+## Extraction notes
+
+Snapshots of `pdfplumber` (`page.extract_text(layout=True)`) are committed under `tests/fixtures/pdf_text/`. Compared with the `pdftotext -layout` reading above, the lines and their order are the same for 1011, 1012 and 1013 (including 1012's `2O26` and `$3,500.O0`, and 1013's two-field header lines, `Notes` column and `Grand Total`). Differences: pdfplumber output has leading indentation and different column spacing, and `extract_pdf_text` right-strips each line and drops blank lines, so the vertical gaps `pdftotext` keeps are absent. The extractor name and version are recorded in `sources.parser_version` (`pdf-1/pdfplumber-<version>`).

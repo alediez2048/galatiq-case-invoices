@@ -16,7 +16,8 @@ def run(state: InvoiceState, deps: Deps) -> dict:
     timings = state.get("timings_ms", {})
     with stage_timer() as t:
         try:
-            draft = parse_document(state["source"], state["raw"], deps.limits).draft
+            parsed = parse_document(state["source"], state["raw"], deps.limits)
+            draft = parsed.draft
             if len(draft.lines) > deps.limits.max_lines:
                 raise ExtractionError(
                     "too_many_lines",
@@ -31,6 +32,10 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 "error_message": str(e),
             }
         else:
+            if parsed.extracted_text is not None:
+                ledger.set_extracted_text(
+                    deps.conn, state["source"].source_id, parsed.extracted_text
+                )
             invoice, findings = normalize(draft)
             issues = [
                 {"code": i.code, "location": ref.location, "snippet": ref.snippet}

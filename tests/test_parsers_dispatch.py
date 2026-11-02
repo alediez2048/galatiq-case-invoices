@@ -1,10 +1,7 @@
-import pytest
-
 from invoice_processing.codes import SourceFormat
 from invoice_processing.intake import read_source
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.parsers import PARSER_VERSIONS, ParsedDocument, parse_document
-from invoice_processing.parsers.base import ExtractionError
 
 
 def test_limits_defaults():
@@ -19,8 +16,5 @@ def test_dispatch_txt():
     assert PARSER_VERSIONS[SourceFormat.txt] == source.parser_version == "txt-2"
 
 
-def test_dispatch_without_parser_raises():
-    source, data = read_source("data/invoices/invoice_1001.txt")
-    with pytest.raises(ExtractionError) as e:
-        parse_document(source.model_copy(update={"format": SourceFormat.pdf}), data, DEFAULT_LIMITS)
-    assert e.value.code == "unsupported_format"
+def test_every_format_has_a_registered_parser():
+    assert set(PARSER_VERSIONS) == set(SourceFormat)

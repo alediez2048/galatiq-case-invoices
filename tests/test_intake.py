@@ -5,6 +5,7 @@ import pytest
 from invoice_processing.codes import SourceFormat
 from invoice_processing.intake import SUPPORTED_EXTENSIONS, IntakeError, read_source
 from invoice_processing.limits import Limits
+from invoice_processing.parsers import PARSER_VERSIONS
 from invoice_processing.parsers.txt import PARSER_VERSION
 from tests import fixture_factory as ff
 
@@ -109,11 +110,11 @@ def test_txt_rejects_pdf_and_nul_bytes(tmp_path, data):
     )
 
 
-def test_unregistered_parser_version_placeholder(tmp_path):
-    p = tmp_path / "c.pdf"
-    p.write_bytes(b"%PDF-1.4\n")
-    source, _ = read_source(p)
-    assert source.parser_version == "pdf-unavailable"
+@pytest.mark.parametrize("fmt", list(SourceFormat))
+def test_parser_version_comes_from_registry(fmt):
+    sample = next(sorted(Path("data/invoices").glob(f"*.{fmt.value}")).__iter__())
+    source, _ = read_source(sample)
+    assert source.parser_version == PARSER_VERSIONS[fmt]
 
 
 def test_all_supplied_files_pass_intake():

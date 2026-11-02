@@ -222,13 +222,35 @@ def start_run(
 def latest_run_in_other_mode(
     conn: sqlite3.Connection, source_id: str, mode: ExecutionMode
 ) -> str | None:
-    """The latest run of this source in a mode other than `mode`, if any (any status)."""
+    """The latest run of this source when it ran in a mode other than `mode` (a mode
+    switch); None when the source never ran or its latest run is in the same mode."""
     row = conn.execute(
-        "SELECT run_id FROM runs WHERE source_id = ? AND mode != ? "
+        "SELECT run_id, mode FROM runs WHERE source_id = ? "
         "ORDER BY started_at DESC, rowid DESC LIMIT 1",
-        (source_id, mode.value),
+        (source_id,),
     ).fetchone()
-    return None if row is None else row["run_id"]
+    return None if row is None or row["mode"] == mode.value else row["run_id"]
+
+
+def payment_outside_retry_chain(conn: sqlite3.Connection, run_id: str) -> str | None:
+    """Receipt id of a same-version payment for this run's identity made by a run that is
+    outside this run's retry chain and did not fail; None otherwise (also when the run never
+    reached an identity). A payer that failed (paid, then crashed) is a replay, not this."""
+    run = conn.execute(
+        "SELECT r.invoice_id, v.version FROM runs r "
+        "JOIN invoice_versions v ON v.version_id = r.version_id WHERE r.run_id = ?",
+        (run_id,),
+    ).fetchone()
+    if run is None:
+        return None
+    chain = [run_id, *_retry_chain(conn, run_id)]
+    slots = ",".join("?" * len(chain))
+    row = conn.execute(
+        "SELECT p.receipt_id FROM payments p JOIN runs r ON r.run_id = p.run_id "
+        f"WHERE p.invoice_id = ? AND p.version = ? AND r.status != ? AND r.run_id NOT IN ({slots})",
+        (run["invoice_id"], run["version"], RunStatus.failed.value, *chain),
+    ).fetchone()
+    return None if row is None else row["receipt_id"]
 
 
 @dataclass(frozen=True)

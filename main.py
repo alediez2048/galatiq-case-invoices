@@ -185,7 +185,8 @@ def _retry(args: argparse.Namespace, evaluation_date: date) -> int:
             args.retry, args.invoice_path, args.db, evaluation_date, events, provider=provider
         )
     except RetryRefused as exc:
-        print(f"error: retry refused: {exc.reason}", file=sys.stderr)
+        receipt = f" (receipt {exc.receipt_id})" if exc.receipt_id else ""
+        print(f"error: retry refused: {exc.reason}{receipt}", file=sys.stderr)
         return 2
     except ProviderUnavailable as exc:
         print(f"error: {exc}", file=sys.stderr)

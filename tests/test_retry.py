@@ -202,15 +202,103 @@ def test_same_mode_rerun_is_not_a_mode_switch(db):
     assert run_row(db, again.run_id)["mode_switch_of"] is None
 
 
-def test_retry_after_offline_payment_reveals_receipt_and_keeps_payer(db):
+def test_third_same_mode_rerun_after_a_switch_is_not_a_switch(db):
+    live = process_invoice(INV_1001, LIVE, db, EVAL, provider=failing())
+    switched = process_invoice(INV_1001, OFF, db, EVAL)
+    third = process_invoice(INV_1001, OFF, db, EVAL)
+    assert run_row(db, switched.run_id)["mode_switch_of"] == live.run_id
+    assert run_row(db, third.run_id)["mode_switch_of"] is None
+    assert third.status is RunStatus.duplicate  # byte-level check applies again
+    assert third.receipt.receipt_id == switched.receipt.receipt_id
+    assert n_payments(db) == 1
+
+
+# --- already paid by another run -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "decision", ["approve", "reject", "review"], ids=["approve", "reject", "review"]
+)
+def test_retry_refused_when_another_run_already_paid(db, decision):
     failed = process_invoice(INV_1001, LIVE, db, EVAL, provider=failing())
     offline = process_invoice(INV_1001, OFF, db, EVAL)
-    retried = retry_run(failed.run_id, INV_1001, db, EVAL, provider=working())
-    assert retried.receipt.receipt_id == offline.receipt.receipt_id
-    assert run_row(db, retried.run_id)["mode_switch_of"] == offline.run_id
-    # the paying run did not fail, so the payment stays attributed to it
+    assert offline.status is RunStatus.paid_mock
+    client = FakeXaiClient([Parsed(rec(decision)), Parsed(crit())])
+    runs_before = rows(db, "SELECT run_id FROM runs")
+    with pytest.raises(RetryRefused) as exc:
+        retry_run(
+            failed.run_id, INV_1001, db, EVAL, provider=XaiProvider(SETTINGS, factory(client))
+        )
+    assert exc.value.reason == "already_paid"
+    assert exc.value.receipt_id == offline.receipt.receipt_id
+    assert client.requests == []  # refused before any model call
+    assert rows(db, "SELECT run_id FROM runs") == runs_before  # and before any run row
     assert rows(db, "SELECT run_id FROM payments") == [{"run_id": offline.run_id}]
+
+
+def _crash_after_paying(monkeypatch):
+    real = ledger.update_run_status
+
+    def fail_on_paid(conn, run_id, status):
+        if status is RunStatus.paid_mock:
+            raise RuntimeError("post-commit failure")
+        return real(conn, run_id, status)
+
+    monkeypatch.setattr(ledger, "update_run_status", fail_on_paid)
+
+
+def test_retry_of_a_payer_that_crashed_is_allowed_and_repoints(db, monkeypatch):
+    with monkeypatch.context() as m:
+        _crash_after_paying(m)
+        crashed = process_invoice(INV_1001, LIVE, db, EVAL, provider=working())
+    assert crashed.status is RunStatus.failed and crashed.errors == ["unexpected_error"]
+    assert crashed.recoverable is True and crashed.next_actions == ["retry"]
     assert n_payments(db) == 1
+    retried = retry_run(crashed.run_id, INV_1001, db, EVAL, provider=working())
+    assert retried.status is RunStatus.paid_mock
+    assert rows(db, "SELECT run_id FROM payments") == [{"run_id": retried.run_id}]
+    assert n_payments(db) == 1
+
+
+def test_crashed_payer_in_another_runs_chain_does_not_block_a_retry(db, monkeypatch):
+    # live run A fails; live run B (no retry link) pays then crashes; retrying A is allowed
+    # because B failed, and the same-mode replay re-points the payment to the retry.
+    failed = process_invoice(INV_1001, LIVE, db, EVAL, provider=failing())
+    with monkeypatch.context() as m:
+        _crash_after_paying(m)
+        crashed = process_invoice(INV_1001, LIVE, db, EVAL, provider=working())
+    assert crashed.status is RunStatus.failed and n_payments(db) == 1
+    retried = retry_run(failed.run_id, INV_1001, db, EVAL, provider=working())
+    assert retried.status is RunStatus.paid_mock
+    assert rows(db, "SELECT run_id FROM payments") == [{"run_id": retried.run_id}]
+    assert n_payments(db) == 1
+
+
+def test_cross_mode_replay_of_crashed_payer_keeps_payment_attribution(db, monkeypatch):
+    with monkeypatch.context() as m:
+        _crash_after_paying(m)
+        crashed = process_invoice(INV_1001, LIVE, db, EVAL, provider=working())
+    offline = process_invoice(INV_1001, OFF, db, EVAL)
+    assert run_row(db, offline.run_id)["mode_switch_of"] == crashed.run_id
+    assert offline.status is RunStatus.paid_mock
+    assert offline.receipt is not None  # the existing receipt is returned
+    assert rows(db, "SELECT run_id FROM payments") == [{"run_id": crashed.run_id}]
+    c = connect(db)
+    events = ledger.list_audit_events(c, offline.run_id)
+    c.close()
+    assert "payment_run_repointed" not in {e["event"] for e in events}
+    assert n_payments(db) == 1
+
+
+def test_check_retry_on_database_without_schema_is_unknown_run(tmp_path):
+    empty = tmp_path / "empty.db"
+    with pytest.raises(RetryRefused) as exc:
+        service.check_retry("run-x", INV_1001, empty)
+    assert exc.value.reason == "unknown_run"
+    c = connect(empty)
+    assert c.execute("PRAGMA user_version").fetchone()[0] == 0
+    assert c.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] == 0
+    c.close()
 
 
 # --- identity check for retries --------------------------------------------------------
@@ -360,4 +448,24 @@ def test_cli_retry_refusal_exits_2_with_reason(tmp_path, capsys):
     out, err = capsys.readouterr()
     assert code == 2 and out == ""
     assert "not_failed" in err
+    assert n_payments(tmp_path / "cli.db") == 1
+
+
+def test_cli_retry_already_paid_prints_receipt(tmp_path, capsys, monkeypatch):
+    from invoice_processing.reasoning import xai
+
+    monkeypatch.setattr(
+        xai, "real_client_factory", lambda settings: FakeXaiClient([UNAVAILABLE, UNAVAILABLE])
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    assert main.main(_cli_args(tmp_path, "--mode=live")) == 1
+    failed = json.loads(capsys.readouterr().out)
+    assert main.main(_cli_args(tmp_path, "--mode=offline")) == 0
+    paid = json.loads(capsys.readouterr().out)
+    code = main.main(_cli_args(tmp_path, f"--retry={failed['run_id']}"))
+    out, err = capsys.readouterr()
+    assert code == 2 and out == ""
+    assert f"already_paid (receipt {paid['receipt']['receipt_id']})" in err
     assert n_payments(tmp_path / "cli.db") == 1

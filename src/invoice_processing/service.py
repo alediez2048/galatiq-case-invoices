@@ -44,7 +44,13 @@ def _call_budget(provider: ReasoningProvider) -> int | None:
 def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingResult:
     error_code = state.get("error_code")
     source = state.get("source")
-    recoverable = error_code in _MODEL_ERROR_CODES
+    if error_code in _MODEL_ERROR_CODES:
+        next_actions = list(RECOVERY_ACTIONS)
+    elif error_code == "unexpected_error":
+        next_actions = ["retry"]  # an offline simulation would not fix it
+    else:
+        next_actions = []
+    recoverable = bool(next_actions)
     fields = {
         "run_id": state["run_id"],
         "invoice_id": state.get("invoice_id"),
@@ -62,7 +68,7 @@ def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingR
         "model_calls_used": state.get("model_calls_used", 0),
         "model_calls_budget": budget,
         "recoverable": recoverable,
-        "next_actions": list(RECOVERY_ACTIONS) if recoverable else [],
+        "next_actions": next_actions,
     }
     fields.update(overrides)
     return ProcessingResult(**fields)
@@ -71,10 +77,11 @@ def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingR
 class RetryRefused(RuntimeError):
     """`retry_run` will not retry this run; `reason` is a stable code."""
 
-    def __init__(self, reason: str, run_id: str) -> None:
+    def __init__(self, reason: str, run_id: str, receipt_id: str | None = None) -> None:
         super().__init__(f"run {run_id} cannot be retried: {reason}")
         self.reason = reason
         self.run_id = run_id
+        self.receipt_id = receipt_id  # set for already_paid: the existing receipt
 
 
 # Failures a retry can fix: model errors, a crash (startup sweep) or an unexpected exception.
@@ -92,19 +99,38 @@ def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> le
         raise RetryRefused("not_recoverable", run_id)
     if run.content_hash != content_hash:
         raise RetryRefused("source_mismatch", run_id)
+    # Another (non-failed) run already paid this version: a retry would only re-decide a
+    # paid identity. A payer that crashed after paying is retried and re-pointed instead.
+    receipt_id = ledger.payment_outside_retry_chain(conn, run_id)
+    if receipt_id is not None:
+        raise RetryRefused("already_paid", run_id, receipt_id)
     return run
+
+
+def _open_for_retry(db_path: str | Path, run_id: str) -> sqlite3.Connection:
+    """Open an existing ledger for a retry: a database without a schema has no runs, so it
+    is refused as unknown_run rather than initialized. Runs the startup sweep, so a crashed
+    run becomes a retryable `interrupted` failure."""
+    conn = connect(db_path)
+    try:
+        if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+            raise RetryRefused("unknown_run", run_id)
+        init_schema(conn)  # version check only: every table already exists
+        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 def check_retry(
     run_id: str, path: str | Path, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
 ) -> ledger.RunSummary:
-    """The failed run `retry_run` would retry, or RetryRefused. Writes nothing but the
-    startup sweep (which turns a crashed run into a retryable `interrupted` failure)."""
+    """The failed run `retry_run` would retry, or RetryRefused. Creates no run; the only
+    write is the startup sweep (see `_open_for_retry`)."""
     source, _ = intake.read_source(path, limits)
-    conn = connect(db_path)
+    conn = _open_for_retry(db_path, run_id)
     try:
-        init_schema(conn)
-        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
         return _check_retry(conn, run_id, source.content_hash)
     finally:
         conn.close()
@@ -123,10 +149,8 @@ def retry_run(
     original run's mode. The ledger keeps no source bytes, so the caller re-supplies the
     file; it must hash to the original source. Payment stays once per identity."""
     source, raw = intake.read_source(path, limits)
-    conn = connect(db_path)
+    conn = _open_for_retry(db_path, run_id)
     try:
-        init_schema(conn)
-        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
         original = _check_retry(conn, run_id, source.content_hash)
     finally:
         conn.close()

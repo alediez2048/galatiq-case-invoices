@@ -496,7 +496,8 @@ def test_start_run_records_retry_and_mode_switch_links(conn, sid):
         "SELECT retry_of, mode_switch_of FROM runs WHERE run_id = ?", (switch,)
     ).fetchone()
     assert tuple(row) == (None, retry)
-    assert ledger.latest_run_in_other_mode(conn, sid, ExecutionMode.offline) == retry
+    # only the latest run of the source counts: it is offline now
+    assert ledger.latest_run_in_other_mode(conn, sid, ExecutionMode.offline) is None
     assert ledger.latest_run_in_other_mode(conn, sid, ExecutionMode.live) == switch
 
 

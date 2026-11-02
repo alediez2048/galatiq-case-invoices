@@ -128,3 +128,16 @@ def test_registered_and_dispatch():
     assert PARSER_VERSIONS[next(k for k in PARSER_VERSIONS if k.value == "csv")] == "csv-1"
     src, data = read_source("data/invoices/invoice_1006.csv")
     assert len(parse_document(src, data, DEFAULT_LIMITS).draft.lines) == 2
+
+
+def test_identical_repeated_field_is_not_duplicate_field(tmp_path):
+    x = _parse(tmp_path, "field,value\nvendor,A Co.\nvendor, A  Co. \nitem,W\nquantity,5\n")
+    assert x.vendor_raw == "A Co." and x.issues == []
+
+
+def test_repeated_line_field_is_duplicate_field_first_wins(tmp_path):
+    x = _parse(tmp_path, "field,value\nitem,W\nquantity,5\nquantity,6\nunit_price,2\n")
+    assert lines(x) == [("W", "5", "2")]
+    assert [(i.code, i.evidence[0].location) for i in x.issues] == [("duplicate_field", "row:4")]
+    same = _parse(tmp_path, "field,value\nitem,W\nquantity,5\nquantity,5\n")
+    assert same.issues == [] and lines(same) == [("W", "5", None)]

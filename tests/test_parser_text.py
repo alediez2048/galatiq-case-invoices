@@ -299,3 +299,14 @@ def test_pdf_style_lines_with_notes_column():
 def test_trailing_text_without_notes_column_is_malformed():
     d = parse_lines("s", TABLE + [("line:2", "WidgetA  6  $1.00  $6.00  extra")])
     assert d.lines == [] and [i.code for i in d.issues] == ["malformed_row"]
+
+
+def test_identical_repeated_label_is_not_duplicate_field():
+    # Multi-page PDFs repeat their header block; the same value twice is not a conflict.
+    d = parse_lines(
+        "s",
+        [("line:1", "Vendor: A  Co."), ("line:2", "Vendor: A Co."), ("line:3", "Vendor: B Co.")],
+    )
+    assert d.vendor_raw == "A  Co."
+    assert codes(d) == ["duplicate_field"]
+    assert d.issues[0].evidence[-1].location == "line:3"

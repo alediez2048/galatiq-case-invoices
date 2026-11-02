@@ -4,7 +4,7 @@ import csv
 import io
 
 from invoice_processing.codes import FindingCode
-from invoice_processing.parsers.base import ExtractionError
+from invoice_processing.parsers.base import ExtractionError, same_text
 from invoice_processing.schemas import (
     DraftLine,
     EvidenceRef,
@@ -97,6 +97,8 @@ def _issue(draft: InvoiceDraft, code: FindingCode, message: str, refs: list[Evid
 def _set_field(draft: InvoiceDraft, field: str, value: str, ref: EvidenceRef) -> bool:
     """Set a header field, first value wins. Returns False when it was a duplicate."""
     if field in draft.field_evidence:
+        if same_text(getattr(draft, f"{field}_raw"), value):
+            return False
         _issue(
             draft,
             "duplicate_field",
@@ -125,8 +127,17 @@ def _field_value(draft: InvoiceDraft, rows: list[tuple[int, list[str]]]) -> None
             if current is None:
                 _issue(draft, "malformed_row", f"'{name}' appears before any item.", [ref])
                 continue
-            if getattr(current, attr) is None:
+            existing = getattr(current, attr)
+            if existing is None:
                 setattr(current, attr, value)
+            elif value is not None and not same_text(existing, value):
+                _issue(
+                    draft,
+                    "duplicate_field",
+                    f"Line field '{name}' appears more than once; the first value is used.",
+                    [ref],
+                )
+                continue
             current.evidence.append(ref)
         elif name in _FIELDS:
             if value is not None:

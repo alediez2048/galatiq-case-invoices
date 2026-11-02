@@ -124,3 +124,22 @@ def test_dispatch_registered():
     source, data = read_source("data/invoices/invoice_1013.json")
     assert PARSER_VERSIONS[source.format] == source.parser_version == "json-1"
     assert parse_document(source, data, DEFAULT_LIMITS).draft.total_raw == "22562.80"
+
+
+def test_identical_repeated_key_is_not_duplicate_field(tmp_path):
+    x = _parse(tmp_path, '{"invoice_number": "A 1", "invoice_number": "A  1", "total": 5}')
+    assert x.invoice_number_raw == "A 1" and x.issues == []
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "field"),
+    [("date", "invoice_date", "invoice_date"), ("tax_amount", "tax", "tax")],
+)
+def test_alternate_keys_conflict_is_duplicate_field(tmp_path, first, second, field):
+    x = _parse(tmp_path, f'{{"{first}": "1", "{second}": "2"}}')
+    assert getattr(x, f"{field}_raw") == "1"
+    assert [(i.code, i.evidence[0].location) for i in x.issues] == [
+        ("duplicate_field", f"$.{second}")
+    ]
+    same = _parse(tmp_path, f'{{"{first}": "1", "{second}": "1"}}')
+    assert same.issues == []

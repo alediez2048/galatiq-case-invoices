@@ -134,3 +134,13 @@ def test_non_leaf_field_is_malformed_row_only_once(tmp_path):
     )
     assert x.vendor_raw is None
     assert [i.code for i in x.issues] == ["malformed_row", "malformed_row"]
+
+
+def test_identical_repeat_is_not_duplicate_field(tmp_path):
+    x = _parse(
+        tmp_path,
+        "<invoice><header><vendor>A Co.</vendor><vendor> A  Co.</vendor></header>"
+        "<line_items><item><name>W</name><name>W</name></item></line_items></invoice>",
+    )
+    assert x.vendor_raw == "A Co." and x.lines[0].raw_name == "W"
+    assert x.issues == []

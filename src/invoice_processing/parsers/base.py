@@ -11,6 +11,11 @@ class ParsedDocument:
     extracted_text: str | None = None
 
 
+def same_text(a: str, b: str) -> bool:
+    """True when two raw values match after whitespace collapse (a repeat, not a conflict)."""
+    return " ".join(a.split()) == " ".join(b.split())
+
+
 class ExtractionError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)

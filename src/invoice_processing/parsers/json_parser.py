@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from invoice_processing.codes import FindingCode
-from invoice_processing.parsers.base import ExtractionError
+from invoice_processing.parsers.base import ExtractionError, same_text
 from invoice_processing.schemas import (
     DraftLine,
     EvidenceRef,
@@ -60,7 +60,7 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
         repeated: list[str] = []
         for key, value in pairs:
             if key in out:
-                if key not in repeated:
+                if not _same(out[key], value) and key not in repeated:
                     repeated.append(key)
             else:
                 out[key] = value
@@ -113,6 +113,7 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
             )
 
     for field, keys in _TOP_FIELDS.items():
+        chosen: str | None = None
         for key in keys:
             if key not in doc:
                 continue
@@ -120,9 +121,17 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
             value = scalar(doc[key], path)
             if value is None:
                 continue
-            setattr(draft, f"{field}_raw", value)
-            draft.field_evidence.setdefault(field, []).append(ref(path, doc[key]))
-            break
+            if chosen is None:
+                chosen = value
+                setattr(draft, f"{field}_raw", value)
+                draft.field_evidence.setdefault(field, []).append(ref(path, doc[key]))
+            elif not same_text(chosen, value):
+                issue(
+                    "duplicate_field",
+                    f"Key '{key}' repeats {field}; the first value is used.",
+                    path,
+                    doc[key],
+                )
 
     _vendor(doc, draft, scalar, ref)
     _lines(doc, draft, scalar, issue)
@@ -131,6 +140,15 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
         if key not in _KNOWN_TOP:
             issue("unrecognized_field", f"Unrecognized key '{key}'.", f"$.{key}", doc[key])
     return draft
+
+
+def _same(a: Any, b: Any) -> bool:
+    """A repeated key with the same value (whitespace-insensitive for strings) is no conflict."""
+    if isinstance(a, str) and isinstance(b, str):
+        return same_text(a, b)
+    if isinstance(a, Decimal) and isinstance(b, Decimal):
+        return str(a) == str(b)  # raw values: 1.0 and 1.00 are different text
+    return type(a) is type(b) and a == b
 
 
 def _duplicate_paths(

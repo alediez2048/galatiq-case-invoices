@@ -3,6 +3,7 @@
 import re
 
 from invoice_processing.codes import FindingCode
+from invoice_processing.parsers.base import same_text
 from invoice_processing.schemas import (
     DraftLine,
     EvidenceRef,
@@ -264,7 +265,9 @@ def _match_item(line: str) -> tuple[str, str, str] | None:
 
 def _set_field(draft: InvoiceDraft, field: str, value: str, ref: EvidenceRef) -> bool:
     attr = f"{field}_raw"
-    if getattr(draft, attr) is not None:
+    if (existing := getattr(draft, attr)) is not None:
+        if same_text(existing, value):
+            return False
         first = draft.field_evidence.get(field, [])[:1]
         draft.issues.append(
             ExtractionIssue(

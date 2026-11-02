@@ -7,7 +7,7 @@ from defusedxml import DTDForbidden, EntitiesForbidden, ExternalReferenceForbidd
 from defusedxml.ElementTree import fromstring
 
 from invoice_processing.codes import FindingCode
-from invoice_processing.parsers.base import ExtractionError
+from invoice_processing.parsers.base import ExtractionError, same_text
 from invoice_processing.schemas import (
     DraftLine,
     EvidenceRef,
@@ -57,7 +57,7 @@ def parse_xml(source: SourceDocument, data: bytes) -> InvoiceDraft:
 
     draft = InvoiceDraft(source_id=source.source_id)
     flat = {**_HEADER, **_TOTALS, **_ROOT_ONLY}
-    taken: set[str] = set()
+    taken: dict[str, str] = {}
 
     def set_field(field: str, el: Element, path: str) -> None:
         text = _leaf_text(draft, el, path)
@@ -117,12 +117,14 @@ def _claim(
     path: str,
     text: str | None,
     key: str,
-    taken: set[str],
+    taken: dict[str, str],
 ) -> bool:
-    """True when this non-empty value is the first for `key`; a repeat emits duplicate_field."""
+    """True for the first non-empty value of `key`; a differing repeat emits duplicate_field."""
     if text is None:
         return False
     if key in taken:
+        if same_text(taken[key], text):
+            return False
         _issue(
             draft,
             "duplicate_field",
@@ -131,7 +133,7 @@ def _claim(
             text,
         )
         return False
-    taken.add(key)
+    taken[key] = text
     return True
 
 
@@ -149,7 +151,7 @@ def _children(parent: Element, parent_path: str) -> Iterator[tuple[Element, str]
 
 def _line(draft: InvoiceDraft, item: Element, item_path: str) -> None:
     values: dict[str, str | None] = {attr: None for attr in _LINE_FIELDS}
-    taken: set[str] = set()
+    taken: dict[str, str] = {}
     for el, path in _children(item, item_path):
         attr = next((a for a, tag in _LINE_FIELDS.items() if tag == el.tag), None)
         if attr is None:

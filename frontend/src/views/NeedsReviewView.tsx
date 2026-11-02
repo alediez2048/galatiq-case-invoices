@@ -97,7 +97,7 @@ function QueueTable({
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.invoice_id} aria-selected={selected === item.invoice_id || undefined}>
+                <tr key={item.invoice_id} aria-current={selected === item.invoice_id ? "true" : undefined}>
                   <td className="strong">{label(item)}</td>
                   <td className="truncate" title={item.vendor_name ?? undefined}>
                     {item.vendor_name ?? "Vendor missing"}

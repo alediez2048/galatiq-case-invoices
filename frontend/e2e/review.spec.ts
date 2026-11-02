@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
@@ -11,6 +12,7 @@ const EVALUATION_DATE = "2026-01-31";
 async function upload(page: Page, relative: string): Promise<string> {
   const path = resolve(FIXTURES, relative);
   const res = await page.request.post("/api/runs", {
+    headers: { "Idempotency-Key": randomUUID() },
     multipart: {
       file: { name: basename(path), mimeType: "application/octet-stream", buffer: readFileSync(path) },
       mode: "offline",
@@ -38,6 +40,10 @@ async function invoice(page: Page, id: string) {
   };
 }
 
+async function overview(page: Page) {
+  return (await (await page.request.get("/api/overview")).json()) as { runs: number; outcomes: Record<string, number> };
+}
+
 async function openReview(page: Page, invoiceNumber: string) {
   await page.goto("/review");
   await page.getByRole("button", { name: `Review ${invoiceNumber}` }).click();
@@ -47,6 +53,14 @@ async function openReview(page: Page, invoiceNumber: string) {
 test.describe.serial("needs review (P5-09 on P5-04, offline)", () => {
   test("USD 10,000.01 waits for a person; approve pays once with a receipt", async ({ page }) => {
     const id = await upload(page, "threshold/valid_10000_01.json");
+    expect((await invoice(page, id)).outcome).toBe("awaiting_human_approval");
+
+    // Reloading /review with the item open only reads: no run, no payment, still waiting.
+    const before = await overview(page);
+    await openReview(page, "TH-10000-01");
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    expect(await overview(page)).toEqual(before);
     expect((await invoice(page, id)).outcome).toBe("awaiting_human_approval");
 
     const panel = await openReview(page, "TH-10000-01");
@@ -122,7 +136,10 @@ test.describe.serial("needs review (P5-09 on P5-04, offline)", () => {
   });
 
   test("add corrected invoice: a rejected invoice is superseded by the vendor's corrected file", async ({ page }) => {
-    const res = await page.request.post("/api/runs", { data: { sample: "invoice_1013.json", mode: "offline", evaluation_date: EVALUATION_DATE } });
+    const res = await page.request.post("/api/runs", {
+      headers: { "Idempotency-Key": randomUUID() },
+      data: { sample: "invoice_1013.json", mode: "offline", evaluation_date: EVALUATION_DATE },
+    });
     expect(res.status()).toBe(202);
     const { run_id } = (await res.json()) as { run_id: string };
     await expect.poll(async () => (await (await page.request.get(`/api/runs/${run_id}`)).json()).terminal).toBe(true);
@@ -139,5 +156,28 @@ test.describe.serial("needs review (P5-09 on P5-04, offline)", () => {
     await page.waitForURL(/\/runs\/|\/invoices\//);
     await expect.poll(async () => (await invoice(page, id)).current_version, { timeout: 30_000 }).toBe(2);
     expect((await invoice(page, id)).outcome).toBe("awaiting_human_approval");
+  });
+
+  test("local web security: a foreign Origin is 403 and a text/plain body is 415; no run starts", async ({ page }) => {
+    const before = await overview(page);
+    const body = JSON.stringify({ sample: "invoice_1001.txt", mode: "offline" });
+    const foreign = await page.request.post("/api/runs", {
+      headers: { Origin: "https://evil.example", "Content-Type": "text/plain", "Idempotency-Key": randomUUID() },
+      data: body,
+    });
+    expect(foreign.status()).toBe(403);
+    expect((await foreign.json()).code).toBe("forbidden_origin");
+
+    await page.goto("/");
+    const sameOrigin = await page.evaluate(async (b) => {
+      const r = await fetch("/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "Idempotency-Key": crypto.randomUUID() },
+        body: b,
+      });
+      return { status: r.status, code: ((await r.json()) as { code: string }).code };
+    }, body);
+    expect(sameOrigin).toEqual({ status: 415, code: "unsupported_media_type" });
+    expect((await overview(page)).runs).toBe(before.runs);
   });
 });

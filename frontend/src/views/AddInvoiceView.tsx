@@ -76,7 +76,7 @@ export function AddInvoiceView() {
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const samples = useSamples(selection?.kind === "sample");
-  const { submit, busy, error } = useSubmitRun(selectionId(selection));
+  const { submit, busy, error } = useSubmitRun(selectionId(selection), mode);
   const reasonId = useId();
   const fileErrorId = useId();
 

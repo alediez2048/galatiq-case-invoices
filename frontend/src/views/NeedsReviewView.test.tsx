@@ -114,6 +114,19 @@ describe("Needs review queue (P5-09)", () => {
     expect(within(panel).queryByRole("button", { name: /Correct an extracted value/ })).toBeNull();
   });
 
+  it("marks the open row with aria-current, not aria-selected (a plain table, not a grid)", async () => {
+    const user = userEvent.setup();
+    const row = queueItem(detailHighValue, []);
+    renderApp("/review", {
+      "GET /api/review-queue": () => queueWith({ awaiting_human_approval: [row] }),
+      "GET /api/invoices/:id": () => wire.detail(detailHighValue),
+    });
+    await openItem(user, "HV-10001");
+    const tr = screen.getByRole("button", { name: "Review HV-10001" }).closest("tr")!;
+    expect(tr).toHaveAttribute("aria-current", "true");
+    expect(tr).not.toHaveAttribute("aria-selected");
+  });
+
   it("renders no review control at all when nothing is allowed", async () => {
     const user = userEvent.setup();
     const none = {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, newIdempotencyKey, type RunInput } from "./client";
-import type { InvoiceListQuery, RetryAction, RunCreated, RunProgress } from "./types";
+import type { ExecutionMode, InvoiceListQuery, RetryAction, RunCreated, RunProgress } from "./types";
 
 export interface QueryState<T> {
   data: T | undefined;
@@ -107,11 +107,13 @@ export function useRetryRun(
 }
 
 /**
- * One Process action (P5-07). A key is generated per selection, the request is sent at most
- * once while in flight (a synchronous guard, so a double click cannot post twice), and a
- * resend after a lost response reuses the key so the backend replays the same run.
+ * One Process action (P5-07). A key is generated per request signature (selection and mode),
+ * the request is sent at most once while in flight (a synchronous guard, so a double click
+ * cannot post twice), and a resend after a lost response reuses the key so the backend
+ * replays the same run. Another mode is another request with its own key: the backend refuses
+ * a reused key with a different body (422 idempotency_key_reused).
  */
-export function useSubmitRun(selectionId: string | null) {
+export function useSubmitRun(selectionId: string | null, mode: ExecutionMode) {
   const keys = useRef(new Map<string, string>());
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -125,10 +127,11 @@ export function useSubmitRun(selectionId: string | null) {
       inFlight.current = true;
       setBusy(true);
       setError(null);
-      let key = keys.current.get(selectionId);
+      const signature = `${mode}|${selectionId}`;
+      let key = keys.current.get(signature);
       if (!key) {
         key = newIdempotencyKey();
-        keys.current.set(selectionId, key);
+        keys.current.set(signature, key);
       }
       try {
         return await api.createRun(input, key);
@@ -141,7 +144,7 @@ export function useSubmitRun(selectionId: string | null) {
         return null;
       }
     },
-    [selectionId],
+    [selectionId, mode],
   );
   return { submit, busy, error };
 }

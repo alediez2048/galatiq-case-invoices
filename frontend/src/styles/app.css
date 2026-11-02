@@ -1490,7 +1490,7 @@ tbody tr:hover {
   margin-bottom: var(--space-7);
 }
 
-.review-group tr[aria-selected="true"] td {
+.review-group tr[aria-current="true"] td {
   background: var(--color-pill-fill);
 }
 

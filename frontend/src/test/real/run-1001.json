@@ -3,7 +3,7 @@
   "error_message": null,
   "events": [
     {
-      "created_at": "2026-11-02T09:44:56.251201Z",
+      "created_at": "2026-11-02T15:43:36.542851Z",
       "event": "received",
       "payload": {
         "mode": "offline",
@@ -16,7 +16,7 @@
       "stage": "intake"
     },
     {
-      "created_at": "2026-11-02T09:44:56.277141Z",
+      "created_at": "2026-11-02T15:43:36.589374Z",
       "event": "extracted",
       "payload": {
         "codes": [
@@ -32,7 +32,7 @@
       "stage": "ingestion"
     },
     {
-      "created_at": "2026-11-02T09:44:56.279459Z",
+      "created_at": "2026-11-02T15:43:36.592638Z",
       "event": "validated",
       "payload": {
         "codes": [
@@ -46,7 +46,7 @@
       "stage": "validation"
     },
     {
-      "created_at": "2026-11-02T09:44:56.281039Z",
+      "created_at": "2026-11-02T15:43:36.601232Z",
       "event": "recommendation",
       "payload": {
         "codes": [],
@@ -59,7 +59,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T09:44:56.282972Z",
+      "created_at": "2026-11-02T15:43:36.601480Z",
       "event": "critique",
       "payload": {
         "agrees": true,
@@ -75,7 +75,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T09:44:56.285201Z",
+      "created_at": "2026-11-02T15:43:36.602564Z",
       "event": "decision",
       "payload": {
         "final_decision": "approved",
@@ -90,31 +90,31 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T09:44:56.287369Z",
+      "created_at": "2026-11-02T15:43:36.608510Z",
       "event": "payment_succeeded",
       "payload": {
         "amount": "5000.00",
         "currency": "USD",
-        "receipt_id": "rcpt-47a2e6b45b60"
+        "receipt_id": "rcpt-01cf2b89b509"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T09:44:56.289299Z",
+      "created_at": "2026-11-02T15:43:36.611624Z",
       "event": "paid",
       "payload": {
         "amount": "5000.00",
         "created": true,
         "currency": "USD",
         "mode": "offline",
-        "receipt_id": "rcpt-47a2e6b45b60",
+        "receipt_id": "rcpt-01cf2b89b509",
         "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
         "status": "paid_mock"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T09:44:56.291026Z",
+      "created_at": "2026-11-02T15:43:36.616785Z",
       "event": "finished",
       "payload": {
         "errors": [],
@@ -125,8 +125,8 @@
       "stage": "service"
     }
   ],
-  "finished_at": "2026-11-02T09:44:56.290769Z",
-  "invoice_id": "inv-2c1d29a5bc0e4060b5f37ebcf4029243",
+  "finished_at": "2026-11-02T15:43:36.614576Z",
+  "invoice_id": "inv-d84ad39c34d2455b9711c48b7be5118a",
   "mode": "offline",
   "mode_switch_of": null,
   "prior_run_id": null,
@@ -135,6 +135,7 @@
       "critique_issues": [],
       "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
       "final_decision": "approved",
+      "human_review": null,
       "initial_recommendation": "approve",
       "mode": "offline",
       "model": "simulated",
@@ -184,7 +185,7 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-2c1d29a5bc0e4060b5f37ebcf4029243",
+    "invoice_id": "inv-d84ad39c34d2455b9711c48b7be5118a",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -193,24 +194,25 @@
     "receipt": {
       "amount": "5000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T09:44:56.287313Z",
-      "receipt_id": "rcpt-47a2e6b45b60"
+      "paid_at": "2026-11-02T15:43:36.608347Z",
+      "receipt_id": "rcpt-01cf2b89b509"
     },
     "recoverable": false,
-    "run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
+    "run_id": "run-b4f8628e020f4912a542492d765af2d4",
     "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
     "status": "paid_mock",
-    "timings_ms": {}
+    "timings_ms": {},
+    "version": 1
   },
   "retry_of": null,
-  "run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
+  "run_id": "run-b4f8628e020f4912a542492d765af2d4",
   "source": {
     "format": "txt",
     "original_name": "invoice_1001.txt",
     "source_id": "src-7308ab3d7ff26ee3"
   },
   "stage": "paid_mock",
-  "started_at": "2026-11-02T09:44:56.250745Z",
+  "started_at": "2026-11-02T15:43:36.542569Z",
   "status": "paid_mock",
   "terminal": true
 }

@@ -6,6 +6,7 @@
     "critique_issues": [],
     "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=True",
     "final_decision": "rejected",
+    "human_review": null,
     "initial_recommendation": "reject",
     "mode": "offline",
     "model": "simulated",
@@ -18,7 +19,7 @@
     ],
     "revised_recommendation": null
   },
-  "decision_run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
+  "decision_run_id": "run-46817dde267841b383d5f03c2eaadcd9",
   "evaluation_date": "2026-01-31",
   "findings": [
     {
@@ -67,6 +68,64 @@
     "computed": null,
     "currency": "USD",
     "due_date": "2026-02-28",
+    "field_evidence": {
+      "due_date": [
+        {
+          "location": "row:2,col:Due Date",
+          "snippet": "02/28/2026",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "invoice_date": [
+        {
+          "location": "row:2,col:Date",
+          "snippet": "01/28/2026",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "invoice_number": [
+        {
+          "location": "row:2,col:Invoice Number",
+          "snippet": "INV-1007",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "subtotal": [
+        {
+          "location": "row:5,col:Line Total",
+          "snippet": "14750.00",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "tax": [
+        {
+          "location": "row:6,col:Line Total",
+          "snippet": "885.00",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "tax_rate": [
+        {
+          "location": "row:6,col:Unit Price",
+          "snippet": "Tax (6%):",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "total": [
+        {
+          "location": "row:7,col:Line Total",
+          "snippet": "15525.00",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ],
+      "vendor": [
+        {
+          "location": "row:2,col:Vendor",
+          "snippet": "MegaWidgets Corp",
+          "source_id": "src-332b4c6464b59d5a"
+        }
+      ]
+    },
     "invoice_date": "2026-01-28",
     "invoice_number": "INV-1007",
     "invoice_number_key": "1007",
@@ -150,13 +209,14 @@
     "vendor_key": "megawidgets corp",
     "vendor_name": "MegaWidgets Corp"
   },
-  "invoice_id": "inv-34a129b120c0453783406be3626783be",
+  "invoice_id": "inv-4c5b2e7a7f074478af30a18a3c20a824",
   "invoice_number": "INV-1007",
   "latest_result": {
     "decision": {
       "critique_issues": [],
       "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=True",
       "final_decision": "rejected",
+      "human_review": null,
       "initial_recommendation": "reject",
       "mode": "offline",
       "model": "simulated",
@@ -214,7 +274,7 @@
         "severity": "blocker"
       }
     ],
-    "invoice_id": "inv-34a129b120c0453783406be3626783be",
+    "invoice_id": "inv-4c5b2e7a7f074478af30a18a3c20a824",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -222,12 +282,13 @@
     "prior_run_id": null,
     "receipt": null,
     "recoverable": false,
-    "run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
+    "run_id": "run-46817dde267841b383d5f03c2eaadcd9",
     "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
     "status": "rejected",
-    "timings_ms": {}
+    "timings_ms": {},
+    "version": 1
   },
-  "latest_run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
+  "latest_run_id": "run-46817dde267841b383d5f03c2eaadcd9",
   "line_items": [
     {
       "available": 15,
@@ -300,6 +361,19 @@
   ],
   "outcome": "rejected",
   "receipt": null,
+  "review_actions": {
+    "allowed": [
+      "correct",
+      "submit_corrected"
+    ],
+    "current_version": 1,
+    "invoice_id": "inv-4c5b2e7a7f074478af30a18a3c20a824",
+    "refused": {
+      "approve": "action_not_allowed",
+      "decline": "action_not_allowed"
+    },
+    "status": "rejected"
+  },
   "runs": [
     {
       "error_code": null,
@@ -307,7 +381,7 @@
       "evaluation_date": "2026-01-31",
       "events": [
         {
-          "created_at": "2026-11-02T09:44:56.484748Z",
+          "created_at": "2026-11-02T15:43:36.939184Z",
           "event": "received",
           "payload": {
             "mode": "offline",
@@ -320,7 +394,7 @@
           "stage": "intake"
         },
         {
-          "created_at": "2026-11-02T09:44:56.493110Z",
+          "created_at": "2026-11-02T15:43:36.947468Z",
           "event": "extracted",
           "payload": {
             "codes": [
@@ -335,7 +409,7 @@
           "stage": "ingestion"
         },
         {
-          "created_at": "2026-11-02T09:44:56.495381Z",
+          "created_at": "2026-11-02T15:43:36.950655Z",
           "event": "validated",
           "payload": {
             "codes": [
@@ -351,7 +425,7 @@
           "stage": "validation"
         },
         {
-          "created_at": "2026-11-02T09:44:56.496648Z",
+          "created_at": "2026-11-02T15:43:36.952294Z",
           "event": "recommendation",
           "payload": {
             "codes": [
@@ -367,7 +441,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T09:44:56.497299Z",
+          "created_at": "2026-11-02T15:43:36.953309Z",
           "event": "critique",
           "payload": {
             "agrees": true,
@@ -383,7 +457,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T09:44:56.498001Z",
+          "created_at": "2026-11-02T15:43:36.965221Z",
           "event": "decision",
           "payload": {
             "final_decision": "rejected",
@@ -398,7 +472,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T09:44:56.498384Z",
+          "created_at": "2026-11-02T15:43:36.966380Z",
           "event": "rejection_recorded",
           "payload": {
             "codes": [
@@ -410,7 +484,7 @@
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T09:44:56.498907Z",
+          "created_at": "2026-11-02T15:43:36.970259Z",
           "event": "finished",
           "payload": {
             "errors": [],
@@ -421,16 +495,16 @@
           "stage": "service"
         }
       ],
-      "finished_at": "2026-11-02T09:44:56.498675Z",
+      "finished_at": "2026-11-02T15:43:36.968314Z",
       "mode": "offline",
       "model": "simulated",
       "original_name": "invoice_1007.csv",
       "prior_run_id": null,
       "provider": "offline",
       "retry_of": null,
-      "run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
+      "run_id": "run-46817dde267841b383d5f03c2eaadcd9",
       "source_id": "src-332b4c6464b59d5a",
-      "started_at": "2026-11-02T09:44:56.484558Z",
+      "started_at": "2026-11-02T15:43:36.938974Z",
       "status": "rejected"
     }
   ],
@@ -445,7 +519,7 @@
   "vendor_name": "MegaWidgets Corp",
   "versions": [
     {
-      "created_at": "2026-11-02T09:44:56.488978Z",
+      "created_at": "2026-11-02T15:43:36.945681Z",
       "currency": "USD",
       "lines": [
         {

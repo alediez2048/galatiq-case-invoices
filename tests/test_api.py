@@ -39,7 +39,8 @@ def wait_done(client, run_id, timeout=30.0) -> dict:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         body = client.get(f"/api/runs/{run_id}").json()
-        if body["terminal"]:
+        # The status turns terminal just before the service's closing event is written.
+        if body["terminal"] and any(e["stage"] == "service" for e in body["events"]):
             return body
         time.sleep(0.02)
     raise AssertionError(f"run {run_id} did not finish: {body}")

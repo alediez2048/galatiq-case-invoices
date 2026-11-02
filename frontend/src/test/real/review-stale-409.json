@@ -1,0 +1,675 @@
+{
+  "code": "stale_version",
+  "details": {
+    "current": {
+      "allowed": [
+        "correct",
+        "submit_corrected"
+      ],
+      "current_version": 2,
+      "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+      "refused": {
+        "approve": "action_not_allowed",
+        "decline": "action_not_allowed"
+      },
+      "status": "rejected"
+    },
+    "invoice": {
+      "allowed_actions": [],
+      "corrections": [
+        {
+          "created_at": "2026-11-02T15:43:37.286506Z",
+          "evidence_location": "line:9",
+          "field": "lines[0].line_total",
+          "from_version": 1,
+          "new_value": "3500.00",
+          "old_value": null,
+          "reason": "OCR misread the line total",
+          "reviewer": "Ana",
+          "to_version": 2
+        }
+      ],
+      "current_version": 2,
+      "decision": {
+        "critique_issues": [],
+        "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+        "final_decision": "rejected",
+        "human_review": null,
+        "initial_recommendation": "reject",
+        "mode": "offline",
+        "model": "simulated",
+        "model_calls_used": 0,
+        "policy_version": "2026-11-01.1",
+        "prompt_version": null,
+        "provider": "offline",
+        "reasons": [
+          "R1_blocker"
+        ],
+        "revised_recommendation": null
+      },
+      "decision_run_id": "run-7ba14b8145b0473289d3d71848056026",
+      "evaluation_date": "2026-01-31",
+      "findings": [
+        {
+          "code": "currency_assumed_usd",
+          "evidence": [
+            {
+              "location": "line:11",
+              "snippet": "Subtotal: $3,150.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "expected": null,
+          "field": "currency",
+          "item": null,
+          "observed": "USD",
+          "resolved": false,
+          "severity": "info"
+        },
+        {
+          "code": "line_total_mismatch",
+          "evidence": [],
+          "expected": "3150.00",
+          "field": "lines[0].line_total",
+          "item": "WidgetA",
+          "observed": "3500.00",
+          "resolved": false,
+          "severity": "blocker"
+        }
+      ],
+      "human_reviews": [],
+      "invoice": {
+        "computed": null,
+        "currency": "USD",
+        "due_date": "2026-03-01",
+        "field_evidence": {
+          "due_date": [
+            {
+              "location": "line:6",
+              "snippet": "Due Date: 2026-03-01",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "invoice_date": [
+            {
+              "location": "line:5",
+              "snippet": "Date: 2026-01-20",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "invoice_number": [
+            {
+              "location": "line:4",
+              "snippet": "Invoice Number: OCR-3002",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "subtotal": [
+            {
+              "location": "line:11",
+              "snippet": "Subtotal: $3,150.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "total": [
+            {
+              "location": "line:12",
+              "snippet": "Total: $3,150.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "vendor": [
+            {
+              "location": "line:3",
+              "snippet": "Vendor: OCR Test Co",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ]
+        },
+        "invoice_date": "2026-01-20",
+        "invoice_number": "OCR-3002",
+        "invoice_number_key": "OCR3002",
+        "lines": [
+          {
+            "evidence": [
+              {
+                "location": "line:9",
+                "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+                "source_id": "src-0cdbe80877c618be"
+              }
+            ],
+            "item": "WidgetA",
+            "line_total": "3500.00",
+            "note": null,
+            "quantity": "7",
+            "unit_price": "450.00"
+          }
+        ],
+        "normalization_events": [
+          {
+            "evidence": [
+              {
+                "location": "line:4",
+                "snippet": "Invoice Number: OCR-3002",
+                "source_id": "src-0cdbe80877c618be"
+              }
+            ],
+            "field": "invoice_number",
+            "normalized_value": "OCR3002",
+            "provenance": "rule:invoice_number_format",
+            "raw_value": "OCR-3002"
+          },
+          {
+            "evidence": [
+              {
+                "location": "line:11",
+                "snippet": "Subtotal: $3,150.00",
+                "source_id": "src-0cdbe80877c618be"
+              }
+            ],
+            "field": "currency",
+            "normalized_value": "USD",
+            "provenance": "rule:dataset_usd_assumption",
+            "raw_value": null
+          },
+          {
+            "evidence": [
+              {
+                "location": "line:9",
+                "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+                "source_id": "src-0cdbe80877c618be"
+              }
+            ],
+            "field": "lines[0].line_total",
+            "normalized_value": "3500.00",
+            "provenance": "review:correction",
+            "raw_value": null
+          }
+        ],
+        "notes": null,
+        "payment_terms": null,
+        "revision": null,
+        "source_id": "src-0cdbe80877c618be",
+        "stated": {
+          "shipping": null,
+          "subtotal": "3150.00",
+          "tax": null,
+          "tax_rate": null,
+          "total": "3150.00"
+        },
+        "vendor_key": "ocr test co",
+        "vendor_name": "OCR Test Co"
+      },
+      "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+      "invoice_number": "OCR-3002",
+      "latest_result": {
+        "decision": {
+          "critique_issues": [],
+          "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+          "final_decision": "rejected",
+          "human_review": null,
+          "initial_recommendation": "reject",
+          "mode": "offline",
+          "model": "simulated",
+          "model_calls_used": 0,
+          "policy_version": "2026-11-01.1",
+          "prompt_version": null,
+          "provider": "offline",
+          "reasons": [
+            "R1_blocker"
+          ],
+          "revised_recommendation": null
+        },
+        "error_message": null,
+        "errors": [],
+        "evaluation_date": "2026-01-31",
+        "findings": [
+          {
+            "code": "currency_assumed_usd",
+            "evidence": [
+              {
+                "location": "line:11",
+                "snippet": "Subtotal: $3,150.00",
+                "source_id": "src-0cdbe80877c618be"
+              }
+            ],
+            "expected": null,
+            "field": "currency",
+            "item": null,
+            "observed": "USD",
+            "resolved": false,
+            "severity": "info"
+          },
+          {
+            "code": "line_total_mismatch",
+            "evidence": [],
+            "expected": "3150.00",
+            "field": "lines[0].line_total",
+            "item": "WidgetA",
+            "observed": "3500.00",
+            "resolved": false,
+            "severity": "blocker"
+          }
+        ],
+        "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+        "mode": "offline",
+        "model_calls_budget": null,
+        "model_calls_used": 0,
+        "next_actions": [],
+        "prior_run_id": null,
+        "receipt": null,
+        "recoverable": false,
+        "run_id": "run-7ba14b8145b0473289d3d71848056026",
+        "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+        "status": "rejected",
+        "timings_ms": {},
+        "version": 2
+      },
+      "latest_run_id": "run-7ba14b8145b0473289d3d71848056026",
+      "line_items": [
+        {
+          "available": 15,
+          "evidence": [
+            {
+              "location": "line:9",
+              "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "item": "WidgetA",
+          "line_total": "3500.00",
+          "quantity": "7",
+          "requested_total": "7",
+          "unit_price": "450.00"
+        }
+      ],
+      "mode": "offline",
+      "normalization_events": [
+        {
+          "evidence": [
+            {
+              "location": "line:4",
+              "snippet": "Invoice Number: OCR-3002",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "field": "invoice_number",
+          "normalized_value": "OCR3002",
+          "provenance": "rule:invoice_number_format",
+          "raw_value": "OCR-3002"
+        },
+        {
+          "evidence": [
+            {
+              "location": "line:11",
+              "snippet": "Subtotal: $3,150.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "field": "currency",
+          "normalized_value": "USD",
+          "provenance": "rule:dataset_usd_assumption",
+          "raw_value": null
+        },
+        {
+          "evidence": [
+            {
+              "location": "line:9",
+              "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+              "source_id": "src-0cdbe80877c618be"
+            }
+          ],
+          "field": "lines[0].line_total",
+          "normalized_value": "3500.00",
+          "provenance": "review:correction",
+          "raw_value": null
+        }
+      ],
+      "outcome": "rejected",
+      "receipt": null,
+      "review_actions": {
+        "allowed": [
+          "correct",
+          "submit_corrected"
+        ],
+        "current_version": 2,
+        "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+        "refused": {
+          "approve": "action_not_allowed",
+          "decline": "action_not_allowed"
+        },
+        "status": "rejected"
+      },
+      "runs": [
+        {
+          "error_code": null,
+          "error_message": null,
+          "evaluation_date": "2026-01-31",
+          "events": [
+            {
+              "created_at": "2026-11-02T15:43:37.103464Z",
+              "event": "received",
+              "payload": {
+                "mode": "offline",
+                "mode_switch_of": null,
+                "original_name": "ocr_ambiguous.txt",
+                "retry_of": null,
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "received"
+              },
+              "stage": "intake"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.118232Z",
+              "event": "extracted",
+              "payload": {
+                "codes": [
+                  "ambiguous_normalization",
+                  "currency_assumed_usd"
+                ],
+                "issues": [],
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "extracted",
+                "version": 1
+              },
+              "stage": "ingestion"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.122565Z",
+              "event": "validated",
+              "payload": {
+                "codes": [
+                  "ambiguous_normalization",
+                  "currency_assumed_usd"
+                ],
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated"
+              },
+              "stage": "validation"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.139938Z",
+              "event": "recommendation",
+              "payload": {
+                "codes": [
+                  "ambiguous_normalization"
+                ],
+                "mode": "offline",
+                "recommendation": "review",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated",
+                "summary": "offline simulation: review based on 1 blocking or review finding(s)"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.141600Z",
+              "event": "critique",
+              "payload": {
+                "agrees": true,
+                "high_value": false,
+                "issues": [],
+                "mode": "offline",
+                "omissions": [],
+                "revised_recommendation": null,
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated",
+                "summary": "offline simulation: critique agrees; 0 omission(s); high_value=False"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.147569Z",
+              "event": "decision",
+              "payload": {
+                "final_decision": "needs_review",
+                "mode": "offline",
+                "policy_version": "2026-11-01.1",
+                "rule_ids": [
+                  "R2_review"
+                ],
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "needs_review"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.170237Z",
+              "event": "waiting",
+              "payload": {
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "needs_review"
+              },
+              "stage": "outcome"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.207425Z",
+              "event": "finished",
+              "payload": {
+                "errors": [],
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "needs_review"
+              },
+              "stage": "service"
+            }
+          ],
+          "finished_at": "2026-11-02T15:43:37.206698Z",
+          "mode": "offline",
+          "model": "simulated",
+          "original_name": "ocr_ambiguous.txt",
+          "prior_run_id": null,
+          "provider": "offline",
+          "retry_of": null,
+          "run_id": "run-36e99135c0ff476e9c72efd18ca5b68a",
+          "source_id": "src-0cdbe80877c618be",
+          "started_at": "2026-11-02T15:43:37.103243Z",
+          "status": "needs_review"
+        },
+        {
+          "error_code": null,
+          "error_message": null,
+          "evaluation_date": "2026-01-31",
+          "events": [
+            {
+              "created_at": "2026-11-02T15:43:37.286729Z",
+              "event": "review_run_created",
+              "payload": {
+                "review_of": "run-36e99135c0ff476e9c72efd18ca5b68a",
+                "trigger": "correction"
+              },
+              "stage": "review"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.286786Z",
+              "event": "correction_applied",
+              "payload": {
+                "base_version": 1,
+                "fields": [
+                  "lines[0].line_total"
+                ],
+                "resulting_version": 2
+              },
+              "stage": "review"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.286865Z",
+              "event": "approvals_invalidated",
+              "payload": {
+                "decision_run_ids": [
+                  "run-36e99135c0ff476e9c72efd18ca5b68a"
+                ],
+                "human_review_ids": [],
+                "superseded_version": 1
+              },
+              "stage": "review"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.297167Z",
+              "event": "validated",
+              "payload": {
+                "codes": [
+                  "currency_assumed_usd",
+                  "line_total_mismatch"
+                ],
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated"
+              },
+              "stage": "validation"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.299354Z",
+              "event": "recommendation",
+              "payload": {
+                "codes": [
+                  "line_total_mismatch"
+                ],
+                "mode": "offline",
+                "recommendation": "reject",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated",
+                "summary": "offline simulation: reject based on 1 blocking or review finding(s)"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.299652Z",
+              "event": "critique",
+              "payload": {
+                "agrees": true,
+                "high_value": false,
+                "issues": [],
+                "mode": "offline",
+                "omissions": [],
+                "revised_recommendation": null,
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "validated",
+                "summary": "offline simulation: critique agrees; 0 omission(s); high_value=False"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.301372Z",
+              "event": "decision",
+              "payload": {
+                "final_decision": "rejected",
+                "mode": "offline",
+                "policy_version": "2026-11-01.1",
+                "rule_ids": [
+                  "R1_blocker"
+                ],
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "rejected"
+              },
+              "stage": "approval"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.302244Z",
+              "event": "rejection_recorded",
+              "payload": {
+                "codes": [
+                  "line_total_mismatch"
+                ]
+              },
+              "stage": "payment"
+            },
+            {
+              "created_at": "2026-11-02T15:43:37.303848Z",
+              "event": "finished",
+              "payload": {
+                "errors": [],
+                "mode": "offline",
+                "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
+                "status": "rejected"
+              },
+              "stage": "service"
+            }
+          ],
+          "finished_at": "2026-11-02T15:43:37.302763Z",
+          "mode": "offline",
+          "model": "simulated",
+          "original_name": "ocr_ambiguous.txt",
+          "prior_run_id": null,
+          "provider": "offline",
+          "retry_of": null,
+          "run_id": "run-7ba14b8145b0473289d3d71848056026",
+          "source_id": "src-0cdbe80877c618be",
+          "started_at": "2026-11-02T15:43:37.286418Z",
+          "status": "rejected"
+        }
+      ],
+      "source": {
+        "format": "txt",
+        "original_name": "ocr_ambiguous.txt",
+        "page_count": null,
+        "size_bytes": 192,
+        "source_id": "src-0cdbe80877c618be"
+      },
+      "source_id": "src-0cdbe80877c618be",
+      "vendor_name": "OCR Test Co",
+      "versions": [
+        {
+          "created_at": "2026-11-02T15:43:37.111934Z",
+          "currency": "USD",
+          "lines": [
+            {
+              "evidence": [
+                {
+                  "location": "line:9",
+                  "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+                  "source_id": "src-0cdbe80877c618be"
+                }
+              ],
+              "item": "WidgetA",
+              "line_total": null,
+              "note": null,
+              "quantity": "7",
+              "unit_price": "450.00"
+            }
+          ],
+          "origin": "source",
+          "original_name": "ocr_ambiguous.txt",
+          "parent_version": null,
+          "receipt": null,
+          "revision": null,
+          "source_id": "src-0cdbe80877c618be",
+          "total": "3150.00",
+          "version": 1
+        },
+        {
+          "created_at": "2026-11-02T15:43:37.286182Z",
+          "currency": "USD",
+          "lines": [
+            {
+              "evidence": [
+                {
+                  "location": "line:9",
+                  "snippet": "WidgetA  7  $450.00  $3,5O0.00",
+                  "source_id": "src-0cdbe80877c618be"
+                }
+              ],
+              "item": "WidgetA",
+              "line_total": "3500.00",
+              "note": null,
+              "quantity": "7",
+              "unit_price": "450.00"
+            }
+          ],
+          "origin": "correction",
+          "original_name": "ocr_ambiguous.txt",
+          "parent_version": 1,
+          "receipt": null,
+          "revision": null,
+          "source_id": "src-0cdbe80877c618be",
+          "total": "3150.00",
+          "version": 2
+        }
+      ]
+    }
+  },
+  "message": "The invoice changed since it was loaded. Reload it and try again."
+}

@@ -1,6 +1,55 @@
 {
   "components": {
     "schemas": {
+      "AllowedActions": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewAction"
+            },
+            "title": "Allowed",
+            "type": "array"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "string"
+          },
+          "refused": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReviewRefusal"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/ReviewAction"
+            },
+            "title": "Refused",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvoiceStatus"
+          }
+        },
+        "required": [
+          "invoice_id",
+          "status",
+          "current_version",
+          "allowed",
+          "refused"
+        ],
+        "title": "AllowedActions",
+        "type": "object"
+      },
       "ApprovalDecision": {
         "additionalProperties": false,
         "properties": {
@@ -205,6 +254,46 @@
         "title": "ComputedTotals",
         "type": "object"
       },
+      "CorrectionBody": {
+        "additionalProperties": false,
+        "description": "JSON body of ``POST /api/invoices/{invoice_id}/corrections``: a ``CorrectionRequest``\nwithout ``invoice_id``, which is the path. ``expected_version`` is the version the\nreviewer saw; any other current version is refused as ``stale_version``.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "changes",
+          "reason",
+          "reviewer"
+        ],
+        "title": "CorrectionBody",
+        "type": "object"
+      },
       "CorrectionView": {
         "additionalProperties": false,
         "properties": {
@@ -358,6 +447,36 @@
         ],
         "title": "ExecutionMode",
         "type": "string"
+      },
+      "FieldChange": {
+        "additionalProperties": false,
+        "description": "One corrected field: its new value and where the source shows it.",
+        "properties": {
+          "evidence_location": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Evidence Location",
+            "type": "string"
+          },
+          "field": {
+            "pattern": "^(vendor|invoice_number|invoice_date|due_date|currency|stated\\.(subtotal|tax|shipping|total)|lines\\[\\d+\\]\\.(item|quantity|unit_price|line_total))$",
+            "title": "Field",
+            "type": "string"
+          },
+          "new_value": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "New Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "new_value",
+          "evidence_location"
+        ],
+        "title": "FieldChange",
+        "type": "object"
       },
       "FindingCode": {
         "enum": [
@@ -701,6 +820,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/MockReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review_actions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AllowedActions"
               },
               {
                 "type": "null"
@@ -1588,6 +1717,36 @@
         },
         "title": "RetryRequest",
         "type": "object"
+      },
+      "ReviewAction": {
+        "description": "A human action on an invoice version (Phase 4).",
+        "enum": [
+          "correct",
+          "approve",
+          "decline",
+          "submit_corrected"
+        ],
+        "title": "ReviewAction",
+        "type": "string"
+      },
+      "ReviewRefusal": {
+        "description": "Why a review action was refused. Stable identifiers for the UI and API.",
+        "enum": [
+          "unknown_invoice",
+          "stale_version",
+          "action_not_allowed",
+          "already_paid",
+          "field_not_correctable",
+          "identity_correction_deferred",
+          "invalid_value",
+          "correction_not_in_source",
+          "evidence_location_mismatch",
+          "evidence_unavailable",
+          "source_text_unavailable",
+          "corrected_identity_mismatch"
+        ],
+        "title": "ReviewRefusal",
+        "type": "string"
       },
       "RunAccepted": {
         "additionalProperties": false,
@@ -2690,6 +2849,97 @@
           }
         },
         "summary": "Get Invoice"
+      }
+    },
+    "/api/invoices/{invoice_id}/corrections": {
+      "post": {
+        "description": "Correct extracted fields with source evidence (``review.submit_correction``): a new\nversion is recorded and revalidated by a new run; the response is that run's result.",
+        "operationId": "create_correction_api_invoices__invoice_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown invoice (`unknown_invoice`)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`busy`: another invoice is processing."
+          }
+        },
+        "summary": "Create Correction"
       }
     },
     "/api/invoices/{invoice_id}/result.json": {

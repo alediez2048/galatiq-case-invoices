@@ -2,7 +2,8 @@
 
 Processes a few bundled samples offline on a throwaway database and writes the responses the
 UI consumes to frontend/src/test/real/*.json, so adapter and view tests run against what the
-backend actually returns. Never touches inventory.db.
+backend actually returns. Also records review-action bodies (P5-04): a correction's success
+body, the 409 for a stale version and a 422 refusal. Never touches inventory.db.
 
 Usage: uv run python scripts/export_ui_fixtures.py
 """
@@ -26,12 +27,14 @@ from invoice_processing.api import ApiSettings, create_app  # noqa: E402
 OUT = ROOT / "frontend/src/test/real"
 EVALUATION_DATE = date(2026, 1, 31)
 SAMPLES = {"1001": "invoice_1001.txt", "1011pdf": "invoice_1011.pdf", "1007": "invoice_1007.csv"}
+OCR_AMBIGUOUS = ROOT / "tests/fixtures/review/ocr_ambiguous.txt"  # needs_review, line 9 misread
 
 
 def _wait(client: TestClient, run_id: str) -> dict:
     for _ in range(600):
         body = client.get(f"/api/runs/{run_id}").json()
-        if body["terminal"]:
+        # The status turns terminal just before the service's closing event is written.
+        if body["terminal"] and any(e["stage"] == "service" for e in body["events"]):
             return body
         time.sleep(0.05)
     raise RuntimeError(f"run {run_id} did not finish")
@@ -53,9 +56,53 @@ def main() -> None:
                 detail = client.get(f"/api/invoices/{run['invoice_id']}").json()
                 source = client.get(f"/api/sources/{detail['source']['source_id']}/content").json()
                 for kind, body in (("run", run), ("detail", detail), ("source", source)):
-                    path = OUT / f"{kind}-{key}.json"
-                    path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {len(SAMPLES) * 3} fixtures to {OUT.relative_to(ROOT)}")
+                    _write(f"{kind}-{key}", body)
+            _review_bodies(client)
+    print(f"wrote {len(SAMPLES) * 3 + 3} fixtures to {OUT.relative_to(ROOT)}")
+
+
+def _write(name: str, body: dict) -> None:
+    (OUT / f"{name}.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
+
+
+def _correct(client: TestClient, invoice_id: str, body: dict, key: str):
+    return client.post(
+        f"/api/invoices/{invoice_id}/corrections", json=body, headers={"Idempotency-Key": key}
+    )
+
+
+def _review_bodies(client: TestClient) -> None:
+    upload = {"file": (OCR_AMBIGUOUS.name, OCR_AMBIGUOUS.read_bytes(), "text/plain")}
+    accepted = client.post("/api/runs", files=upload, data={"mode": "offline"})
+    invoice_id = _wait(client, accepted.json()["run_id"])["invoice_id"]
+    correction = {
+        "expected_version": 1,
+        "changes": [
+            {"field": "lines[0].line_total", "new_value": "3500.00", "evidence_location": "line:9"}
+        ],
+        "reason": "OCR misread the line total",
+        "reviewer": "Ana",
+    }
+    ok = _correct(client, invoice_id, correction, "fixture-correction")
+    stale = _correct(client, invoice_id, correction, "fixture-stale")  # still says version 1
+    refused = _correct(
+        client,
+        invoice_id,
+        {
+            **correction,
+            "expected_version": 2,
+            "changes": [{**correction["changes"][0], "new_value": "3150.00"}],
+        },
+        "fixture-refused",
+    )
+    for name, response, status in (
+        ("review-correction", ok, 200),
+        ("review-stale-409", stale, 409),
+        ("review-refused-422", refused, 422),
+    ):
+        if response.status_code != status:
+            raise RuntimeError(f"{name}: {response.status_code} {response.text}")
+        _write(name, response.json())
 
 
 if __name__ == "__main__":

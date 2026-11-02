@@ -1,0 +1,19 @@
+{
+  "code": "correction_not_in_source",
+  "details": {
+    "current": {
+      "allowed": [
+        "correct",
+        "submit_corrected"
+      ],
+      "current_version": 2,
+      "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+      "refused": {
+        "approve": "action_not_allowed",
+        "decline": "action_not_allowed"
+      },
+      "status": "rejected"
+    }
+  },
+  "message": "This value is not what the invoice says. Submit a corrected invoice from the vendor."
+}

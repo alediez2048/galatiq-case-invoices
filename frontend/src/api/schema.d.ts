@@ -55,6 +55,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invoices/{invoice_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Correction
+         * @description Correct extracted fields with source evidence (``review.submit_correction``): a new
+         *     version is recorded and revalidated by a new run; the response is that run's result.
+         */
+        post: operations["create_correction_api_invoices__invoice_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invoices/{invoice_id}/result.json": {
         parameters: {
             query?: never;
@@ -216,6 +237,20 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AllowedActions */
+        AllowedActions: {
+            /** Allowed */
+            allowed: components["schemas"]["ReviewAction"][];
+            /** Current Version */
+            current_version: number | null;
+            /** Invoice Id */
+            invoice_id: string;
+            /** Refused */
+            refused: {
+                [key: string]: components["schemas"]["ReviewRefusal"];
+            };
+            status: components["schemas"]["InvoiceStatus"];
+        };
         /** ApprovalDecision */
         ApprovalDecision: {
             /** Critique Issues */
@@ -268,6 +303,22 @@ export interface components {
             tax?: string | null;
             /** Total */
             total?: string | null;
+        };
+        /**
+         * CorrectionBody
+         * @description JSON body of ``POST /api/invoices/{invoice_id}/corrections``: a ``CorrectionRequest``
+         *     without ``invoice_id``, which is the path. ``expected_version`` is the version the
+         *     reviewer saw; any other current version is refused as ``stale_version``.
+         */
+        CorrectionBody: {
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+            /** Reviewer */
+            reviewer: string;
         };
         /** CorrectionView */
         CorrectionView: {
@@ -328,6 +379,18 @@ export interface components {
          * @enum {string}
          */
         ExecutionMode: "offline" | "live";
+        /**
+         * FieldChange
+         * @description One corrected field: its new value and where the source shows it.
+         */
+        FieldChange: {
+            /** Evidence Location */
+            evidence_location: string;
+            /** Field */
+            field: string;
+            /** New Value */
+            new_value: string;
+        };
         /**
          * FindingCode
          * @enum {string}
@@ -417,6 +480,7 @@ export interface components {
             normalization_events: components["schemas"]["NormalizationEvent"][];
             outcome: components["schemas"]["InvoiceStatus"];
             receipt: components["schemas"]["MockReceipt"] | null;
+            review_actions?: components["schemas"]["AllowedActions"] | null;
             /** Runs */
             runs: components["schemas"]["RunSummary"][];
             source?: components["schemas"]["SourceSummary"] | null;
@@ -682,6 +746,18 @@ export interface components {
              */
             action: "retry" | "run_offline";
         };
+        /**
+         * ReviewAction
+         * @description A human action on an invoice version (Phase 4).
+         * @enum {string}
+         */
+        ReviewAction: "correct" | "approve" | "decline" | "submit_corrected";
+        /**
+         * ReviewRefusal
+         * @description Why a review action was refused. Stable identifiers for the UI and API.
+         * @enum {string}
+         */
+        ReviewRefusal: "unknown_invoice" | "stale_version" | "action_not_allowed" | "already_paid" | "field_not_correctable" | "identity_correction_deferred" | "invalid_value" | "correction_not_in_source" | "evidence_location_mismatch" | "evidence_unavailable" | "source_text_unavailable" | "corrected_identity_mismatch";
         /** RunAccepted */
         RunAccepted: {
             /**
@@ -1024,6 +1100,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_correction_api_invoices__invoice_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingResult"];
+                };
+            };
+            /** @description Unknown invoice (`unknown_invoice`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `busy`: another invoice is processing. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

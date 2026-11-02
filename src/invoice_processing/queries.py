@@ -28,6 +28,7 @@ from invoice_processing.codes import (
 )
 from invoice_processing.money import DecimalStr
 from invoice_processing.schemas import (
+    AllowedActions,
     ApprovalDecision,
     EvidenceRef,
     LineItem,
@@ -466,9 +467,11 @@ class InvoiceDetail(ApiModel):
     corrections: list[CorrectionView]
     human_reviews: list[HumanReviewView]
     runs: list[RunSummary]
-    # "retry" when the latest run is a recoverable failure (P3-08); review actions are
-    # TODO(P5-04), populated by the review service once it exists.
+    # Run-level actions: "retry" when the latest run is a recoverable failure (P3-08).
     allowed_actions: list[str]
+    # Review actions (P5-04): `review.allowed_actions` for the current version, filled in by
+    # the API. The only source of which review controls the UI may render.
+    review_actions: AllowedActions | None = None
 
 
 def _rows(conn: sqlite3.Connection, sql: str, *args: Any) -> list[sqlite3.Row]:

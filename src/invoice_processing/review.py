@@ -102,9 +102,6 @@ _BY_STATUS: dict[InvoiceStatus, frozenset[ReviewAction]] = {
 _SUPERSEDE_STATUSES = frozenset(
     {InvoiceStatus.rejected, InvoiceStatus.needs_review, InvoiceStatus.failed}
 )
-# A version whose latest business run is one of these blocks a corrected submission.
-_HELD = (RunStatus.awaiting_human_approval, RunStatus.approved, RunStatus.paid_mock)
-_BUSINESS = (*_HELD, RunStatus.rejected, RunStatus.needs_review)
 
 
 def _paid(conn: sqlite3.Connection, invoice_id: str) -> bool:
@@ -120,18 +117,12 @@ def _has_source_text(conn: sqlite3.Connection, invoice: ledger.InvoiceRow) -> bo
 
 
 def _supersede_eligible(conn: sqlite3.Connection, invoice: ledger.InvoiceRow) -> bool:
-    """Decision 22: no payment, a correctable status, and no version held by its latest
-    business run (awaiting approval, approved or paid)."""
-    if invoice.status not in _SUPERSEDE_STATUSES or _paid(conn, invoice.invoice_id):
-        return False
-    slots = ",".join("?" * len(_BUSINESS))
-    rows = conn.execute(
-        f"SELECT version_id, status FROM runs WHERE invoice_id = ? AND version_id IS NOT NULL "
-        f"AND status IN ({slots}) ORDER BY started_at, rowid",
-        (invoice.invoice_id, *(s.value for s in _BUSINESS)),
-    ).fetchall()
-    latest = {r["version_id"]: r["status"] for r in rows}  # the last row per version wins
-    return not any(status in {s.value for s in _HELD} for status in latest.values())
+    """Decision 22: a correctable status, no payment, and no version held by its latest
+    business run (awaiting approval, approved or paid). Ingestion re-checks the last two at
+    the write (`ledger.supersede_blocked`)."""
+    return invoice.status in _SUPERSEDE_STATUSES and not ledger.supersede_blocked(
+        conn, invoice.invoice_id
+    )
 
 
 def _allowed(conn: sqlite3.Connection, invoice_id: str) -> AllowedActions:

@@ -438,19 +438,35 @@ def _finish(conn: sqlite3.Connection, deps: Deps, state: InvoiceState) -> Proces
     if status not in TERMINAL_RUN_STATUSES:
         status, error_code = RunStatus.failed, "incomplete_graph"
         final = {**final, "status": status, "error_code": error_code}
-    ledger.finish_run(
-        conn,
-        final["run_id"],
-        status,
-        error_code=error_code,
-        error_message=final.get("error_message"),
-        prior_run_id=final.get("prior_run_id"),
-    )
-    invoice_id = final.get("invoice_id")
-    if invoice_id is not None and status in _INVOICE_STATUS:
-        ledger.set_invoice_status(conn, invoice_id, _INVOICE_STATUS[status])
-    emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
+    # One write: the terminal status, the invoice status and the `finished` event become
+    # visible together, so a reader that sees the run terminal also sees its last event.
+    with write_transaction(conn):
+        ledger.finish_run(
+            conn,
+            final["run_id"],
+            status,
+            error_code=error_code,
+            error_message=final.get("error_message"),
+            prior_run_id=final.get("prior_run_id"),
+        )
+        invoice_id = final.get("invoice_id")
+        # A payment always sets it (the Phase 3 crash replay can pay a version a later plain
+        # upload made non-current); any other outcome only on the current version.
+        if invoice_id is not None and status in _INVOICE_STATUS:
+            if status is RunStatus.paid_mock or _on_current(conn, final):
+                ledger.set_invoice_status(conn, invoice_id, _INVOICE_STATUS[status])
+        emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
     return _result(final, _call_budget(deps.provider))
+
+
+def _on_current(conn: sqlite3.Connection, state: InvoiceState) -> bool:
+    """The invoice status follows its current version only: a run that ended on an older
+    (superseded or not current) version leaves it alone. A run with no version (failed
+    before one was recorded) still sets it, as before."""
+    version = state.get("version")
+    if version is None:
+        return True
+    return ledger.get_invoice(conn, state["invoice_id"]).current_version == version
 
 
 def _fail(

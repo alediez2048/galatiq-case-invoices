@@ -758,6 +758,26 @@ def invoice_history(
     }
 
 
+# A version whose latest business run is one of these cannot be superseded (Decision 22).
+_HELD = frozenset({RunStatus.awaiting_human_approval, RunStatus.approved, RunStatus.paid_mock})
+_BUSINESS = (*sorted(_HELD), RunStatus.rejected, RunStatus.needs_review)
+
+
+def supersede_blocked(conn: sqlite3.Connection, invoice_id: str) -> bool:
+    """True when a corrected submission may not supersede this invoice's versions: it has a
+    payment, or a version whose latest business run awaits approval, is approved or paid."""
+    if conn.execute("SELECT 1 FROM payments WHERE invoice_id = ?", (invoice_id,)).fetchone():
+        return True
+    slots = ",".join("?" * len(_BUSINESS))
+    rows = conn.execute(
+        f"SELECT version_id, status FROM runs WHERE invoice_id = ? AND version_id IS NOT NULL "
+        f"AND status IN ({slots}) ORDER BY started_at, rowid",
+        (invoice_id, *(s.value for s in _BUSINESS)),
+    ).fetchall()
+    latest = {r["version_id"]: r["status"] for r in rows}  # the last row per version wins
+    return any(RunStatus(status) in _HELD for status in latest.values())
+
+
 @dataclass(frozen=True)
 class PriorOutcome:
     run_id: str

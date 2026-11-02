@@ -1,13 +1,16 @@
 """Corrected-invoice submissions (P4-05, Decision 22): the explicit corrected path supersedes
 the earlier versions of the same identity; a plain upload stays a version conflict."""
 
+import json
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from invoice_processing import ledger, review, service, storage
+from invoice_processing.agents import ingestion
 from invoice_processing.codes import ExecutionMode, FindingCode, ReviewRefusal, RunStatus
+from invoice_processing.schemas import SupersedeLink
 from tests.review_helpers import EVAL, INVOICES, REVIEW, count, payment_count, process, seeded_db
 
 THRESHOLD = Path(__file__).resolve().parent / "fixtures" / "threshold"
@@ -223,3 +226,88 @@ def test_failed_corrected_submission_retry_keeps_the_link(tmp_path, monkeypatch)
     assert retried.status == "awaiting_human_approval" and retried.version == 2
     assert FindingCode.version_conflict not in {f.code for f in retried.findings}
     assert run_row(db, retried.run_id)["trigger"] == "corrected_submission"
+
+
+def variant(tmp_path: Path) -> Path:
+    """Another corrected 1013 (WidgetB 9 instead of 10): same identity, different content."""
+    data = json.loads(CORRECTED.read_text())
+    data["line_items"][1].update(quantity=9, amount=4500.00)
+    data.update(subtotal=20540.00, tax_amount=1437.80, total=21977.80)
+    path = tmp_path / "inv_1013_variant.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def versions(db: Path, invoice_id: str) -> list[tuple[int, str]]:
+    conn = storage.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT version, version_status FROM invoice_versions WHERE invoice_id = ? "
+            "ORDER BY version",
+            (invoice_id,),
+        ).fetchall()
+        return [tuple(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def test_retry_cannot_supersede_a_version_awaiting_approval(tmp_path, monkeypatch):
+    db = seeded_db(tmp_path)
+    r1 = process(ORIGINAL, db)
+    real = ingestion._record
+    monkeypatch.setattr(ingestion, "_record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError()))
+    failed = submit(db, r1.invoice_id, path=variant(tmp_path))
+    assert failed.errors == ["unexpected_error"]
+    monkeypatch.setattr(ingestion, "_record", real)
+    waiting = submit(db, r1.invoice_id)
+    assert waiting.status == "awaiting_human_approval" and waiting.version == 2
+    retried = service.retry_run(failed.run_id, variant(tmp_path), db, EVAL)
+    assert retried.status == "failed" and retried.errors == ["supersede_not_allowed"]
+    assert not retried.recoverable
+    assert versions(db, r1.invoice_id) == [(1, "superseded"), (2, "current")]
+    assert review.approve(r1.invoice_id, 2, "Ana", "ok", db_path=db).status == "paid_mock"
+    # After payment a retry is refused upstream or fails the same stable way; nothing moves.
+    with pytest.raises(service.RetryRefused):
+        service.retry_run(retried.run_id, variant(tmp_path), db, EVAL)
+    assert payment_count(db, r1.invoice_id) == 1
+
+
+def test_version_held_after_the_entry_check_fails_supersede_not_allowed(tmp_path, monkeypatch):
+    # The window between submit_corrected_invoice's check and ingestion: another version
+    # reaches awaiting approval (or is paid) in between. Ingestion re-checks at the write.
+    db = seeded_db(tmp_path)
+    r1 = process(ORIGINAL, db)
+    real = service.process_invoice
+
+    def racing(*args, **kwargs):
+        kwargs.pop("supersede")
+        link = SupersedeLink(invoice_id=r1.invoice_id, reviewer="Bo", reason="r")
+        real(CORRECTED, ExecutionMode.offline, db, EVAL, supersede=link)  # v2 now awaits
+        return real(*args, **kwargs, supersede=link)
+
+    monkeypatch.setattr(service, "process_invoice", racing)
+    late = submit(db, r1.invoice_id, path=variant(tmp_path))
+    assert late.status == "failed" and late.errors == ["supersede_not_allowed"]
+    assert versions(db, r1.invoice_id) == [(1, "superseded"), (2, "current")]
+    assert review.allowed_actions(r1.invoice_id, db_path=db).status == "awaiting_human_approval"
+
+    paid = review.approve(r1.invoice_id, 2, "Ana", "ok", db_path=db)
+    assert paid.status == "paid_mock"
+    link = SupersedeLink(invoice_id=r1.invoice_id, reviewer="Bo", reason="r")
+    after = real(variant(tmp_path), ExecutionMode.offline, db, EVAL, supersede=link)
+    assert after.status == "failed" and after.errors == ["supersede_not_allowed"]
+    assert versions(db, r1.invoice_id) == [(1, "superseded"), (2, "current")]
+
+
+def test_run_on_a_non_current_version_does_not_move_invoice_status(tmp_path):
+    db = seeded_db(tmp_path)
+    r1 = process(ORIGINAL, db)  # v1 rejected
+    data = json.loads(CORRECTED.read_text())
+    data["currency"] = "EUR"
+    eur = tmp_path / "inv_1013_eur.json"
+    eur.write_text(json.dumps(data))
+    assert submit(db, r1.invoice_id, path=eur).status == "needs_review"  # v2, review-only
+    stale = submit(db, r1.invoice_id, path=ORIGINAL)  # matches superseded v1
+    assert stale.version == 1 and stale.status == "rejected"
+    current = review.allowed_actions(r1.invoice_id, db_path=db)
+    assert (current.status, current.current_version) == ("needs_review", 2)

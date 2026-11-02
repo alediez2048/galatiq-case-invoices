@@ -35,6 +35,11 @@ _REVIEW_KINDS = {
     "version_conflict": FindingCode.version_conflict,
 }
 MISMATCH_MESSAGE = "The corrected invoice has a different vendor or invoice number."
+# Not retryable: the same file meets the same held or paid version again.
+SUPERSEDE_NOT_ALLOWED = "supersede_not_allowed"
+NOT_ALLOWED_MESSAGE = (
+    "A version of this invoice is awaiting approval, approved or paid, so it cannot be superseded."
+)
 
 
 def run(state: InvoiceState, deps: Deps) -> dict:
@@ -105,13 +110,26 @@ def _record(
     link = state.get("supersede")
     if link is not None:
         invoice_id = link.invoice_id
+        # Eligibility is re-checked in the same write as the supersede: a version may have
+        # reached approval (or been paid) since the corrected submission was accepted.
+        with storage.atomic(deps.conn):
+            if ledger.supersede_blocked(deps.conn, invoice_id):
+                emit(deps, state, STAGE, SUPERSEDE_NOT_ALLOWED)
+                return {
+                    "status": RunStatus.failed,
+                    "error_code": SUPERSEDE_NOT_ALLOWED,
+                    "error_message": NOT_ALLOWED_MESSAGE,
+                }
+            version_id, version = ledger.record_version(
+                deps.conn, invoice_id, invoice, source.source_id, supersede=True
+            )
     else:
         invoice_id = ledger.upsert_invoice(
             deps.conn, invoice.vendor_key, invoice.invoice_number_key, source.content_hash
         )
-    version_id, version = ledger.record_version(
-        deps.conn, invoice_id, invoice, source.source_id, supersede=link is not None
-    )
+        version_id, version = ledger.record_version(
+            deps.conn, invoice_id, invoice, source.source_id
+        )
     run_id = state["run_id"]
     ledger.attach_run(deps.conn, run_id, invoice_id, version_id)
     identity = ledger.check_identity(

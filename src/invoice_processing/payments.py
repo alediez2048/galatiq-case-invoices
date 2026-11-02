@@ -57,11 +57,17 @@ def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str)
     """
     with storage.write_transaction(conn):
         existing = conn.execute(
-            "SELECT payment_id, receipt_id, amount, currency, created_at FROM payments "
-            "WHERE invoice_id = ?",
-            (invoice_id,),
+            "SELECT p.payment_id, p.receipt_id, p.amount, p.currency, p.created_at, "
+            "p.version = v.version AS same_version FROM payments p "
+            "LEFT JOIN invoice_versions v ON v.version_id = ? AND v.invoice_id = p.invoice_id "
+            "WHERE p.invoice_id = ?",
+            (version_id, invoice_id),
         ).fetchone()
         if existing is not None:
+            # One payment per invoice identity: only a replay of the paid version gets the
+            # receipt back; any other version is a revision and is never paid.
+            if not existing["same_version"]:
+                raise PaymentNotAuthorized("revision_after_payment")
             return _result(existing, created=False)
 
         decision = conn.execute(

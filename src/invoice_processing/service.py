@@ -41,6 +41,7 @@ def _result(state: InvoiceState, **overrides) -> ProcessingResult:
         "findings": state.get("findings", []),
         "decision": state.get("decision"),
         "receipt": state.get("receipt"),
+        "prior_run_id": state.get("prior_run_id"),
         "timings_ms": state.get("timings_ms", {}),
         "errors": [error_code] if error_code else [],
         "error_message": state.get("error_message"),
@@ -120,6 +121,7 @@ def process_invoice(
                 status,
                 error_code=error_code,
                 error_message=final.get("error_message"),
+                prior_run_id=final.get("prior_run_id"),
             )
             invoice_id = final.get("invoice_id")
             if invoice_id is not None and status in _INVOICE_STATUS:

@@ -31,3 +31,7 @@ def test_failed_is_legal_from_every_non_terminal_state():
 def test_terminal_statuses_have_no_exits():
     for status in TERMINAL_RUN_STATUSES:
         assert RUN_TRANSITIONS[status] == frozenset()
+
+
+def test_extracted_to_duplicate_is_legal():
+    check(S.extracted, S.duplicate)

@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from invoice_processing import storage, transitions
 from invoice_processing.codes import (
@@ -373,31 +373,103 @@ class PriorOutcome:
     receipt: MockReceipt | None
 
 
+_OUTCOME_VALUES = tuple(sorted(s.value for s in BUSINESS_OUTCOMES))
+_OUTCOME_SLOTS = ",".join("?" * len(_OUTCOME_VALUES))
+
+
+def _receipt(conn: sqlite3.Connection, invoice_id: str | None) -> MockReceipt | None:
+    if invoice_id is None:
+        return None
+    pay = conn.execute(
+        "SELECT receipt_id, amount, currency, created_at FROM payments WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    if pay is None:
+        return None
+    return MockReceipt(
+        receipt_id=pay["receipt_id"],
+        amount=Decimal(pay["amount"]),
+        currency=pay["currency"],
+        paid_at=datetime.fromisoformat(pay["created_at"]),
+    )
+
+
+def _prior(conn: sqlite3.Connection, row: sqlite3.Row) -> PriorOutcome:
+    invoice_id = row["invoice_id"]
+    return PriorOutcome(
+        row["run_id"], RunStatus(row["status"]), invoice_id, _receipt(conn, invoice_id)
+    )
+
+
 def find_prior_outcome(conn: sqlite3.Connection, content_hash: str) -> PriorOutcome | None:
-    outcomes = ",".join("?" * len(BUSINESS_OUTCOMES))
     row = conn.execute(
         "SELECT r.run_id, r.status, r.invoice_id FROM runs r "
         "JOIN sources s ON s.source_id = r.source_id "
-        f"WHERE s.content_hash = ? AND r.retry_of IS NULL AND r.status IN ({outcomes}) "
+        f"WHERE s.content_hash = ? AND r.retry_of IS NULL AND r.status IN ({_OUTCOME_SLOTS}) "
         "ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1",
-        (content_hash, *sorted(s.value for s in BUSINESS_OUTCOMES)),
+        (content_hash, *_OUTCOME_VALUES),
     ).fetchone()
-    if row is None:
-        return None
-    receipt = None
-    if row["invoice_id"] is not None:
-        pay = conn.execute(
-            "SELECT receipt_id, amount, currency, created_at FROM payments WHERE invoice_id = ?",
-            (row["invoice_id"],),
-        ).fetchone()
-        if pay is not None:
-            receipt = MockReceipt(
-                receipt_id=pay["receipt_id"],
-                amount=Decimal(pay["amount"]),
-                currency=pay["currency"],
-                paid_at=datetime.fromisoformat(pay["created_at"]),
-            )
-    return PriorOutcome(row["run_id"], RunStatus(row["status"]), row["invoice_id"], receipt)
+    return None if row is None else _prior(conn, row)
+
+
+IdentityKind = Literal["new", "duplicate", "revision_after_payment", "version_conflict"]
+
+
+@dataclass(frozen=True)
+class IdentityCheck:
+    kind: IdentityKind
+    prior: PriorOutcome | None
+
+
+def check_identity(
+    conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str
+) -> IdentityCheck:
+    """Compare this run's invoice version with earlier outcomes for the same identity.
+
+    Only business outcomes of non-retry runs count; failed and duplicate runs never do.
+    """
+    new = IdentityCheck("new", None)
+    this = conn.execute("SELECT retry_of FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+    if this is None or this["retry_of"] is not None:
+        return new
+    identity = conn.execute(
+        "SELECT invoice_number_key FROM invoices WHERE invoice_id = ?", (invoice_id,)
+    ).fetchone()
+    if identity is None or identity["invoice_number_key"].startswith("pending:"):
+        return new
+    version = conn.execute(
+        "SELECT version FROM invoice_versions WHERE version_id = ? AND invoice_id = ?",
+        (version_id, invoice_id),
+    ).fetchone()
+    if version is None:
+        return new
+
+    payment = conn.execute(
+        "SELECT p.version, r.run_id, r.status, r.invoice_id FROM payments p "
+        "JOIN runs r ON r.run_id = p.run_id WHERE p.invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    if payment is not None:
+        if payment["version"] != version["version"]:
+            return IdentityCheck("revision_after_payment", _prior(conn, payment))
+        # A run that paid and was then interrupted is marked failed. Its replay goes back
+        # through pay(), which returns the existing receipt and finishes the invoice paid.
+        if payment["status"] != RunStatus.failed.value:
+            return IdentityCheck("duplicate", _prior(conn, payment))
+
+    base = (
+        "SELECT run_id, status, invoice_id FROM runs WHERE invoice_id = ? AND run_id != ? "
+        f"AND retry_of IS NULL AND status IN ({_OUTCOME_SLOTS}) AND version_id {{op}} ? "
+        "ORDER BY started_at DESC, rowid DESC LIMIT 1"
+    )
+    args = (invoice_id, run_id, *_OUTCOME_VALUES, version_id)
+    same = conn.execute(base.format(op="="), args).fetchone()
+    if same is not None:
+        return IdentityCheck("duplicate", _prior(conn, same))
+    other = conn.execute(base.format(op="!="), args).fetchone()
+    if other is not None:
+        return IdentityCheck("version_conflict", _prior(conn, other))
+    return new
 
 
 def mark_interrupted_runs(conn: sqlite3.Connection, started_before: str) -> list[str]:

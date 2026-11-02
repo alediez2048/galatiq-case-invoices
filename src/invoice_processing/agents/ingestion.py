@@ -2,7 +2,7 @@
 
 from invoice_processing import ledger, storage
 from invoice_processing.agents.state import Deps, InvoiceState, emit
-from invoice_processing.codes import DEFAULT_SEVERITY, RunStatus
+from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode, RunStatus
 from invoice_processing.normalize import normalize
 from invoice_processing.observability import stage_timer
 from invoice_processing.parsers import parse_document
@@ -10,6 +10,11 @@ from invoice_processing.parsers.base import ExtractionError
 from invoice_processing.schemas import ValidationFinding
 
 STAGE = "ingestion"
+# Identity checks that continue to validation; the gate's review rule decides the outcome.
+_REVIEW_KINDS = {
+    "revision_after_payment": FindingCode.revision_after_payment,
+    "version_conflict": FindingCode.version_conflict,
+}
 
 
 def run(state: InvoiceState, deps: Deps) -> dict:
@@ -61,8 +66,16 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 deps.conn, invoice_id, invoice, source.source_id
             )
             run_id = state["run_id"]
-            ledger.record_findings(deps.conn, run_id, version_id, findings)
             ledger.attach_run(deps.conn, run_id, invoice_id, version_id)
+            identity = ledger.check_identity(deps.conn, invoice_id, version_id, run_id)
+            code = _REVIEW_KINDS.get(identity.kind)
+            if code is not None:
+                findings.append(
+                    ValidationFinding(
+                        code=code, severity=DEFAULT_SEVERITY[code], observed=identity.prior.run_id
+                    )
+                )
+            ledger.record_findings(deps.conn, run_id, version_id, findings)
             ledger.update_run_status(deps.conn, run_id, RunStatus.extracted)
             update = {
                 "invoice": invoice,
@@ -82,4 +95,22 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 codes=[f.code for f in findings],
                 issues=issues,
             )
+            if identity.kind == "duplicate":
+                prior = identity.prior
+                ledger.update_run_status(deps.conn, run_id, RunStatus.duplicate)
+                update = {
+                    **update,
+                    "status": RunStatus.duplicate,
+                    "prior_run_id": prior.run_id,
+                    "receipt": prior.receipt,
+                }
+                emit(
+                    deps,
+                    {**state, **update},
+                    STAGE,
+                    "duplicate",
+                    prior_run_id=prior.run_id,
+                    prior_status=prior.status.value,
+                    match="semantic",
+                )
     return {**update, "timings_ms": {**timings, STAGE: t["duration_ms"]}}

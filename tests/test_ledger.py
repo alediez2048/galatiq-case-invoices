@@ -312,3 +312,194 @@ def test_finish_run_twice_raises_and_keeps_first_finalization(conn, rid):
         finish_run(conn, rid, RunStatus.failed, "second")
     after = conn.execute("SELECT * FROM runs WHERE run_id=?", (rid,)).fetchone()
     assert tuple(before) == tuple(after)
+
+
+_PATH_TO = {
+    RunStatus.failed: [],
+    RunStatus.duplicate: [],
+    RunStatus.rejected: [RunStatus.extracted, RunStatus.validated, RunStatus.approval_pending],
+    RunStatus.needs_review: [
+        RunStatus.extracted,
+        RunStatus.validated,
+        RunStatus.approval_pending,
+    ],
+    RunStatus.paid_mock: [
+        RunStatus.extracted,
+        RunStatus.validated,
+        RunStatus.approval_pending,
+        RunStatus.approved,
+    ],
+}
+
+
+def finished_run(conn, sid, invoice_id, version_id, status, retry_of=None):
+    r = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    ledger.attach_run(conn, r, invoice_id, version_id)
+    if retry_of is not None:
+        with storage.write_transaction(conn):
+            conn.execute("UPDATE runs SET retry_of = ? WHERE run_id = ?", (retry_of, r))
+    for s in _PATH_TO[status]:
+        update_run_status(conn, r, s)
+    finish_run(conn, r, status)
+    return r
+
+
+def add_payment(conn, invoice_id, version, run_id, receipt_id="rcpt-1"):
+    with storage.write_transaction(conn):
+        conn.execute(
+            "INSERT INTO payments VALUES (?, ?, ?, ?, '5000.00', 'USD', ?, 'success', "
+            "'2026-01-01T00:00:00Z')",
+            (f"pay-{receipt_id}", invoice_id, version, run_id, receipt_id),
+        )
+
+
+@pytest.fixture
+def two_versions(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "1001", "hash-1")
+    v1, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    changed = inv_1001().model_copy(update={"currency": "EUR"})
+    v2, _ = ledger.record_version(conn, inv, changed, sid)
+    return inv, v1, v2
+
+
+def current(conn, sid, inv, version_id, retry_of=None):
+    r = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    ledger.attach_run(conn, r, inv, version_id)
+    if retry_of is not None:
+        with storage.write_transaction(conn):
+            conn.execute("UPDATE runs SET retry_of = ? WHERE run_id = ?", (retry_of, r))
+    return r
+
+
+def test_check_identity_new_without_prior_runs(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    check = ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1))
+    assert check == ledger.IdentityCheck(kind="new", prior=None)
+
+
+def test_check_identity_duplicate_of_paid_same_version(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    check = ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1))
+    assert check.kind == "duplicate"
+    assert check.prior.run_id == paid and check.prior.status is RunStatus.paid_mock
+    assert check.prior.receipt.receipt_id == "rcpt-1"
+
+
+def test_check_identity_revision_after_payment(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    check = ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2))
+    assert check.kind == "revision_after_payment" and check.prior.run_id == paid
+
+
+def test_check_identity_duplicate_of_unpaid_outcome(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    rejected = finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    check = ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1))
+    assert check.kind == "duplicate"
+    assert check.prior.run_id == rejected and check.prior.receipt is None
+
+
+def test_check_identity_duplicate_picks_latest_outcome(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    later = finished_run(conn, sid, inv, v1, RunStatus.needs_review)
+    check = ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1))
+    assert check.kind == "duplicate" and check.prior.run_id == later
+
+
+def test_check_identity_version_conflict(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    rejected = finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    check = ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2))
+    assert check.kind == "version_conflict" and check.prior.run_id == rejected
+
+
+def test_check_identity_ignores_failed_duplicate_and_retry_runs(conn, sid, two_versions):
+    inv, v1, v2 = two_versions
+    finished_run(conn, sid, inv, v1, RunStatus.failed)
+    finished_run(conn, sid, inv, v1, RunStatus.duplicate)
+    original = finished_run(conn, sid, inv, v2, RunStatus.failed)
+    finished_run(conn, sid, inv, v1, RunStatus.rejected, retry_of=original)
+    assert ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1)).kind == "new"
+    assert ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2)).kind == "new"
+
+
+def test_check_identity_retry_run_is_always_new(conn, sid, two_versions):
+    inv, v1, _ = two_versions
+    paid = finished_run(conn, sid, inv, v1, RunStatus.paid_mock)
+    add_payment(conn, inv, 1, paid)
+    retry = current(conn, sid, inv, v1, retry_of=paid)
+    assert ledger.check_identity(conn, inv, v1, retry).kind == "new"
+
+
+def test_check_identity_provisional_identity_is_always_new(conn, sid):
+    inv = upsert_invoice(conn, None, None, "hash-1")
+    v1, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    assert ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1)).kind == "new"
+
+
+def test_check_identity_same_version_payment_by_interrupted_run_is_new(conn, sid, two_versions):
+    # A run that paid and then crashed is marked failed; the replay goes back through pay(),
+    # which returns the existing receipt, so the invoice ends paid_mock instead of stuck.
+    inv, v1, v2 = two_versions
+    crashed = finished_run(conn, sid, inv, v1, RunStatus.failed)
+    add_payment(conn, inv, 1, crashed)
+    assert ledger.check_identity(conn, inv, v1, current(conn, sid, inv, v1)).kind == "new"
+    revision = ledger.check_identity(conn, inv, v2, current(conn, sid, inv, v2))
+    assert revision.kind == "revision_after_payment" and revision.prior.run_id == crashed
+
+
+def test_find_prior_outcome_ignores_retry_and_duplicate_runs(conn, sid):
+    original = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    finish_run(conn, original, RunStatus.failed, "x")
+    retry = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    with storage.write_transaction(conn):
+        conn.execute("UPDATE runs SET retry_of = ? WHERE run_id = ?", (original, retry))
+    for s in _PATH_TO[RunStatus.rejected]:
+        update_run_status(conn, retry, s)
+    finish_run(conn, retry, RunStatus.rejected)
+    dup = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    finish_run(conn, dup, RunStatus.duplicate)
+    assert ledger.find_prior_outcome(conn, "hash-1") is None
+
+
+def test_find_prior_outcome_returns_latest_of_several(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "1001", "hash-1")
+    v1, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    later = finished_run(conn, sid, inv, v1, RunStatus.needs_review)
+    prior = ledger.find_prior_outcome(conn, "hash-1")
+    assert prior.run_id == later and prior.status is RunStatus.needs_review
+
+
+def test_mark_interrupted_runs_leaves_terminal_runs(conn, sid):
+    done = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    for s in _PATH_TO[RunStatus.rejected]:
+        update_run_status(conn, done, s)
+    finish_run(conn, done, RunStatus.rejected)
+    assert ledger.mark_interrupted_runs(conn, "9999") == []
+    row = conn.execute("SELECT status, error_code FROM runs WHERE run_id=?", (done,)).fetchone()
+    assert tuple(row) == ("rejected", None)
+
+
+def test_1011_txt_and_pdf_share_semantic_hash(conn):
+    from pathlib import Path
+
+    from invoice_processing import intake, seed
+    from invoice_processing.limits import DEFAULT_LIMITS
+    from invoice_processing.normalize import normalize
+    from invoice_processing.parsers import parse_document
+
+    seed.seed_inventory(conn)
+
+    def digest(name):
+        source, raw = intake.read_source(Path("data/invoices") / name)
+        draft = parse_document(source, raw, DEFAULT_LIMITS).draft
+        return semantic_hash(normalize(draft, storage.inventory_items(conn))[0])
+
+    assert digest("invoice_1011.txt") == digest("invoice_1011.pdf")

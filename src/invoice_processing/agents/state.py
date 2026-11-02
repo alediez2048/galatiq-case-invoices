@@ -33,7 +33,8 @@ class InvoiceState(TypedDict, total=False):
     findings: list[ValidationFinding]
     decision: ApprovalDecision
     gate: GateResult
-    receipt: MockReceipt
+    receipt: MockReceipt | None
+    prior_run_id: str
     status: RunStatus
     error_code: str
     error_message: str

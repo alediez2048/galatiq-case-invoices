@@ -8,7 +8,8 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+# 4: identity keys and normalization changed meaning (Phase 2); no DDL change.
+SCHEMA_VERSION = 4
 
 
 class SchemaVersionError(RuntimeError):
@@ -193,3 +194,7 @@ def get_stock(conn: sqlite3.Connection, items: Iterable[str]) -> dict[str, int |
     ).fetchall()
     found = {row["item"]: row["stock"] for row in rows}
     return {name: found.get(name) for name in names}
+
+
+def inventory_items(conn: sqlite3.Connection) -> list[str]:
+    return [row["item"] for row in conn.execute("SELECT item FROM inventory ORDER BY item")]

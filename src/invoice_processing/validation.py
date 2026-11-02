@@ -1,7 +1,7 @@
 """Pure validation checks over a NormalizedInvoice. No I/O except the *_against_db wrapper."""
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -48,20 +48,23 @@ def _line_label(line: LineItem, index: int) -> str:
     return line.item if not _blank(line.item) else f"line:{index}"
 
 
-def check_required_fields(invoice: NormalizedInvoice) -> list[ValidationFinding]:
-    findings: list[ValidationFinding] = []
-    if _blank(invoice.vendor_name):
-        findings.append(_finding(C.missing_vendor, field="vendor"))
-    if _blank(invoice.invoice_number):
-        findings.append(_finding(C.missing_invoice_number, field="invoice_number"))
-    if invoice.due_date is None:
-        findings.append(_finding(C.missing_due_date, field="due_date"))
-    if _blank(invoice.currency):
-        findings.append(_finding(C.missing_currency, field="currency"))
-    if invoice.stated.total is None:
-        findings.append(_finding(C.missing_total, field="total"))
-    if not invoice.lines:
-        findings.append(_finding(C.missing_line_items, field="lines"))
+def check_required_fields(
+    invoice: NormalizedInvoice, *, unresolved: Collection[str] = ()
+) -> list[ValidationFinding]:
+    """Fields in `unresolved` already carry a review finding, so no missing_<field> is added."""
+    missing = [
+        (C.missing_vendor, "vendor", _blank(invoice.vendor_name)),
+        (C.missing_invoice_number, "invoice_number", _blank(invoice.invoice_number)),
+        (C.missing_due_date, "due_date", invoice.due_date is None),
+        (C.missing_currency, "currency", _blank(invoice.currency)),
+        (C.missing_total, "total", invoice.stated.total is None),
+        (C.missing_line_items, "lines", not invoice.lines),
+    ]
+    findings = [
+        _finding(code, field=field)
+        for code, field, absent in missing
+        if absent and field not in unresolved
+    ]
     for index, line in enumerate(invoice.lines):
         if _blank(line.item) or line.quantity is None or line.unit_price is None:
             findings.append(

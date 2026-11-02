@@ -1,6 +1,6 @@
 """Ingestion agent: parse, normalize, and record the invoice version."""
 
-from invoice_processing import ledger
+from invoice_processing import ledger, storage
 from invoice_processing.agents.state import Deps, InvoiceState, emit
 from invoice_processing.codes import DEFAULT_SEVERITY, RunStatus
 from invoice_processing.normalize import normalize
@@ -36,7 +36,7 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 ledger.set_extracted_text(
                     deps.conn, state["source"].source_id, parsed.extracted_text
                 )
-            invoice, findings = normalize(draft)
+            invoice, findings = normalize(draft, storage.inventory_items(deps.conn))
             issues = [
                 {"code": i.code, "location": ref.location, "snippet": ref.snippet}
                 for i in draft.issues

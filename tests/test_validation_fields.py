@@ -82,3 +82,9 @@ def test_observed_values_are_strings():
     f = [x for x in validation.check_value_signs(inv) if x.code == C.non_positive_quantity][0]
     assert f.observed == "-5" and f.item == "WidgetA" and isinstance(f.observed, str)
     assert Decimal(f.observed) == Decimal("-5")
+
+
+def test_unresolved_field_suppresses_its_missing_finding():
+    inv = invoice(lines=[line("WidgetA", "1", "1")], total=None, due=None)
+    got = codes(validation.check_required_fields(inv, unresolved={"total"}))
+    assert C.missing_total not in got and C.missing_due_date in got

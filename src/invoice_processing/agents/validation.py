@@ -2,7 +2,7 @@
 
 from invoice_processing import ledger, validation
 from invoice_processing.agents.state import Deps, InvoiceState, emit
-from invoice_processing.codes import RunStatus
+from invoice_processing.codes import RunStatus, Severity
 from invoice_processing.observability import stage_timer
 
 STAGE = "validation"
@@ -13,8 +13,10 @@ def run(state: InvoiceState, deps: Deps) -> dict:
     with stage_timer() as t:
         invoice = state["invoice"]
         computed, arithmetic = validation.reconcile_totals(invoice)
+        earlier = state.get("findings", [])
+        unresolved = {f.field for f in earlier if f.severity is Severity.review and f.field}
         own = [
-            *validation.check_required_fields(invoice),
+            *validation.check_required_fields(invoice, unresolved=unresolved),
             *validation.check_value_signs(invoice),
             *validation.check_due_date(invoice, state["evaluation_date"]),
             *arithmetic,
@@ -24,7 +26,7 @@ def run(state: InvoiceState, deps: Deps) -> dict:
         ]
         # Normalization findings were already recorded by the ingestion node.
         ledger.record_findings(deps.conn, state["run_id"], state.get("version_id"), own)
-        findings = [*state.get("findings", []), *own]
+        findings = [*earlier, *own]
         ledger.update_run_status(deps.conn, state["run_id"], RunStatus.validated)
         update = {
             "invoice": invoice.model_copy(update={"computed": computed}),

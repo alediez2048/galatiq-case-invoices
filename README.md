@@ -10,12 +10,11 @@ A local command-line prototype takes one invoice file (TXT, JSON, CSV, XML or te
 
 ## Quick start
 
-<!-- TODO(P6-04): replace <repository-url> with the public GitHub URL once published (P6-06). -->
 
 Prerequisites: Python 3.12 and [uv](https://docs.astral.sh/uv/) (verified with uv 0.12.5 on macOS). No API key or network access is needed after installation.
 
 ```bash
-git clone <repository-url> && cd <repository-directory>
+git clone https://github.com/alediez2048/galatiq-case-invoices.git && cd galatiq-case-invoices
 uv sync --locked                                     # install exactly what uv.lock pins
 uv run python -m invoice_processing.seed --db inventory.db   # create and seed the inventory
 uv run python main.py --invoice_path=data/invoices/invoice_1001.txt

@@ -290,11 +290,6 @@ python main.py --invoice_path=data/invoices/invoice1.txt
 
 Output should include structured logs and results.
 
-### Live mode (Grok)
-
-`--mode live` sends invoice text to xAI and needs `XAI_API_KEY` and `XAI_MODEL` (environment or a git-ignored `.env`; see `.env.example`). Offline mode (the default) never reads them and makes no network call. Check the setup with `python -m invoice_processing.readiness` (add `--ping` for one minimal live call).
-
-
 ## Evaluation Criteria
 
 - **Functionality** — Does the system work end-to-end?

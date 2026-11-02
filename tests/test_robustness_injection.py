@@ -189,10 +189,6 @@ def test_payment_exception_after_commit_rerun_reveals_existing_payment(tmp_path,
     assert payment_count(db) == 1 and len(spy.keys) == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="duplicate of a post-commit-recovered run carries no receipt — see results doc",
-)
 def test_duplicate_after_post_commit_recovery_still_shows_receipt(tmp_path, monkeypatch):
     db = fresh_db(tmp_path)
     real = ledger.update_run_status

@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date
 from decimal import Decimal
 
@@ -10,6 +11,7 @@ from invoice_processing.codes import (
     FindingCode,
     GateOutcome,
     Recommendation,
+    RunStatus,
 )
 from invoice_processing.policy import POLICY_VERSION
 from invoice_processing.schemas import ApprovalDecision, SourceDocument, ValidationFinding
@@ -296,6 +298,45 @@ def test_second_approved_run_same_invoice_returns_first_receipt(conn, calls):
     assert not second.created
     assert second.receipt.receipt_id == first.receipt.receipt_id
     assert len(calls) == 1 and count_payments(conn) == 1
+    # the first run did not fail, so the payment stays attributed to it
+    assert conn.execute("SELECT run_id FROM payments").fetchone()[0] == run_id
+    assert repoint_events(conn) == []
+
+
+def repoint_events(conn):
+    return conn.execute(
+        "SELECT run_id, payload_json FROM audit_events WHERE event = 'payment_run_repointed'"
+    ).fetchall()
+
+
+def replay_run(conn, invoice_id, version_id, run_id):
+    source_id = conn.execute("SELECT source_id FROM runs WHERE run_id = ?", (run_id,)).fetchone()[0]
+    replay = ledger.start_run(conn, ExecutionMode.offline, source_id, date(2026, 2, 1))
+    ledger.attach_run(conn, replay, invoice_id, version_id)
+    return replay
+
+
+def test_replay_after_failed_payer_repoints_payment_with_audit_event(conn, calls):
+    invoice_id, version_id, crashed = approved_run(conn)
+    first = payments.pay(conn, invoice_id, version_id, crashed)
+    ledger.finish_run(conn, crashed, RunStatus.failed, error_code="unexpected_error")
+    replay = replay_run(conn, invoice_id, version_id, crashed)
+    again = payments.pay(conn, invoice_id, version_id, replay)  # no decision needed: replay
+    assert not again.created and again.receipt.receipt_id == first.receipt.receipt_id
+    assert conn.execute("SELECT run_id FROM payments").fetchone()[0] == replay
+    ((event_run, payload),) = repoint_events(conn)
+    assert event_run == replay
+    assert json.loads(payload) == {
+        "old_run_id": crashed,
+        "new_run_id": replay,
+        "receipt_id": first.receipt.receipt_id,
+    }
+    assert len(calls) == 1 and count_payments(conn) == 1
+    # a further replay by a third run finds a non-failed payer and leaves it alone
+    third = replay_run(conn, invoice_id, version_id, crashed)
+    payments.pay(conn, invoice_id, version_id, third)
+    assert conn.execute("SELECT run_id FROM payments").fetchone()[0] == replay
+    assert len(repoint_events(conn)) == 1
 
 
 def test_pay_inside_open_transaction_raises(conn, calls):

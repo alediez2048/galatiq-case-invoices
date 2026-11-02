@@ -1,6 +1,7 @@
 """Shared processing service: one entry point used by the CLI and tests."""
 
 import logging
+import sqlite3
 from datetime import date
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from invoice_processing.codes import (
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
-from invoice_processing.schemas import ProcessingResult
+from invoice_processing.schemas import ProcessingResult, SourceDocument
 from invoice_processing.storage import connect, init_schema
 from invoice_processing.workflow import build_graph
 
@@ -67,6 +68,81 @@ def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingR
     return ProcessingResult(**fields)
 
 
+class RetryRefused(RuntimeError):
+    """`retry_run` will not retry this run; `reason` is a stable code."""
+
+    def __init__(self, reason: str, run_id: str) -> None:
+        super().__init__(f"run {run_id} cannot be retried: {reason}")
+        self.reason = reason
+        self.run_id = run_id
+
+
+# Failures a retry can fix: model errors, a crash (startup sweep) or an unexpected exception.
+# Extraction and payment-refusal codes are deterministic; the same file fails the same way.
+RETRYABLE_ERROR_CODES = _MODEL_ERROR_CODES | {"interrupted", "unexpected_error"}
+
+
+def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> ledger.RunSummary:
+    run = ledger.get_run(conn, run_id)
+    if run is None:
+        raise RetryRefused("unknown_run", run_id)
+    if run.status is not RunStatus.failed:
+        raise RetryRefused("not_failed", run_id)
+    if run.error_code not in RETRYABLE_ERROR_CODES:
+        raise RetryRefused("not_recoverable", run_id)
+    if run.content_hash != content_hash:
+        raise RetryRefused("source_mismatch", run_id)
+    return run
+
+
+def check_retry(
+    run_id: str, path: str | Path, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
+) -> ledger.RunSummary:
+    """The failed run `retry_run` would retry, or RetryRefused. Writes nothing but the
+    startup sweep (which turns a crashed run into a retryable `interrupted` failure)."""
+    source, _ = intake.read_source(path, limits)
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
+        return _check_retry(conn, run_id, source.content_hash)
+    finally:
+        conn.close()
+
+
+def retry_run(
+    run_id: str,
+    path: str | Path,
+    db_path: str | Path,
+    evaluation_date: date,
+    events: logging.Logger | None = None,
+    provider: ReasoningProvider | None = None,
+    limits: Limits = DEFAULT_LIMITS,
+) -> ProcessingResult:
+    """Process `path` again as a new run linked to the failed `run_id` (`retry_of`), in the
+    original run's mode. The ledger keeps no source bytes, so the caller re-supplies the
+    file; it must hash to the original source. Payment stays once per identity."""
+    source, raw = intake.read_source(path, limits)
+    conn = connect(db_path)
+    try:
+        init_schema(conn)
+        ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
+        original = _check_retry(conn, run_id, source.content_hash)
+    finally:
+        conn.close()
+    return _process(
+        source,
+        raw,
+        original.mode,
+        db_path,
+        evaluation_date,
+        events,
+        limits,
+        provider,
+        retry_of=original.run_id,
+    )
+
+
 def process_invoice(
     path: str | Path,
     mode: ExecutionMode,
@@ -77,6 +153,20 @@ def process_invoice(
     provider: ReasoningProvider | None = None,
 ) -> ProcessingResult:
     source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
+    return _process(source, raw, mode, db_path, evaluation_date, events, limits, provider)
+
+
+def _process(
+    source: SourceDocument,
+    raw: bytes,
+    mode: ExecutionMode,
+    db_path: str | Path,
+    evaluation_date: date,
+    events: logging.Logger | None,
+    limits: Limits,
+    provider: ReasoningProvider | None,
+    retry_of: str | None = None,
+) -> ProcessingResult:
     if events is None:
         events = observability.configure_events(None)
     provider = provider or get_provider(mode)  # config errors propagate before any run exists
@@ -85,8 +175,18 @@ def process_invoice(
     try:
         init_schema(conn)
         ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
-        ledger.record_source(conn, source)
-        run_id = ledger.start_run(conn, mode, source.source_id, evaluation_date)
+        ledger.record_source(conn, source)  # source_id derives from the content hash
+        # The same bytes in the other mode: a labeled switch, never a byte-level duplicate.
+        # It reads no earlier decision (decisions are per run); payment still decides.
+        mode_switch_of = ledger.latest_run_in_other_mode(conn, source.source_id, mode)
+        run_id = ledger.start_run(
+            conn,
+            mode,
+            source.source_id,
+            evaluation_date,
+            retry_of=retry_of,
+            mode_switch_of=mode_switch_of,
+        )
         deps = Deps(conn=conn, provider=provider, events=events, limits=limits)
         state = InvoiceState(
             run_id=run_id,
@@ -105,8 +205,13 @@ def process_invoice(
                 source_hash=source.content_hash,
                 original_name=source.original_name,
                 mode=mode.value,
+                retry_of=retry_of,
+                mode_switch_of=mode_switch_of,
             )
-            prior = ledger.find_prior_outcome(conn, source.content_hash)
+            # Retries and mode switches skip the byte-level check; the identity check in
+            # ingestion still runs (and never pays an identity twice).
+            exempt = retry_of is not None or mode_switch_of is not None
+            prior = None if exempt else ledger.find_prior_outcome(conn, source.content_hash)
             if prior is not None:
                 ledger.finish_run(conn, run_id, RunStatus.duplicate, prior_run_id=prior.run_id)
                 state["status"] = RunStatus.duplicate

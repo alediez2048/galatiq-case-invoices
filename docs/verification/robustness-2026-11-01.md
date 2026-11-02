@@ -8,7 +8,7 @@ Run: `uv run pytest` gave 725 passed, 1 xfailed in about 46 s (whole suite); the
 | File | Tests | Covers |
 | --- | --- | --- |
 | `tests/test_robustness_corpus.py` | 8 | All 20 samples through one ledger, forward (alphabetical) then reverse order, each on a fresh DB; whole-corpus reprocess |
-| `tests/test_robustness_injection.py` | 24 (1 xfail) | Exception at intake, each of 5 parsers (generic exception and `ExtractionError`), normalization, ingestion agent, validation, approval, gate, decision record, payment before commit, gateway decline, failure between gateway and commit, payment after commit, late invoice-status failure |
+| `tests/test_robustness_injection.py` | 24 (1 xfail until Phase 3 Task 6, now passing) | Exception at intake, each of 5 parsers (generic exception and `ExtractionError`), normalization, ingestion agent, validation, approval, gate, decision record, payment before commit, gateway decline, failure between gateway and commit, payment after commit, late invoice-status failure |
 | `tests/test_robustness_malformed.py` | 74 | 37 malformed inputs, each checked through the service and through the in-process CLI |
 | `tests/test_robustness_replay.py` | 7 | Repeated `python main.py` subprocess runs with `INVOICE_NETWORK_GUARD=1`, `--db` in tmp |
 | `tests/test_robustness_threshold.py` | 18 | 8 fixtures in `tests/fixtures/robustness/`, each checked for outcome and for rerun payment count |
@@ -47,7 +47,7 @@ Offline expectation holds: total <= 10,000.00 and clean is `paid_mock`; > 10,000
 
 ## Bugs found
 
-1. **Duplicate of a post-commit-recovered run carries no receipt** (xfail strict: `tests/test_robustness_injection.py::test_duplicate_after_post_commit_recovery_still_shows_receipt`).
+1. **Duplicate of a post-commit-recovered run carries no receipt** (`tests/test_robustness_injection.py::test_duplicate_after_post_commit_recovery_still_shows_receipt`; was xfail strict). **Fixed in Phase 3 Task 6 (P3-08):** when `payments.pay` replays a payment whose paying run is `failed`, it re-points `payments.run_id` to the replaying run and records a `payment_run_repointed` audit event, so the third run finds the receipt; the test now passes.
    Inputs: `invoice_1001.txt`; first run pays then fails after commit (`update_run_status(paid_mock)` raises); second run of the same file reveals the payment (`paid_mock`, `created=False`, receipt returned); third run of the same file.
    Expected: `duplicate` with `receipt` equal to the existing receipt, as in the normal duplicate case. Actual: `duplicate` with `receipt=None`.
    Cause (from reading `ledger._prior` / `_receipt`): the receipt is looked up by the prior run's `run_id`, but the payment row is stamped with the first (failed) run's id, while the second run is the one found as prior outcome. No money impact: the payment count stays 1 and no gateway call is made. Only the displayed receipt is wrong. Suggested fix: look the receipt up by `invoice_id` (one payment per identity) when the prior run is `paid_mock`.

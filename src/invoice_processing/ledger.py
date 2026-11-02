@@ -192,24 +192,69 @@ def record_version(
 
 
 def start_run(
-    conn: sqlite3.Connection, mode: ExecutionMode, source_id: str, evaluation_date: date
+    conn: sqlite3.Connection,
+    mode: ExecutionMode,
+    source_id: str,
+    evaluation_date: date,
+    retry_of: str | None = None,
+    mode_switch_of: str | None = None,
 ) -> str:
     run_id = _new_id("run")
     with storage.atomic(conn):
         conn.execute(
-            "INSERT INTO runs (run_id, source_id, mode, status, stage, evaluation_date, "
-            "started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO runs (run_id, source_id, mode, status, stage, retry_of, "
+            "mode_switch_of, evaluation_date, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 source_id,
                 mode.value,
                 RunStatus.received.value,
                 RunStatus.received.value,
+                retry_of,
+                mode_switch_of,
                 evaluation_date.isoformat(),
                 utcnow(),
             ),
         )
     return run_id
+
+
+def latest_run_in_other_mode(
+    conn: sqlite3.Connection, source_id: str, mode: ExecutionMode
+) -> str | None:
+    """The latest run of this source in a mode other than `mode`, if any (any status)."""
+    row = conn.execute(
+        "SELECT run_id FROM runs WHERE source_id = ? AND mode != ? "
+        "ORDER BY started_at DESC, rowid DESC LIMIT 1",
+        (source_id, mode.value),
+    ).fetchone()
+    return None if row is None else row["run_id"]
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    run_id: str
+    mode: ExecutionMode
+    status: RunStatus
+    error_code: str | None
+    content_hash: str
+
+
+def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
+    row = conn.execute(
+        "SELECT r.run_id, r.mode, r.status, r.error_code, s.content_hash FROM runs r "
+        "JOIN sources s ON s.source_id = r.source_id WHERE r.run_id = ?",
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return RunSummary(
+        row["run_id"],
+        ExecutionMode(row["mode"]),
+        RunStatus(row["status"]),
+        row["error_code"],
+        row["content_hash"],
+    )
 
 
 def attach_run(
@@ -459,19 +504,44 @@ class IdentityCheck:
     prior: PriorOutcome | None
 
 
+def _retry_chain(conn: sqlite3.Connection, run_id: str) -> list[str]:
+    """Every run linked to this one by retry_of: its ancestors back to the original run and
+    every retry descending from that original (siblings included); this run excluded."""
+    rows = conn.execute(
+        "WITH RECURSIVE up(run_id, retry_of) AS ("
+        "  SELECT run_id, retry_of FROM runs WHERE run_id = ?"
+        "  UNION SELECT r.run_id, r.retry_of FROM runs r JOIN up ON r.run_id = up.retry_of),"
+        " root(run_id) AS (SELECT run_id FROM up WHERE retry_of IS NULL),"
+        " down(run_id) AS ("
+        "  SELECT run_id FROM root"
+        "  UNION SELECT r.run_id FROM runs r JOIN down ON r.retry_of = down.run_id)"
+        " SELECT run_id FROM down WHERE run_id != ?",
+        (run_id, run_id),
+    ).fetchall()
+    return [r["run_id"] for r in rows]
+
+
 def check_identity(
     conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str
 ) -> IdentityCheck:
     """Compare this run's invoice version with earlier outcomes for the same identity.
 
-    A payment decides first: a different version is a revision, the same version is a
-    duplicate of the paying run (or "new" when that run was interrupted, so it re-enters pay()).
-    Otherwise only business outcomes of non-retry runs count; failed and duplicate runs never do.
+    1. A payment decides first: a different version is a revision; the same version is a
+       duplicate of the paying run, or "new" when that run failed (it paid, then crashed) so
+       the replay re-enters pay(), which returns the existing receipt.
+    2. Otherwise the latest business outcome of a non-retry run of the same version makes
+       this run a duplicate; failed and duplicate runs never count.
+    3. Failing that, such an outcome of another version is a version conflict.
+
+    A retry run (retry_of set) is never a duplicate: rule 1 sends a same-version payment
+    back through pay() and rule 2 is skipped, but revisions and version conflicts still
+    apply, with the run being retried and its retry chain excluded from prior outcomes.
     """
     new = IdentityCheck("new", None)
     this = conn.execute("SELECT retry_of FROM runs WHERE run_id = ?", (run_id,)).fetchone()
-    if this is None or this["retry_of"] is not None:
+    if this is None:
         return new
+    is_retry = this["retry_of"] is not None
     identity = conn.execute(
         "SELECT invoice_number_key FROM invoices WHERE invoice_id = ?", (invoice_id,)
     ).fetchone()
@@ -492,22 +562,23 @@ def check_identity(
     if payment is not None:
         if payment["version"] != version["version"]:
             return IdentityCheck("revision_after_payment", _prior(conn, payment))
-        # A run that paid and was then interrupted is marked failed. Its replay goes back
-        # through pay(), which returns the existing receipt and finishes the invoice paid;
-        # the payment outranks every other run of this identity, so history is not consulted.
-        if payment["status"] == RunStatus.failed.value:
+        # The payment outranks every other run of this identity, so history is not consulted.
+        if is_retry or payment["status"] == RunStatus.failed.value:
             return new
         return IdentityCheck("duplicate", _prior(conn, payment))
 
+    excluded = [run_id, *(_retry_chain(conn, run_id) if is_retry else [])]
+    slots = ",".join("?" * len(excluded))
     base = (
-        "SELECT run_id, status, invoice_id FROM runs WHERE invoice_id = ? AND run_id != ? "
-        f"AND retry_of IS NULL AND status IN ({_OUTCOME_SLOTS}) AND version_id {{op}} ? "
-        "ORDER BY started_at DESC, rowid DESC LIMIT 1"
+        f"SELECT run_id, status, invoice_id FROM runs WHERE invoice_id = ? "
+        f"AND run_id NOT IN ({slots}) AND retry_of IS NULL AND status IN ({_OUTCOME_SLOTS}) "
+        "AND version_id {op} ? ORDER BY started_at DESC, rowid DESC LIMIT 1"
     )
-    args = (invoice_id, run_id, *_OUTCOME_VALUES, version_id)
-    same = conn.execute(base.format(op="="), args).fetchone()
-    if same is not None:
-        return IdentityCheck("duplicate", _prior(conn, same))
+    args = (invoice_id, *excluded, *_OUTCOME_VALUES, version_id)
+    if not is_retry:
+        same = conn.execute(base.format(op="="), args).fetchone()
+        if same is not None:
+            return IdentityCheck("duplicate", _prior(conn, same))
     other = conn.execute(base.format(op="!="), args).fetchone()
     if other is not None:
         return IdentityCheck("version_conflict", _prior(conn, other))

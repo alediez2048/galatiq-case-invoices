@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 # 4: identity keys and normalization changed meaning (Phase 2); no DDL change.
-SCHEMA_VERSION = 4
+# 5: runs.mode_switch_of (Phase 3).
+SCHEMA_VERSION = 5
 
 
 class SchemaVersionError(RuntimeError):
@@ -60,6 +61,7 @@ _DDL = (
         error_code TEXT,
         error_message TEXT,
         retry_of TEXT REFERENCES runs(run_id),
+        mode_switch_of TEXT REFERENCES runs(run_id),
         prior_run_id TEXT REFERENCES runs(run_id),
         evaluation_date TEXT,
         started_at TEXT NOT NULL,

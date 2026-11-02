@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Galatiq case: multi-agent invoice processing prototype"
 requires-python = ">=3.12"
 dependencies = [
+    "defusedxml>=0.7,<0.8",
     "langgraph>=1.2,<2",
+    "langsmith>=0.14,<1",
+    "pdfplumber>=0.11,<0.12",
     "pydantic>=2.9",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.8"]
+dev = ["pypdf>=6,<7", "pytest>=8", "ruff>=0.8"]
 
 [build-system]
 requires = ["hatchling"]

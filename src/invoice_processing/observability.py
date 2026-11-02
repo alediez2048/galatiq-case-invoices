@@ -97,4 +97,7 @@ def format_summary(result: ProcessingResult) -> str:
         parts.append(f"paid={format_money(result.receipt.amount, result.receipt.currency)}")
     if result.errors:
         parts.append(f"errors={len(result.errors)}")
+        parts.append(f"error={result.errors[0]}")
+    if result.error_message:
+        parts.append(f"reason={json.dumps(result.error_message, ensure_ascii=False)}")
     return " ".join(parts)

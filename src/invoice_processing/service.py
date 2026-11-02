@@ -15,6 +15,7 @@ from invoice_processing.codes import (
     InvoiceStatus,
     RunStatus,
 )
+from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import get_provider
 from invoice_processing.schemas import ProcessingResult
 from invoice_processing.storage import connect, init_schema
@@ -40,8 +41,10 @@ def _result(state: InvoiceState, **overrides) -> ProcessingResult:
         "findings": state.get("findings", []),
         "decision": state.get("decision"),
         "receipt": state.get("receipt"),
+        "prior_run_id": state.get("prior_run_id"),
         "timings_ms": state.get("timings_ms", {}),
         "errors": [error_code] if error_code else [],
+        "error_message": state.get("error_message"),
         "source_hash": source.content_hash if source is not None else None,
         "evaluation_date": state.get("evaluation_date"),
     }
@@ -55,8 +58,9 @@ def process_invoice(
     db_path: str | Path,
     evaluation_date: date,
     events: logging.Logger | None = None,
+    limits: Limits = DEFAULT_LIMITS,
 ) -> ProcessingResult:
-    source, raw = intake.read_source(path)  # IntakeError propagates; no run is created
+    source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
     if events is None:
         events = observability.configure_events(None)
     provider = get_provider(mode)  # config errors propagate before any run exists
@@ -66,7 +70,7 @@ def process_invoice(
         ledger.mark_interrupted_runs(conn, started_before=ledger.utcnow())
         ledger.record_source(conn, source)
         run_id = ledger.start_run(conn, mode, source.source_id, evaluation_date)
-        deps = Deps(conn=conn, provider=provider, events=events)
+        deps = Deps(conn=conn, provider=provider, events=events, limits=limits)
         state = InvoiceState(
             run_id=run_id,
             mode=mode,
@@ -117,6 +121,7 @@ def process_invoice(
                 status,
                 error_code=error_code,
                 error_message=final.get("error_message"),
+                prior_run_id=final.get("prior_run_id"),
             )
             invoice_id = final.get("invoice_id")
             if invoice_id is not None and status in _INVOICE_STATUS:

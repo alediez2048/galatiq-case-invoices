@@ -1,6 +1,6 @@
 # P2-09 — Dates, currency, and payment terms
 
-Phase: 2 · Status: todo · Depends on: P2-08 · Requirements: A02, P01, P04
+Phase: 2 · Status: done · Depends on: P2-08 · Requirements: A02, P01, P04
 
 ## Context
 
@@ -16,9 +16,9 @@ Dates arrive as `2026-01-15`, `Jan 30 2026`, `January 27, 2026`, `26-Jan-2O26`, 
 
 ## Acceptance criteria
 
-- [ ] 1002: invoice date 2026-01-30, due 2026-01-30, terms Net 30 → `terms_inconsistent`.
-- [ ] 1003: `due_date_unresolved`; no date invented.
-- [ ] 1007: `01/28/2026` → 2026-01-28. A constructed `02/03/2026` → `ambiguous_date`.
-- [ ] 1012: `26-Jan-2O26` → 2026-01-26 with an OCR normalization event.
-- [ ] 1014: currency EUR, `unsupported_currency`, final status `needs_review`.
-- [ ] 1013 JSON (explicit USD) and 1013 PDF (assumed USD) normalize to the same currency, with the assumption recorded only for the PDF.
+- [x] 1002: invoice date 2026-01-30, due 2026-01-30, terms Net 30 → `terms_inconsistent`. (tests/test_normalize.py::test_1002_terms_inconsistent)
+- [x] 1003: `due_date_unresolved`; no date invented. (tests/test_normalize.py::test_1003_unresolved_and_urgency)
+- [x] 1007: `01/28/2026` → 2026-01-28. A constructed `02/03/2026` → `ambiguous_date`. (tests/test_normalize.py::test_1007_slash_dates, tests/test_dates.py::test_ambiguous)
+- [x] 1012: `26-Jan-2O26` → 2026-01-26 with an OCR normalization event. (tests/test_normalize.py::test_1012_ocr_date)
+- [x] 1014: currency EUR, `unsupported_currency`, final status `needs_review`. (tests/test_normalize.py::test_1014_eur_not_converted, tests/test_acceptance.py::test_invoice_1014)
+- [x] 1013 JSON (explicit USD) and 1013 PDF (assumed USD) normalize to the same currency, with the assumption recorded only for the PDF. (tests/test_normalize.py::test_1013_json_and_pdf_same_currency_assumption_only_on_pdf)

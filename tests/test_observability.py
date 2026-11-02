@@ -110,6 +110,20 @@ def test_format_summary():
     assert "r1" in format_summary(make_result(with_receipt=False))
 
 
+def test_format_summary_includes_error_code_and_reason():
+    result = make_result(with_receipt=False).model_copy(
+        update={
+            "status": RunStatus.failed,
+            "errors": ["too_many_lines"],
+            "error_message": "The invoice has 3 lines; the limit is 2.",
+        }
+    )
+    assert (
+        'error=too_many_lines reason="The invoice has 3 lines; the limit is 2."'
+        in format_summary(result)
+    )
+
+
 def test_output_paths_are_gitignored():
     out = subprocess.run(
         ["git", "check-ignore", "output/events.jsonl", "output/result.json"],
@@ -117,3 +131,10 @@ def test_output_paths_are_gitignored():
         text=True,
     )
     assert out.returncode == 0
+
+
+def test_format_summary_escapes_quotes_in_reason():
+    result = make_result(with_receipt=False).model_copy(
+        update={"status": RunStatus.failed, "errors": ["x"], "error_message": 'bad "key" here'}
+    )
+    assert 'reason="bad \\"key\\" here"' in format_summary(result)

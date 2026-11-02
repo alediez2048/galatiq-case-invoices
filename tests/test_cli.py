@@ -72,7 +72,7 @@ def test_bad_evaluation_date_is_usage_error(tmp_path, capsys):
 
 def test_failed_run_exits_nonzero(tmp_path, capsys):
     bad = tmp_path / "bad.txt"
-    bad.write_bytes(b"\xff\xfe\x00\xff invalid \x80\x81")
+    bad.write_bytes(b"\xff\xfe\xff invalid \x80\x81")
     code = main.main(_args(tmp_path, invoice=str(bad)))
     out, _ = capsys.readouterr()
     assert code == 1
@@ -119,3 +119,12 @@ def test_non_sqlite_database_fails_cleanly(tmp_path, capsys):
     out, err = capsys.readouterr()
     assert code == 2 and out == ""
     assert "error:" in err and "Traceback" not in err
+
+
+def test_oversized_file_is_intake_error_and_creates_no_run(tmp_path, capsys):
+    from tests import fixture_factory as ff
+
+    code = main.main(_args(tmp_path, invoice=str(ff.oversized_txt(tmp_path))))
+    out, err = capsys.readouterr()
+    assert code == 2 and out == ""
+    assert "file_too_large" in err and not (tmp_path / "i.db").exists()

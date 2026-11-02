@@ -177,3 +177,18 @@ def test_atomic_opens_and_rolls_back_alone(conn):
             conn.execute("INSERT INTO inventory VALUES ('X', 1)")
             raise RuntimeError
     assert conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0] == 0
+
+
+def test_phase_1_schema_version_3_is_refused(db_path):
+    assert storage.SCHEMA_VERSION == 4
+    c = storage.connect(db_path)
+    c.execute("PRAGMA user_version = 3")
+    with pytest.raises(storage.SchemaVersionError):
+        storage.init_schema(c)
+
+
+def test_inventory_items_returns_all_names_sorted(conn):
+    from invoice_processing.seed import seed_inventory
+
+    seed_inventory(conn)
+    assert storage.inventory_items(conn) == ["FakeItem", "GadgetX", "WidgetA", "WidgetB"]

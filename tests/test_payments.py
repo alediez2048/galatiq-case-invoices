@@ -307,3 +307,31 @@ def test_pay_inside_open_transaction_raises(conn, calls):
     finally:
         conn.execute("ROLLBACK")
     assert calls == [] and count_payments(conn) == 0
+
+
+def test_payment_for_other_version_raises_revision_after_payment(conn, calls):
+    invoice_id, v1, run1 = approved_run(conn)
+    first = payments.pay(conn, invoice_id, v1, run1)
+    source_id = conn.execute("SELECT source_id FROM runs WHERE run_id = ?", (run1,)).fetchone()[0]
+    revised = inv_1001().model_copy(deep=True)
+    revised.stated.total = Decimal("6000.00")
+    v2, version = ledger.record_version(conn, invoice_id, revised, source_id)
+    assert version == 2
+    run2 = ledger.start_run(conn, ExecutionMode.offline, source_id, date(2026, 2, 1))
+    ledger.attach_run(conn, run2, invoice_id, v2)
+    ledger.record_decision(
+        conn,
+        run2,
+        v2,
+        ApprovalDecision(
+            initial_recommendation=Recommendation.approve,
+            final_decision=GateOutcome.approved,
+            policy_version=POLICY_VERSION,
+            mode=ExecutionMode.offline,
+        ),
+    )
+    with pytest.raises(payments.PaymentNotAuthorized) as e:
+        payments.pay(conn, invoice_id, v2, run2)
+    assert e.value.reason == "revision_after_payment"
+    assert len(calls) == 1 and count_payments(conn) == 1
+    assert payments.pay(conn, invoice_id, v1, run1).receipt == first.receipt

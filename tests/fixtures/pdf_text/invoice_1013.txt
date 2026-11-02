@@ -1,0 +1,16 @@
+                                Bulk Order Invoice
+    Invoice: INV-1013      Date: 2026-01-24
+    Vendor: Atlas Industrial Supply Due: 2026-03-24
+    Terms: Net 60
+    Item                    Qty     Unit Price Amount      Notes
+    WidgetA                    15         $250.00   $3,750.00
+    WidgetB                    10         $500.00   $5,000.00
+    GadgetX                    5          $750.00   $3,750.00
+    WidgetA                    5          $240.00   $1,200.00 Volume discount
+    WidgetB                    8          $480.00   $3,840.00 Volume discount
+    GadgetX                    3          $750.00   $2,250.00 Expedited
+    WidgetA                    2          $250.00    $500.00 Replacement
+    GadgetX                    1          $750.00    $750.00 Sample
+                                         Subtotal: $21,040.00
+                                        Tax (7%):   $1,472.80
+                                      Grand Total: $22,562.80

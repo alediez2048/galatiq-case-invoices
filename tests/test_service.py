@@ -7,7 +7,7 @@ import pytest
 
 from invoice_processing import ledger, payments, seed, storage
 from invoice_processing.agents import validation
-from invoice_processing.codes import ExecutionMode, RunStatus
+from invoice_processing.codes import ExecutionMode, FindingCode, RunStatus
 from invoice_processing.intake import IntakeError
 from invoice_processing.service import process_invoice
 from invoice_processing.storage import connect
@@ -242,3 +242,189 @@ def test_currency_assumed_finding_recorded_once(tmp_path):
     r = process_invoice(FIXTURE, OFF, db, EVAL)
     n = count(db, "findings", f"WHERE code='currency_assumed_usd' AND run_id='{r.run_id}'")
     assert n == 1
+
+
+CORPUS_EVAL = date(2026, 1, 31)
+
+
+@pytest.fixture
+def seeded_db(tmp_path):
+    return tmp_db(tmp_path)
+
+
+def run(name, db):
+    return process_invoice(f"data/invoices/{name}", OFF, db, CORPUS_EVAL)
+
+
+def n_payments(db):
+    return count(db, "payments")
+
+
+def invoice_row(db, invoice_id):
+    c = connect(db)
+    try:
+        row = c.execute(
+            "SELECT status, current_version FROM invoices WHERE invoice_id = ?", (invoice_id,)
+        ).fetchone()
+        return tuple(row)
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "first_status", "second_status"),
+    [
+        ("invoice_1011.txt", "invoice_1011.pdf", RunStatus.paid_mock, RunStatus.duplicate),
+        ("invoice_1012.txt", "invoice_1012.pdf", RunStatus.paid_mock, RunStatus.duplicate),
+        ("invoice_1013.json", "invoice_1013.pdf", RunStatus.rejected, RunStatus.duplicate),
+    ],
+)
+def test_alternate_format_is_duplicate(seeded_db, first, second, first_status, second_status):
+    a = run(first, seeded_db)
+    before = invoice_row(seeded_db, a.invoice_id)
+    b = run(second, seeded_db)
+    assert (a.status, b.status) == (first_status, second_status)
+    assert b.prior_run_id == a.run_id and b.invoice_id == a.invoice_id
+    assert b.receipt == a.receipt
+    assert n_payments(seeded_db) == (1 if first_status is RunStatus.paid_mock else 0)
+    assert invoice_row(seeded_db, a.invoice_id) == before
+    c = connect(seeded_db)
+    try:
+        row = c.execute(
+            "SELECT status, prior_run_id FROM runs WHERE run_id = ?", (b.run_id,)
+        ).fetchone()
+        events = ledger.list_audit_events(c, b.run_id)
+    finally:
+        c.close()
+    assert tuple(row) == ("duplicate", a.run_id)
+    dup = [e for e in events if e["stage"] == "ingestion" and e["event"] == "duplicate"]
+    assert len(dup) == 1
+    assert dup[0]["payload"]["prior_run_id"] == a.run_id
+    assert dup[0]["payload"]["prior_status"] == first_status.value
+    assert dup[0]["payload"]["match"] == "semantic"
+
+
+def test_revision_after_payment(seeded_db):
+    a = run("invoice_1004.json", seeded_db)
+    b = run("invoice_1004_revised.json", seeded_db)
+    assert a.status is RunStatus.paid_mock and a.receipt.amount == Decimal("1890.00")
+    assert b.status is RunStatus.needs_review and b.receipt is None
+    assert FindingCode.revision_after_payment in {f.code for f in b.findings}
+    assert n_payments(seeded_db) == 1
+    assert invoice_row(seeded_db, a.invoice_id) == ("paid_mock", 1)
+
+
+def test_revision_after_payment_reverse_order(seeded_db):
+    a = run("invoice_1004_revised.json", seeded_db)
+    b = run("invoice_1004.json", seeded_db)
+    assert a.status is RunStatus.paid_mock and a.receipt.amount == Decimal("5940.00")
+    assert b.status is RunStatus.needs_review
+    assert FindingCode.revision_after_payment in {f.code for f in b.findings}
+    assert n_payments(seeded_db) == 1
+
+
+def test_version_conflict_when_prior_unpaid(seeded_db, tmp_path):
+    # 1013 JSON is rejected; a changed copy of it under the same identity conflicts.
+    a = run("invoice_1013.json", seeded_db)
+    changed = tmp_path / "invoice_1013_changed.json"
+    original = Path("data/invoices/invoice_1013.json").read_text()
+    changed.write_text(original.replace('"quantity": 1,', '"quantity": 2,'))
+    b = process_invoice(changed, OFF, seeded_db, CORPUS_EVAL)
+    assert a.status is RunStatus.rejected
+    conflict = [f for f in b.findings if f.code is FindingCode.version_conflict]
+    assert len(conflict) == 1
+    assert conflict[0].severity.value == "review" and conflict[0].observed == a.run_id
+    assert b.invoice_id == a.invoice_id
+    assert n_payments(seeded_db) == 0
+
+
+def test_failed_prior_format_is_not_duplicate(seeded_db, monkeypatch):
+    # First attempt fails inside validation; the PDF afterwards processes normally and pays.
+    def boom(*a, **k):
+        raise RuntimeError("injected")
+
+    with monkeypatch.context() as m:
+        m.setattr(validation, "run", boom)
+        first = run("invoice_1011.txt", seeded_db)
+    assert first.status is RunStatus.failed
+    second = run("invoice_1011.pdf", seeded_db)
+    assert second.status is RunStatus.paid_mock and second.prior_run_id is None
+    assert n_payments(seeded_db) == 1
+
+
+def crash_after_payment(db, run_id, invoice_status="processing"):
+    # The paying run was interrupted after the payment committed: it is marked failed and the
+    # invoice row never reached paid_mock.
+    c = connect(db)
+    try:
+        with storage.write_transaction(c):
+            c.execute(
+                "UPDATE runs SET status = 'failed', error_code = 'interrupted' WHERE run_id = ?",
+                (run_id,),
+            )
+            c.execute("UPDATE invoices SET status = ?", (invoice_status,))
+    finally:
+        c.close()
+
+
+def test_failed_payer_replay_after_same_version_outcome_ends_paid(seeded_db):
+    a = run("invoice_1011.txt", seeded_db)
+    assert a.status is RunStatus.paid_mock
+    crash_after_payment(seeded_db, a.run_id, "needs_review")
+    # An earlier, non-paying run on the same version (e.g. a concurrent run).
+    c = connect(seeded_db)
+    try:
+        with storage.write_transaction(c):
+            row = dict(c.execute("SELECT * FROM runs WHERE run_id = ?", (a.run_id,)).fetchone())
+            row.update(run_id="run-other", status="needs_review", started_at="2000-01-01T00:00Z")
+            c.execute(
+                f"INSERT INTO runs ({','.join(row)}) VALUES ({','.join('?' * len(row))})",
+                tuple(row.values()),
+            )
+    finally:
+        c.close()
+    b = run("invoice_1011.pdf", seeded_db)
+    assert b.status is RunStatus.paid_mock
+    assert b.receipt == a.receipt
+    assert n_payments(seeded_db) == 1
+    assert invoice_row(seeded_db, a.invoice_id)[0] == "paid_mock"
+
+
+def test_failed_payer_replay_after_revision_outcome_ends_paid(seeded_db):
+    a = run("invoice_1004.json", seeded_db)
+    assert a.status is RunStatus.paid_mock
+    crash_after_payment(seeded_db, a.run_id)
+    revised = run("invoice_1004_revised.json", seeded_db)
+    assert revised.status is RunStatus.needs_review
+    assert FindingCode.revision_after_payment in {f.code for f in revised.findings}
+    b = run("invoice_1004.json", seeded_db)
+    assert b.status is RunStatus.paid_mock
+    assert FindingCode.version_conflict not in {f.code for f in b.findings}
+    assert b.receipt == a.receipt
+    assert n_payments(seeded_db) == 1
+    assert invoice_row(seeded_db, a.invoice_id)[0] == "paid_mock"
+
+
+def test_revision_after_payment_beats_later_outcome_on_revision(seeded_db):
+    a = run("invoice_1004.json", seeded_db)
+    b = run("invoice_1004_revised.json", seeded_db)
+    # Same revised version, different bytes: not an exact replay, so the identity check runs.
+    copy = Path(seeded_db).parent / "invoice_1004_revised_copy.json"
+    copy.write_text(Path("data/invoices/invoice_1004_revised.json").read_text() + "\n\n")
+    c = process_invoice(copy, OFF, seeded_db, CORPUS_EVAL)
+    assert a.status is RunStatus.paid_mock and b.status is RunStatus.needs_review
+    db = connect(seeded_db)
+    try:
+        versions = {
+            r[0]
+            for r in db.execute(
+                "SELECT version_id FROM runs WHERE run_id IN (?, ?)", (b.run_id, c.run_id)
+            )
+        }
+    finally:
+        db.close()
+    assert len(versions) == 1
+    codes = {f.code for f in c.findings}
+    assert FindingCode.revision_after_payment in codes
+    assert FindingCode.version_conflict not in codes
+    assert c.receipt is None and n_payments(seeded_db) == 1

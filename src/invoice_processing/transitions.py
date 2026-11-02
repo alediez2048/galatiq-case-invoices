@@ -6,7 +6,7 @@ S = RunStatus
 
 RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     S.received: frozenset({S.extracted, S.failed, S.duplicate}),
-    S.extracted: frozenset({S.validated, S.failed}),
+    S.extracted: frozenset({S.validated, S.failed, S.duplicate}),
     S.validated: frozenset({S.approval_pending, S.failed}),
     S.approval_pending: frozenset(
         {S.approved, S.rejected, S.needs_review, S.awaiting_human_approval, S.failed}

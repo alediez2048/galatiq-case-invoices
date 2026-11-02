@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -33,6 +34,13 @@ def run_cli(*args, db, events, extra_env=None):
     return proc, out
 
 
+def _repo_db_state():
+    repo_db = REPO_ROOT / "inventory.db"
+    if not repo_db.exists():
+        return None
+    return repo_db.stat().st_mtime, hashlib.sha256(repo_db.read_bytes()).hexdigest()
+
+
 def _paths(tmp_path):
     return tmp_path / "i.db", tmp_path / "e.jsonl"
 
@@ -58,7 +66,8 @@ def test_e2e_inv_1001_paid(tmp_path):
 
 def test_e2e_rerun_duplicate(tmp_path):
     db, ev = _paths(tmp_path)
-    run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
+    _, first = run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
+    assert first["status"] == "paid_mock"
     proc, out = run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
     assert proc.returncode == 0, proc.stderr
     assert out["status"] == "duplicate"
@@ -67,7 +76,8 @@ def test_e2e_rerun_duplicate(tmp_path):
 
 def test_e2e_restart_same_db(tmp_path):
     db, ev = _paths(tmp_path)
-    run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
+    _, first = run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
+    assert first["status"] == "paid_mock"
     copy = tmp_path / "renamed_copy.txt"
     shutil.copy(REPO_ROOT / INVOICE, copy)
     proc, out = run_cli(f"--invoice_path={copy}", db=db, events=ev)
@@ -79,7 +89,7 @@ def test_e2e_restart_same_db(tmp_path):
 def test_e2e_corrupt_utf8_fails(tmp_path):
     db, ev = _paths(tmp_path)
     bad = tmp_path / "bad.txt"
-    bad.write_bytes(b"\xff\xfe\x00\xff invalid \x80\x81")
+    bad.write_bytes(b"\xff\xfe\xff invalid \x80\x81")
     proc, out = run_cli(f"--invoice_path={bad}", db=db, events=ev)
     assert proc.returncode == 1
     assert out["status"] == "failed"
@@ -111,12 +121,11 @@ def test_e2e_audit_trail(tmp_path):
 
 
 def test_e2e_never_touches_repo_db(tmp_path):
-    repo_db = REPO_ROOT / "inventory.db"
-    before = repo_db.stat().st_mtime if repo_db.exists() else None
+    before = _repo_db_state()
     db, ev = _paths(tmp_path)
     proc, _ = run_cli(f"--invoice_path={INVOICE}", db=db, events=ev)
     assert proc.returncode == 0, proc.stderr
-    after = repo_db.stat().st_mtime if repo_db.exists() else None
+    after = _repo_db_state()
     assert before == after
 
 

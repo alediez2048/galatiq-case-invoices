@@ -34,6 +34,14 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt --mode=offline --db
 
 Options: `--mode {offline,live}` (live is unavailable until Phase 3), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
 
+## Run every sample
+
+```bash
+for f in data/invoices/*; do python main.py --invoice_path="$f" --db=/tmp/demo.db; done
+```
+
+Use a fresh database (delete `/tmp/demo.db` first) to see the per-file outcomes: the corpus contains alternate formats and revisions of the same invoice, so later files in a shared database are reported as duplicates or revision conflicts.
+
 ## Seed the inventory
 
 ```bash
@@ -41,6 +49,8 @@ uv run python -m invoice_processing.seed --db inventory.db
 ```
 
 Creates the database and schema if needed and inserts the required items (WidgetA 15, WidgetB 10, GadgetX 5, FakeItem 0). Re-running is safe: existing rows are never overwritten, and a stock value that differs from the seed is reported as a `WARNING` line and left as is.
+
+A Phase 1 `inventory.db` (schema version 3) is refused: delete it and re-seed, because invoice identity keys changed in Phase 2.
 
 `--fresh` only creates a new database: it exits with code 2 and leaves the file untouched if the path already exists. Use it for repeatable demo databases.
 

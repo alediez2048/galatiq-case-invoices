@@ -83,7 +83,7 @@ def test_extra_fields_rejected():
 
 SAMPLES = [
     schemas.EvidenceRef(source_id="s", location="line:1"),
-    schemas.ExtractionIssue(code="unreadable", message="m"),
+    schemas.ExtractionIssue(code="unparsed_line", message="m"),
     schemas.DraftLine(raw_name="WidgetA", quantity_raw="1"),
     schemas.LineItem(item="WidgetA", quantity=Decimal("1"), unit_price=Decimal("1.00")),
     schemas.StatedTotals(tax_rate=Decimal("0.07"), total=Decimal("10.70")),
@@ -163,3 +163,15 @@ def test_approval_decision_rejects_unknown_recommendation_or_outcome():
         schemas.ApprovalDecision(initial_recommendation="aprove", final_decision="approved", **base)
     with pytest.raises(ValidationError):
         schemas.ApprovalDecision(initial_recommendation="approve", final_decision="paid", **base)
+
+
+def test_phase2_schema_fields_default_and_validate():
+    draft = schemas.InvoiceDraft(source_id="s")
+    assert draft.payment_terms_raw is None and draft.notes_raw is None
+    assert draft.tax_rate_fraction_raw is None
+    assert draft.field_evidence == {} and draft.normalization_events == []
+    assert schemas.NormalizedInvoice(source_id="s").payment_terms is None
+    result = schemas.ProcessingResult(run_id="r", status="failed", mode="offline")
+    assert result.error_message is None
+    with pytest.raises(ValidationError):
+        schemas.ExtractionIssue(code="not_a_code", message="m")

@@ -1,6 +1,6 @@
 # P2-11 — Fixture acceptance suite
 
-Phase: 2 · Status: todo · Depends on: P2-01 – P2-10 · Requirements: P10, A01–A03
+Phase: 2 · Status: done · Depends on: P2-01 – P2-10 · Requirements: P10, A01–A03
 
 ## Context
 
@@ -21,7 +21,10 @@ Phase 2 exits when all 20 supplied files have asserted outcomes. Each unique inv
 | 1004_revised.json | `paid_mock` 5,940.00 (alone) | — |
 | 1005.json | `rejected` | `quantity_exceeds_stock` (GadgetX 8 > 5) |
 | 1006.csv | `paid_mock` 2,750.00 | `currency_assumed_usd` |
-| 1007.csv | `rejected` | `quantity_exceeds_stock` (WidgetA 20 > 15, WidgetB 15 > 10) |
+| 1007.csv | `rejected` | `quantity_exceeds_stock` (WidgetA 20 > 15, WidgetB 15 > 10), `total_mismatch` (expected 15,635.00, observed 15,525.00) |
+
+_Correction 2026-11-01: the table first listed only the stock findings. The file's stated total (15,525.00) is 110.00 below subtotal 14,750.00 + 6% tax 885.00 = 15,635.00, so `total_mismatch` also fires. The outcome is still `rejected`._
+
 | 1008.txt | `rejected` | `unknown_item` ×2 |
 | 1009.json | `rejected` | `missing_vendor`, `missing_due_date`, `non_positive_quantity`, `non_positive_total`, `subtotal_mismatch` |
 | 1010.txt | `paid_mock` 7,185.00 | `rule:item_qualifier` event; WidgetA aggregated 12 |
@@ -39,8 +42,10 @@ Phase 2 exits when all 20 supplied files have asserted outcomes. Each unique inv
 
 **1012 expected outcome.** The table assumes `paid_mock` because every correction is rule-backed and stock, arithmetic, and total (9,975.00 ≤ 10,000) pass. The requirements also say "unresolvable ambiguity goes to review." Confirm `paid_mock` is the intended demo outcome, or whether OCR-corrected invoices should always stop at `needs_review`.
 
+**Resolved 2026-11-01:** the user confirmed INV-1012 -> `paid_mock`.
+
 ## Acceptance criteria
 
-- [ ] All 20 cases pass from a clean clone.
-- [ ] The coverage test fails when a new file is added to `data/invoices/` without a case.
-- [ ] Suite runs in under 60 seconds.
+- [x] All 20 cases pass from a clean clone.
+- [x] The coverage test fails when a new file is added to `data/invoices/` without a case.
+- [x] Suite runs in under 60 seconds.

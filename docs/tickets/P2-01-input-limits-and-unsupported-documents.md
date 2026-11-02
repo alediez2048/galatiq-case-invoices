@@ -1,6 +1,6 @@
 # P2-01 — Input limits and unsupported documents
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, P09
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, P09
 
 ## Context
 
@@ -18,6 +18,6 @@ Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, P09
 
 ## Acceptance criteria
 
-- [ ] Generated fixtures under `tests/fixtures/` for: an 11 MiB file, a 26-page PDF, an encrypted PDF, an image-only PDF, a truncated PDF, a `.json` containing XML. Each yields its specific code and no payment.
-- [ ] None of these fixtures is committed under `data/invoices/`; originals there are untouched.
-- [ ] Limits overridable in tests without monkeypatching internals.
+- [x] Generated fixtures under `tests/fixtures/` for: an 11 MiB file, a 26-page PDF, an encrypted PDF, an image-only PDF, a truncated PDF, a `.json` containing XML. Each yields its specific code and no payment. (tests/test_intake.py::test_oversized_file_rejected_before_read, tests/test_intake.py::test_json_containing_xml_is_format_mismatch, tests/test_parser_pdf.py::test_preflight_failures_fail_the_run_without_payment; built in `tmp_path` by tests/fixture_factory.py per plan decision 3)
+- [x] None of these fixtures is committed under `data/invoices/`; originals there are untouched. (tests/fixture_factory.py writes only to `tmp_path`; tests/test_acceptance.py::test_every_fixture_has_a_case)
+- [x] Limits overridable in tests without monkeypatching internals. (tests/test_intake.py::test_limit_overridable, tests/test_parser_pdf.py::test_page_limit_overridable)

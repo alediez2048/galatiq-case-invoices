@@ -49,7 +49,7 @@ def received_state(deps) -> InvoiceState:
 @pytest.fixture
 def received_state_bad_bytes(deps, tmp_path) -> InvoiceState:
     path = tmp_path / "bad.txt"
-    path.write_bytes(b"\xff\xfe\x00bad")
+    path.write_bytes(b"\xff\xfebad")
     source, raw = intake.read_source(path)
     return _received(deps.conn, source, raw)
 
@@ -77,7 +77,10 @@ def test_ingestion_extracts_inv_1001(deps, received_state):
     update = ingestion.run(received_state, deps)
     assert update["status"] == RunStatus.extracted
     assert update["version"] == 1
-    assert [f.code for f in update["findings"]] == [FindingCode.currency_assumed_usd]
+    assert [f.code for f in update["findings"]] == [
+        FindingCode.terms_inconsistent,
+        FindingCode.currency_assumed_usd,
+    ]
     assert update["invoice"].invoice_number == "INV-1001"
     assert "ingestion" in update["timings_ms"]
     assert _run_status(deps, received_state) == RunStatus.extracted
@@ -105,7 +108,7 @@ def test_validation_does_not_write_inventory(deps, extracted_state):
 def test_validation_keeps_normalization_findings_first_and_records(deps, extracted_state):
     update = validation.run(extracted_state, deps)
     assert update["status"] == RunStatus.validated
-    assert update["findings"][0].code == FindingCode.currency_assumed_usd
+    assert update["findings"][1].code == FindingCode.currency_assumed_usd
     assert update["invoice"].computed.total == Decimal("5000.00")
     assert _run_status(deps, extracted_state) == RunStatus.validated
     rows = deps.conn.execute(
@@ -231,7 +234,7 @@ def test_ingestion_records_normalization_findings_itself(deps, received_state):
     rows = deps.conn.execute(
         "SELECT code FROM findings WHERE run_id = ?", (received_state["run_id"],)
     ).fetchall()
-    assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+    assert [r["code"] for r in rows] == ["terms_inconsistent", "currency_assumed_usd"]
 
 
 def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monkeypatch):
@@ -244,7 +247,7 @@ def test_validation_failure_keeps_ingestion_findings(deps, extracted_state, monk
     rows = deps.conn.execute(
         "SELECT code FROM findings WHERE run_id = ?", (extracted_state["run_id"],)
     ).fetchall()
-    assert [r["code"] for r in rows] == ["currency_assumed_usd"]
+    assert [r["code"] for r in rows] == ["terms_inconsistent", "currency_assumed_usd"]
 
 
 def test_pay_node_paid_event_reports_created(deps, approved_state):
@@ -271,3 +274,86 @@ def test_pay_node_paid_event_reports_created(deps, approved_state):
     second = [e for e in ledger.list_audit_events(deps.conn, run2) if e["event"] == "paid"][0]
     assert second["payload"]["created"] is False
     assert deps.conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1
+
+
+def _parsed_with(draft):
+    from invoice_processing.parsers import ParsedDocument
+
+    return lambda source, data, limits: ParsedDocument(draft=draft)
+
+
+def test_ingestion_converts_every_issue_to_finding(deps, received_state, monkeypatch):
+    from invoice_processing.schemas import ExtractionIssue, InvoiceDraft
+
+    draft = InvoiceDraft(
+        source_id=received_state["source"].source_id,
+        issues=[ExtractionIssue(code=FindingCode.duplicate_field, message="dup")],
+    )
+    monkeypatch.setattr(ingestion, "parse_document", _parsed_with(draft))
+    update = ingestion.run(received_state, deps)
+    dup = [f for f in update["findings"] if f.code == FindingCode.duplicate_field]
+    assert len(dup) == 1 and dup[0].severity is Severity.review
+
+
+def test_ingestion_extraction_error_sets_code_and_message(deps, received_state, monkeypatch):
+    from invoice_processing.parsers.base import ExtractionError
+
+    msg = "This PDF is damaged and cannot be read."
+
+    def boom(*a, **k):
+        raise ExtractionError("pdf_corrupt", msg)
+
+    monkeypatch.setattr(ingestion, "parse_document", boom)
+    update = ingestion.run(received_state, deps)
+    assert update["status"] == RunStatus.failed
+    assert update["error_code"] == "pdf_corrupt"
+    assert update["error_message"] == msg
+
+
+def test_service_returns_error_message(tmp_path, monkeypatch):
+    from invoice_processing.parsers.base import ExtractionError
+    from invoice_processing.service import process_invoice
+
+    msg = "This PDF is damaged and cannot be read."
+
+    def boom(*a, **k):
+        raise ExtractionError("pdf_corrupt", msg)
+
+    monkeypatch.setattr(ingestion, "parse_document", boom)
+    result = process_invoice(INV_1001, ExecutionMode.offline, tmp_path / "t.db", EVAL_DATE)
+    assert result.status is RunStatus.failed
+    assert result.errors == ["pdf_corrupt"]
+    assert result.error_message == msg
+
+
+def test_line_cap_fails_run_and_records_no_version(tmp_path):
+    from invoice_processing.limits import Limits
+    from invoice_processing.service import process_invoice
+    from tests import fixture_factory as ff
+
+    result = process_invoice(
+        ff.txt_with_lines(tmp_path, 3),
+        ExecutionMode.offline,
+        tmp_path / "t.db",
+        EVAL_DATE,
+        limits=Limits(max_lines=2),
+    )
+    assert result.status is RunStatus.failed
+    assert result.errors == ["too_many_lines"]
+    assert result.error_message == "The invoice has 3 lines; the limit is 2."
+    assert result.receipt is None and result.invoice_id is None
+
+
+def test_validation_skips_missing_total_when_total_is_unparseable(deps, tmp_path):
+    path = tmp_path / "bad_total.txt"
+    text = INV_1001.read_text()
+    assert "Total Amount: $5,000.00" in text
+    path.write_text(text.replace("Total Amount: $5,000.00", "Total Amount: $abc"))
+    source, raw = intake.read_source(path)
+    state = _received(deps.conn, source, raw)
+    state = {**state, **ingestion.run(state, deps)}
+    assert state["invoice"].stated.total is None
+    update = validation.run(state, deps)
+    got = [(f.code, f.field) for f in update["findings"]]
+    assert (FindingCode.unparseable_value, "total") in got
+    assert FindingCode.missing_total not in [c for c, _ in got]

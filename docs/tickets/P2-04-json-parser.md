@@ -1,6 +1,6 @@
 # P2-04 — JSON parser
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, A02
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, A02
 
 ## Context
 
@@ -17,7 +17,7 @@ JSON fixtures (1004, 1004 revised, 1005, 1009, 1013, 1016) share a shape: `invoi
 
 ## Acceptance criteria
 
-- [ ] All six JSON fixtures parse without raising.
-- [ ] 1013 yields eight lines with notes preserved and stated total 22,562.80 as an exact decimal.
-- [ ] 1004 revised carries `revision = "R1"`; 1004 base has none.
-- [ ] 1009 yields missing vendor, missing due date, quantity −5, and stated total −250.00 in the draft.
+- [x] All six JSON fixtures parse without raising. (tests/test_parser_json.py::test_all_json_fixtures_parse)
+- [x] 1013 yields eight lines with notes preserved and stated total 22,562.80 as an exact decimal. (tests/test_parser_json.py::test_1013_lines_notes_and_exact_total)
+- [x] 1004 revised carries `revision = "R1"`; 1004 base has none. (tests/test_parser_json.py::test_revision)
+- [x] 1009 yields missing vendor, missing due date, quantity −5, and stated total −250.00 in the draft. (tests/test_parser_json.py::test_1009_missing_and_invalid_values_kept)

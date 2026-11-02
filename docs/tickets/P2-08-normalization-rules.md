@@ -1,6 +1,6 @@
 # P2-08 — Evidence-backed normalization: items, OCR artifacts, identity
 
-Phase: 2 · Status: todo · Depends on: P2-02, P2-03 · Requirements: P04, P03
+Phase: 2 · Status: done · Depends on: P2-02, P2-03 · Requirements: P04, P03
 
 ## Context
 
@@ -21,7 +21,7 @@ Rules in `normalize.py`, each emitting a `NormalizationEvent` (raw, normalized, 
 
 ## Acceptance criteria
 
-- [ ] 1010 canonicalizes to WidgetA ×8 and ×4 (aggregating to 12), WidgetB ×4, GadgetX ×2.
-- [ ] 1012 canonicalizes to WidgetA ×12, WidgetB ×7, GadgetX ×4, line total 3,500.00, with one event per change.
-- [ ] 1016's `WidgetC` is not mapped to any inventory item.
-- [ ] A constructed `$3,5O0.00` on a line where qty × price = 3,000.00 yields `ambiguous_normalization`, not a silent fix.
+- [x] 1010 canonicalizes to WidgetA ×8 and ×4 (aggregating to 12), WidgetB ×4, GadgetX ×2. (tests/test_normalize.py::test_1010_qualifier, tests/test_acceptance.py::test_invoice_1010)
+- [x] 1012 canonicalizes to WidgetA ×12, WidgetB ×7, GadgetX ×4, line total 3,500.00, with one event per change. (tests/test_normalize.py::test_1012_spacing_ocr_identity, tests/test_normalize.py::test_1012_events_carry_canonical_values_and_evidence)
+- [x] 1016's `WidgetC` is not mapped to any inventory item. (tests/test_normalize.py::test_1016_widgetc_not_mapped)
+- [x] A constructed `$3,5O0.00` on a line where qty × price = 3,000.00 yields `ambiguous_normalization`, not a silent fix. (tests/test_normalize.py::test_ocr_amount_disagreeing_with_qty_price_is_not_applied)

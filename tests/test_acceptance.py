@@ -244,7 +244,7 @@ def test_invoice_1016(outcomes):
 
 
 def test_shared_ledger_never_pays_an_identity_twice(tmp_path, monkeypatch):
-    """All files, in table order, through one database: later formats and revisions add no payment."""
+    """All files, in table order, through one database: no later format or revision pays."""
     db = tmp_path / "shared.db"
     c = connect(db)
     storage.init_schema(c)

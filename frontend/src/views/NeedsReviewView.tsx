@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { resultJsonUrl } from "../api/client";
-import { useApiQuery, useInvoice } from "../api/hooks";
+import { useApiQuery, useInvoice, useRunProgress } from "../api/hooks";
 import {
   QUEUE_GROUPS,
   reviewApi,
@@ -127,9 +127,32 @@ function QueueTable({
 
 type Conflict = Extract<ReviewFailure, { kind: "conflict" }>;
 
-function Outcome({ decision, response }: { decision: Decision; response: ReviewActionResponse }) {
-  const receipt = response.receipt ?? null;
-  const status = response.status;
+/** The accepted approve/decline: follows its run (GET /api/runs/{id}) to the outcome. */
+function Outcome({
+  decision,
+  response,
+  onSettled,
+}: {
+  decision: Decision;
+  response: ReviewActionResponse;
+  onSettled: () => void;
+}) {
+  const run = useRunProgress(response.run_id).data;
+  const terminal = run?.terminal === true;
+  useEffect(() => {
+    if (terminal) onSettled(); // the record and the queue changed: load them again
+  }, [terminal, onSettled]);
+  if (!run?.terminal) {
+    return (
+      <div className="state-notice state-notice--info" role="status">
+        <p className="state-notice__title">
+          {decision === "approve" ? "Approval recorded." : "Decline recorded."} Checking the invoice again…
+        </p>
+      </div>
+    );
+  }
+  const receipt = run.result?.receipt ?? null;
+  const status = run.result?.status ?? run.status;
   const text =
     status === "paid_mock"
       ? `Mock payment approved${receipt ? `. Receipt ${receipt.receipt_id} · ${formatMoney(receipt.amount, receipt.currency)}` : ""}.`
@@ -198,6 +221,11 @@ function ReviewPanel({
     [reload, onQueueChanged],
   );
 
+  const onSettled = useCallback(() => {
+    reload();
+    onQueueChanged();
+  }, [reload, onQueueChanged]);
+
   const status = detail?.status ?? actions.status;
   const allowed = new Set(actions.allowed);
   // The form remounts on a new version, so nothing typed for an old version is reused.
@@ -227,7 +255,7 @@ function ReviewPanel({
       )}
       {!detail && fetched.loading && <p className="sub">Loading invoice history…</p>}
 
-      {done && <Outcome decision={done.decision} response={done.response} />}
+      {done && <Outcome decision={done.decision} response={done.response} onSettled={onSettled} />}
 
       {detail && !done && (
         <div className="review-body" key={versionKey}>

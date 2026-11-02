@@ -245,6 +245,16 @@ describe("Other essential states", () => {
     );
   });
 
+  it.each(["correction", "human_review"])("a failed live %s run offers Retry but no offline run", async (trigger) => {
+    const detail = { ...f.detailProvider, runs: f.detailProvider.runs.map((r) => ({ ...r, trigger })) };
+    renderDetail(detail, { "GET /api/runs/:id": () => new Promise(() => {}) });
+    await screen.findByRole("heading", { level: 1 });
+    const n = notice("Processing failure");
+    expect(within(n).getByRole("button", { name: "Retry" })).toBeEnabled();
+    expect(within(n).queryByRole("button", { name: "Run offline as a separate simulation" })).toBeNull();
+    expect(within(n).queryByRole("link", { name: "Run offline as a separate simulation" })).toBeNull();
+  });
+
   it("live provider unavailable: explicit retry or a separate offline run, no silent fallback", async () => {
     const user = userEvent.setup();
     const bodies: unknown[] = [];

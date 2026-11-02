@@ -15,6 +15,19 @@ import * as wire from "../test/wire";
 // Recorded from the real backend by scripts/export_ui_fixtures.py (P5-04 bodies).
 import realCorrection from "../test/real/review-correction.json";
 import realRefused from "../test/real/review-refused-422.json";
+import realApprove from "../test/real/review-approve.json";
+import realApproveRun from "../test/real/run-approve.json";
+
+/** The real approval run (GET /api/runs/{id}) under another id, optionally declined. */
+function approvalRun(run_id: string, declined = false) {
+  if (!declined) return { ...realApproveRun, run_id };
+  return {
+    ...realApproveRun,
+    run_id,
+    status: "rejected",
+    result: { ...realApproveRun.result, run_id, status: "rejected", receipt: null },
+  };
+}
 
 interface Posted {
   path: string;
@@ -117,18 +130,14 @@ describe("Needs review queue (P5-09)", () => {
   it("binds approve to the displayed version and sends reason, reviewer and an Idempotency-Key", async () => {
     const user = userEvent.setup();
     const v3 = { ...detailHighValue, current_version: 3 };
-    const { posts, route } = recorder(() => ({
-      run_id: "run-hv-2",
-      invoice_id: v3.invoice_id,
-      version: 3,
-      status: "paid_mock",
-      receipt: { receipt_id: "rcpt-hv", amount: "10000.01", currency: "USD", paid_at: "2026-11-02T10:00:00Z" },
-    }));
+    // The real 202 body; the outcome comes from following the run.
+    const { posts, route } = recorder(() => json({ ...realApprove, run_id: "run-hv-2" }, 202));
     renderApp("/review", {
       "GET /api/review-queue": () =>
         queueWith({ awaiting_human_approval: [{ ...queueItem(v3, []), current_version: 3, actions: actionsFor(v3.invoice_id, "awaiting_human_approval", 3) }] }),
       "GET /api/invoices/:id": () => wire.detail(v3),
       "POST /api/invoices/:id/approve": route,
+      "GET /api/runs/:id": () => approvalRun("run-hv-2"),
     });
     const panel = await openItem(user, "HV-10001");
     expect(await within(panel).findByText("Showing version 3.")).toBeInTheDocument();
@@ -138,7 +147,10 @@ describe("Needs review queue (P5-09)", () => {
     await user.type(within(panel).getByLabelText(/Review reason/), "Verified with the vendor");
     await user.click(within(panel).getByRole("button", { name: "Approve mock payment" }));
 
-    expect(await within(panel).findByText(/Mock payment approved\. Receipt rcpt-hv · USD 10,000\.01\./)).toBeInTheDocument();
+    const receipt = realApproveRun.result.receipt!.receipt_id;
+    expect(
+      await within(panel).findByText(new RegExp(`Mock payment approved\\. Receipt ${receipt} · USD 10,000\\.01\\.`)),
+    ).toBeInTheDocument();
     expect(posts).toHaveLength(1);
     expect(posts[0]!.path).toBe("/api/invoices/inv-hv-1/approve");
     expect(posts[0]!.body).toEqual({ expected_version: 3, reason: "Verified with the vendor", reviewer: "Ana" });
@@ -150,8 +162,11 @@ describe("Needs review queue (P5-09)", () => {
 
   it("binds decline to the displayed version", async () => {
     const user = userEvent.setup();
-    const { posts, route } = recorder(() => ({ run_id: "run-hv-d", status: "rejected", invoice_id: "inv-hv-1", version: 1 }));
-    renderApp("/review", { "POST /api/invoices/:id/decline": route });
+    const { posts, route } = recorder(() => json({ ...realApprove, run_id: "run-hv-d" }, 202));
+    renderApp("/review", {
+      "POST /api/invoices/:id/decline": route,
+      "GET /api/runs/:id": () => approvalRun("run-hv-d", true),
+    });
     const panel = await openItem(user, "HV-10001");
     await user.type(await within(panel).findByLabelText("Reviewer"), "Ben");
     await user.type(within(panel).getByLabelText(/Review reason/), "Not ordered");

@@ -196,6 +196,26 @@ describe("Processing view (P5-07, screen 3)", () => {
     expect(within(alert).queryByRole("button", { name: "Run offline as a separate simulation" })).not.toBeInTheDocument();
   });
 
+  it.each(["correction", "human_review"])(
+    "a failed %s run offers Retry but never a separate offline run",
+    async (trigger) => {
+      const review: Wire["RunView"] = { ...liveFailure, trigger };
+      renderApp("/runs/run-live", { "GET /api/runs/:id": () => review });
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByRole("button", { name: "Retry" })).toBeEnabled();
+      expect(within(alert).queryByRole("button", { name: "Run offline as a separate simulation" })).toBeNull();
+      const terminal: Wire["RunView"] = {
+        ...review,
+        result: { ...(realRun.result as NonNullable<Wire["RunView"]["result"]>), status: "failed", errors: ["model_unavailable"], recoverable: true, next_actions: ["retry", "run offline as a separate simulation"] },
+      };
+      renderApp("/runs/run-live", { "GET /api/runs/:id": () => terminal });
+      const alerts = await screen.findAllByRole("alert");
+      for (const a of alerts) {
+        expect(within(a).queryByRole("button", { name: "Run offline as a separate simulation" })).toBeNull();
+      }
+    },
+  );
+
   it("a duplicate submission opens the existing invoice", async () => {
     const dup: Wire["RunView"] = {
       ...realRun,

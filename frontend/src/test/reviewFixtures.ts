@@ -40,6 +40,7 @@ const run = (run_id: string, status: InvoiceDetail["runs"][number]["status"], or
   error_message: null,
   provider: null,
   model: null,
+  trigger: "submission",
   events: [],
 });
 

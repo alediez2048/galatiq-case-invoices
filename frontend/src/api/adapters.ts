@@ -174,6 +174,7 @@ export function toRunProgress(w: Wire["RunView"]): RunProgress {
     prior_run_id: w.prior_run_id ?? null,
     retry_of: w.retry_of ?? null,
     mode_switch_of: w.mode_switch_of ?? null,
+    trigger: w.trigger ?? "submission",
     events: toStageEvents(w.events),
     result: toResult(w.result),
   };
@@ -232,6 +233,7 @@ function toRunSummary(w: Wire["RunSummary"]): RunSummary {
     error_message: w.error_message ?? null,
     provider: w.provider ?? null,
     model: w.model ?? null,
+    trigger: w.trigger ?? "submission",
     events: toStageEvents(w.events),
   };
 }

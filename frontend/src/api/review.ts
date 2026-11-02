@@ -2,13 +2,12 @@
  * Review queue and review action client (P5-09 on the P5-04 endpoints).
  *
  * Generated types (schema.d.ts, from openapi.json) for every shape the backend already
- * serves: ReviewAction, ReviewRefusal, AllowedActions, FieldChange, CorrectionBody and the
- * ProcessingResult a review action returns.
+ * serves: ReviewAction, ReviewRefusal, AllowedActions, FieldChange, CorrectionBody,
+ * ReviewDecisionBody and the RunAccepted a review action returns.
  *
- * TODO(P5-04 stage 2): the review queue, approve / decline and the corrected-submission
- * endpoints are not served yet. QueueItem, ReviewQueue, ReviewDecisionBody and
- * CorrectedSubmissionInput below are HAND-WRITTEN mirrors of schemas.py until they are;
- * then replace them with `Wire[...]` aliases. Keep the function signatures.
+ * TODO(P5-04 stage 3): the review queue and corrected-submission endpoints are not served
+ * yet. QueueItem, ReviewQueue and CorrectedSubmissionInput below are HAND-WRITTEN mirrors of
+ * schemas.py until they are; then replace them with `Wire[...]` aliases.
  */
 import { toInvoiceDetail } from "./adapters";
 import { ApiError, request } from "./client";
@@ -59,12 +58,8 @@ export type FieldChange = Wire["FieldChange"];
 /** POST /api/invoices/{id}/corrections body (CorrectionRequest without invoice_id: it is in the path). */
 export type CorrectionBody = Wire["CorrectionBody"];
 
-/** POST /api/invoices/{id}/approve and /decline body (hand-written until served). */
-export interface ReviewDecisionBody {
-  expected_version: number;
-  reason: string;
-  reviewer: string;
-}
+/** POST /api/invoices/{id}/approve and /decline body. */
+export type ReviewDecisionBody = Wire["ReviewDecisionBody"];
 
 /** POST /api/invoices/{id}/corrected-submission (multipart) fields. */
 export interface CorrectedSubmissionInput {
@@ -76,10 +71,12 @@ export interface CorrectedSubmissionInput {
 }
 
 /**
- * Success body of a review action: the ProcessingResult of the run the action created
- * (status 200; the run has finished). A repeated Idempotency-Key returns the same body.
+ * Success body of a review action, as for POST /api/runs: 202 with the run the action
+ * created, sent once the run is committed; follow it with GET /api/runs/{run_id}. 200 with
+ * `idempotent_replay` when the action started no run (a repeated approve of the paid version
+ * answers with the paying run). A repeated Idempotency-Key replays the same run.
  */
-export type ReviewActionResponse = Wire["ProcessingResult"];
+export type ReviewActionResponse = Wire["RunAccepted"];
 
 /**
  * `details` of a refused review action (P5-04). `current` is always present for a known

@@ -58,7 +58,7 @@ describe("review API client", () => {
 });
 
 describe("review API client over real P5-04 bodies", () => {
-  it("posts a correction to /corrections and returns the revalidation run's result", async () => {
+  it("posts a correction to /corrections and returns the accepted revalidation run", async () => {
     const fetchMock = stubFetch(ok(realCorrection));
     const body = {
       expected_version: 1,
@@ -66,13 +66,13 @@ describe("review API client over real P5-04 bodies", () => {
       reason: "OCR misread the line total",
       reviewer: "Ana",
     };
-    const out = await reviewApi.correct(realCorrection.invoice_id, body, "key-3");
+    const out = await reviewApi.correct("inv-ocr", body, "key-3");
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe(`/api/invoices/${realCorrection.invoice_id}/corrections`);
+    expect(url).toBe("/api/invoices/inv-ocr/corrections");
     expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-3");
     expect(JSON.parse(String(init?.body))).toEqual(body);
     expect(out.run_id).toBe(realCorrection.run_id);
-    expect(out).toMatchObject({ status: "rejected", version: 2 });
+    expect(out.idempotent_replay).toBe(false);
   });
 
   it("classifies the real stale-version 409 with the current record and actions", async () => {

@@ -39,6 +39,7 @@ export interface Wire {
   FieldChange: S["FieldChange"];
   CorrectionBody: S["CorrectionBody"];
   ProcessingResult: S["ProcessingResult"];
+  ReviewDecisionBody: S["ReviewDecisionBody"];
 }
 
 export type ExecutionMode = S["ExecutionMode"];
@@ -67,6 +68,10 @@ export type ProcessingResult = Omit<S["ProcessingResult"], "errors" | "findings"
   findings: ValidationFinding[];
 };
 export type ApiErrorBody = Wire["ErrorBody"];
+
+/** Review runs are retried on their own version and never run offline as a simulation. */
+export const REVIEW_TRIGGERS: readonly string[] = ["correction", "human_review"];
+export const isReviewRun = (run: { trigger: string }) => REVIEW_TRIGGERS.includes(run.trigger);
 
 /** codes.ReviewAction / codes.ReviewRefusal (P5-04). */
 export type ReviewAction = S["ReviewAction"];
@@ -166,6 +171,8 @@ export interface RunProgress {
   retry_of: string | null;
   /** Set when this run is the same document in the other mode (P3-08). */
   mode_switch_of: string | null;
+  /** "submission", or a review run ("correction", "human_review"): never run offline. */
+  trigger: string;
   events: StageEvent[];
   result: ProcessingResult | null;
 }
@@ -297,6 +304,8 @@ export interface RunSummary {
   error_message: string | null;
   provider: string | null;
   model: string | null;
+  /** As on RunProgress. */
+  trigger: string;
   events: StageEvent[];
 }
 

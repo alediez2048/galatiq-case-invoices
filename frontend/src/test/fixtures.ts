@@ -129,6 +129,7 @@ const run = (r: Partial<RunSummary> & Pick<RunSummary, "run_id" | "status">): Ru
   error_message: null,
   provider: null,
   model: null,
+  trigger: "submission",
   events: [],
   ...r,
 });

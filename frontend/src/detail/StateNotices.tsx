@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { InvoiceDetail } from "../api/types";
+import { isReviewRun, type InvoiceDetail } from "../api/types";
 import { formatMoney, MODE_LABEL } from "../format";
 import { Icon } from "../components/Icon";
 import { RetryButton } from "../components/RetryButton";
@@ -133,7 +133,8 @@ export function StateNotices({ detail }: { detail: InvoiceDetail }) {
           {failure.kind === "provider" && (
             <>
               {detail.allowed_actions.retry && failure.run && <RetryButton runId={failure.run.run_id} />}
-              {failure.run?.mode === "live" ? (
+              {/* A correction or human-review run is never re-run offline: it would discard the review. */}
+              {failure.run && isReviewRun(failure.run) ? null : failure.run?.mode === "live" ? (
                 <RetryButton runId={failure.run.run_id} action="run_offline" />
               ) : (
                 <Link to="/add?mode=offline" className="button button--secondary">

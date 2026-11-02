@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useRunProgress } from "../api/hooks";
-import type { RunProgress } from "../api/types";
+import { isReviewRun, type RunProgress } from "../api/types";
 import { MODE_LABEL } from "../format";
 import { Icon, type IconName } from "../components/Icon";
 import { RetryButton } from "../components/RetryButton";
@@ -50,12 +50,16 @@ function Stages({ run }: { run: RunProgress }) {
 /**
  * Recoverable failure (P3-08): Retry reprocesses in the run's own mode as a new linked run;
  * "Run offline as a separate simulation" is offered only where the server lists it (live
- * model failures). Nothing is substituted automatically.
+ * model failures), and never for a correction or human-review run: re-extracting the
+ * document would discard the review (the API refuses it). Nothing is substituted
+ * automatically.
  */
 function RecoveryActions({ run, failure }: { run: RunProgress; failure: RunFailure }) {
-  const offline = run.result
-    ? (run.result.next_actions ?? []).includes(OFFLINE_ACTION)
-    : run.mode === "live" && failure.kind === "provider";
+  const offline =
+    !isReviewRun(run) &&
+    (run.result
+      ? (run.result.next_actions ?? []).includes(OFFLINE_ACTION)
+      : run.mode === "live" && failure.kind === "provider");
   return (
     <div className="recovery">
       <div className="modal__actions">

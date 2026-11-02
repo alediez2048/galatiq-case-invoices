@@ -138,6 +138,23 @@ def test_source_error_cannot_cite_subtotal(tmp_path):  # Review Focus 1
     assert e.code is ReviewRefusal.evidence_location_mismatch
 
 
+def test_json_and_xml_money_supported_at_its_own_path(tmp_path):
+    db = seeded_db(tmp_path)
+    r1 = process(REVIEW / "source_error.json", db)
+    r2 = correct(db, r1, change("stated.total", "5050.00", "$.total"))  # what the file says
+    assert r2.version == 2 and r2.status == "rejected"  # still total_mismatch: not cleared
+    assert "total_mismatch" in codes(r2.findings)
+    j = process(INVOICES / "invoice_1013.json", db)
+    e = refused(db, j, change("stated.total", "22512.80", "$.total"))
+    assert e.code is ReviewRefusal.correction_not_in_source
+    x1 = process(INVOICES / "invoice_1014.xml", db)
+    e = refused(db, x1, change("stated.total", "4120.00", "/invoice/totals/total"))
+    assert e.code is ReviewRefusal.correction_not_in_source
+    x2 = correct(db, x1, change("stated.total", "4125.00", "/invoice/totals/total"))
+    assert x2.version == 2 and x2.status == "needs_review"  # EUR stays review-only
+    assert payment_count(db, x1.invoice_id) == 0
+
+
 def test_stale_expected_version_writes_nothing(tmp_path):
     db = seeded_db(tmp_path)
     r1 = process(REVIEW / "ocr_ambiguous.txt", db)
@@ -315,4 +332,53 @@ def test_submission_retry_still_needs_its_file(tmp_path):
     assert failed.status is RunStatus.failed and failed.recoverable
     with pytest.raises(ValueError):
         service.retry_run(failed.run_id, None, db, EVAL)
+    assert count(db, "SELECT COUNT(*) FROM runs") == 1
+
+
+def test_cli_retry_of_failed_correction_needs_no_invoice_path(tmp_path, capsys, monkeypatch):
+    import main
+
+    from invoice_processing.reasoning import xai
+
+    db = seeded_db(tmp_path)
+    base = live_provider(Parsed({"proposals": []}), Parsed(rec()), Parsed(crit()))
+    r1 = process(REVIEW / "extraction_mistake.txt", db, mode=LIVE, provider=base)
+    r2 = correct(
+        db,
+        r1,
+        change("stated.total", "3500.00", "line:13"),
+        provider=live_provider(UNAVAILABLE, UNAVAILABLE),
+    )
+    assert r2.status is RunStatus.failed
+    monkeypatch.setattr(
+        xai, "real_client_factory", lambda s: FakeXaiClient([Parsed(rec()), Parsed(crit())])
+    )
+    monkeypatch.setenv("XAI_API_KEY", "sk-SENTINEL-123")
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    common = [f"--db={db}", f"--events={tmp_path / 'e.jsonl'}"]
+    assert main.main([*common, f"--retry={r2.run_id}"]) == 0
+    out, err = capsys.readouterr()
+    result = json.loads(out)
+    assert result["status"] == "paid_mock" and result["version"] == 2
+    assert f"Retrying run {r2.run_id}" in err
+    assert payment_count(db, r1.invoice_id) == 1
+    (run,) = rows(db, "SELECT retry_of, trigger FROM runs WHERE run_id = ?", result["run_id"])
+    assert run == {"retry_of": r2.run_id, "trigger": "correction"}
+
+
+def test_cli_retry_of_a_submission_still_needs_the_path(tmp_path, capsys):
+    import main
+
+    db = seeded_db(tmp_path)
+    failed = process(
+        REVIEW / "extraction_mistake.txt",
+        db,
+        mode=LIVE,
+        provider=live_provider(Parsed({"proposals": []}), UNAVAILABLE, UNAVAILABLE),
+    )
+    common = [f"--db={db}", f"--events={tmp_path / 'e.jsonl'}"]
+    assert main.main([*common, f"--retry={failed.run_id}"]) == 2
+    assert "--invoice_path is required to retry this run" in capsys.readouterr().err
+    with pytest.raises(SystemExit):  # without --retry the path stays required
+        main.main(common)
     assert count(db, "SELECT COUNT(*) FROM runs") == 1

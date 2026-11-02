@@ -54,6 +54,7 @@ from invoice_processing.observability import (  # noqa: E402
 from invoice_processing.reasoning import ProviderUnavailable, get_provider  # noqa: E402
 from invoice_processing.seed import seed_inventory  # noqa: E402
 from invoice_processing.service import (  # noqa: E402
+    RetryNeedsFile,
     RetryRefused,
     check_retry,
     process_invoice,
@@ -70,8 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--invoice_path",
         "--invoice-path",
         dest="invoice_path",
-        required=True,
-        help="path to the invoice file (.txt; more formats in Phase 2)",
+        default=None,
+        help="path to the invoice file (required, except with --retry of a failed correction run)",
     )
     p.add_argument(
         "--mode",
@@ -101,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="RUN_ID",
         default=None,
         help="retry this failed run with the same --invoice_path, in the run's original mode "
-        "(--mode is ignored)",
+        "(--mode is ignored); a failed correction run needs no --invoice_path",
     )
     return p
 
@@ -131,7 +132,10 @@ def _ensure_database(path: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.invoice_path is None and args.retry is None:
+        parser.error("the following arguments are required: --invoice_path")
     try:
         given = date.fromisoformat(args.evaluation_date) if args.evaluation_date else None
     except ValueError:
@@ -190,6 +194,9 @@ def _retry(args: argparse.Namespace, evaluation_date: date | None) -> int:
             events,
             provider=provider,
         )
+    except RetryNeedsFile:
+        print("error: --invoice_path is required to retry this run", file=sys.stderr)
+        return 2
     except RetryRefused as exc:
         receipt = f" (receipt {exc.receipt_id})" if exc.receipt_id else ""
         print(f"error: retry refused: {exc.reason}{receipt}", file=sys.stderr)

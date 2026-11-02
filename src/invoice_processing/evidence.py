@@ -171,11 +171,16 @@ def _token_digits(token: str) -> str:
     return digits.lstrip("0")
 
 
-def _supports_money(value: str, text: str) -> bool:
+def _supports_money(value: str, text: str, structured: bool) -> bool:
     try:
         amount = parse_amount(value).quantize(_CENT)
     except (ValueError, ArithmeticError):
         return False
+    if structured:  # a JSON/XML scalar such as 5050.0 or "5050.00": compare as a number
+        try:
+            return Decimal(text.strip().strip('"')).quantize(_CENT) == amount
+        except (ArithmeticError, ValueError):
+            return False
     wanted = f"{abs(amount):f}".replace(".", "").lstrip("0")
     return any(_token_digits(m[0]) == wanted for m in _MONEY_TOKEN.finditer(text))
 
@@ -218,12 +223,21 @@ def _is_money(field: str) -> bool:
     return field.startswith("stated.") or field.endswith((".unit_price", ".line_total"))
 
 
-def supports(field: str, value: str, text: str) -> bool:
-    """Whether `text` (the located source text) shows `value` for `field`; OCR-read zeros
-    (a letter O touching a digit) count as zeros."""
-    text = fix_ocr_digits(text) or text
+def is_structured(location: str) -> bool:
+    """A JSON (`$…`) or XML (`/…`) path: `locate` returns one structured scalar there."""
+    return location.startswith(("$", "/"))
+
+
+def supports(field: str, value: str, text: str, *, structured: bool = False) -> bool:
+    """Whether `text` (the located source text) shows `value` for `field`.
+
+    For money, quantity and dates, OCR-read zeros (a letter O touching a digit) count as
+    zeros; text and currency compare against the text as it is. `structured` (the location
+    is a JSON/XML path) compares a money value with the located scalar as a number."""
+    if _is_money(field) or field.endswith(".quantity") or field in _DATE_FIELDS:
+        text = fix_ocr_digits(text) or text
     if _is_money(field):
-        return _supports_money(value, text)
+        return _supports_money(value, text, structured)
     if field.endswith(".quantity"):
         return _supports_quantity(value, text)
     if field in _DATE_FIELDS:

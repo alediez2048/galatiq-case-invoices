@@ -102,3 +102,35 @@ def test_claimed_by_other_json_and_xml_paths_match_by_prefix():
     assert evidence.claimed_by_other("stated.total", "$.subtotal_note", inv) is False
     assert evidence.claimed_by_other("invoice_number", "/invoice/header/vendor", inv) is True
     assert evidence.claimed_by_other("vendor", "/invoice/header/vendor", inv) is False
+
+
+@pytest.mark.parametrize(
+    "field,value,text,ok",
+    [
+        ("stated.total", "5050.00", "5050.0", True),  # json.dumps of a JSON number
+        ("stated.total", "22562.80", "22562.8", True),
+        ("stated.total", "22512.80", "22562.8", False),
+        ("stated.total", "5050.00", '"5050.00"', True),  # a JSON string scalar
+        ("stated.total", "4125.00", "4125.00", True),  # an XML element's text
+        ("stated.total", "412.50", "4125.00", False),
+        ("stated.total", "5050.00", '{"amount": 5050.0}', False),  # not a scalar
+        ("lines[0].unit_price", "250.00", "250", True),
+    ],
+)
+def test_supports_structured_money_compares_numbers(field, value, text, ok):
+    assert evidence.supports(field, value, text, structured=True) is ok
+
+
+def test_structured_rule_only_for_json_and_xml_paths():
+    assert evidence.is_structured("$.total") and evidence.is_structured("/invoice/totals/total")
+    assert not evidence.is_structured("line:13") and not evidence.is_structured("row:2")
+    # the text-format token rule still reads a one-digit tail as whole units
+    assert evidence.supports("stated.total", "5050.00", "Total: 5050.0") is False
+
+
+def test_ocr_fix_only_for_numbers_and_dates():
+    assert evidence.supports("vendor", "ACME CO.", "Vendor: ACME CO.") is True
+    assert evidence.supports("lines[0].item", "WidgetO", "WidgetO, 2") is True
+    assert evidence.supports("currency", "USD", "Currency: USD") is True
+    assert evidence.supports("lines[0].quantity", "10", "qty: 1O") is True
+    assert evidence.supports("due_date", "2026-03-10", "Due: 2026-03-1O") is True

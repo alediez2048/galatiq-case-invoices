@@ -259,7 +259,8 @@ def _check_change(
     located = evidence.locate(text, location)
     if located is None or evidence.claimed_by_other(field, location, invoice):
         raise _refuse(R.evidence_location_mismatch, current)
-    if not evidence.supports(field, _text(value), located):
+    structured = evidence.is_structured(location)
+    if not evidence.supports(field, _text(value), located, structured=structured):
         raise _refuse(R.correction_not_in_source, current)
     return value, located
 

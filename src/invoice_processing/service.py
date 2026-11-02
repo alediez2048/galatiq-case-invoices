@@ -87,6 +87,10 @@ class RetryRefused(RuntimeError):
         self.receipt_id = receipt_id  # set for already_paid: the existing receipt
 
 
+class RetryNeedsFile(ValueError):
+    """A submission run is retried from its file; only a correction run needs none."""
+
+
 # Failures a retry can fix: model errors, a crash (startup sweep) or an unexpected exception.
 # Extraction and payment-refusal codes are deterministic; the same file fails the same way.
 RETRYABLE_ERROR_CODES = _MODEL_ERROR_CODES | {"interrupted", "unexpected_error"}
@@ -130,13 +134,19 @@ def _open_for_retry(db_path: str | Path, run_id: str) -> sqlite3.Connection:
 
 
 def check_retry(
-    run_id: str, path: str | Path, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
+    run_id: str, path: str | Path | None, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
 ) -> ledger.RunSummary:
     """The failed run `retry_run` would retry, or RetryRefused. Creates no run; the only
-    write is the startup sweep (see `_open_for_retry`)."""
-    source, _ = intake.read_source(path, limits)
+    write is the startup sweep (see `_open_for_retry`). A correction run is checked without
+    a file (`path` is ignored); any other run without one raises RetryNeedsFile."""
+    source = None if path is None else intake.read_source(path, limits)[0]
     conn = _open_for_retry(db_path, run_id)
     try:
+        run = ledger.get_run(conn, run_id)
+        if run is not None and run.trigger == "correction":
+            return _check_retry(conn, run_id, None)
+        if source is None:
+            raise RetryNeedsFile(run_id)
         return _check_retry(conn, run_id, source.content_hash)
     finally:
         conn.close()
@@ -174,7 +184,7 @@ def retry_run(
     if _is_correction_run(db_path, run_id):
         return _retry_correction(run_id, db_path, events, provider, on_run_started)
     if read is None:
-        raise ValueError("retrying a submission run needs the original file")
+        raise RetryNeedsFile(run_id)
     source, raw = read
     conn = _open_for_retry(db_path, run_id)
     try:

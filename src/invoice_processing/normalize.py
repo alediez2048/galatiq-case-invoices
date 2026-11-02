@@ -284,6 +284,8 @@ def normalize(
             shipping=amount("shipping", draft.shipping_raw),
             total=amount("total", draft.total_raw),
         ),
+        # Where each header field was read; review corrections check citations against it.
+        field_evidence={name: list(refs) for name, refs in draft.field_evidence.items()},
     )
 
     _check_dates(invoice, finding, field_ev)

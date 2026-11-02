@@ -4,6 +4,7 @@ from invoice_processing.codes import (
     FINDING_DESCRIPTIONS,
     TERMINAL_RUN_STATUSES,
     C,
+    ExecutionMode,
     FindingCode,
     InvoiceStatus,
     RunStatus,
@@ -137,3 +138,45 @@ def test_review_enums():
         "source_text_unavailable",
         "corrected_identity_mismatch",
     }
+
+
+def test_corpus_findings_respect_stage_sets(tmp_path, monkeypatch):
+    # Decision 12: a review run carries ingestion-stage findings and recomputes the rest, so
+    # every code a stage records must belong to that stage's set.
+    from datetime import date
+    from pathlib import Path
+
+    from invoice_processing import policy, seed, storage
+    from invoice_processing.agents import validation as validation_node
+    from invoice_processing.codes import GATE_CODES, INGESTION_CODES, VALIDATION_CODES
+    from invoice_processing.service import process_invoice
+
+    seen = {"ingestion": set(), "validation": set(), "gate": set()}
+    real_validation, real_evaluate = validation_node.run, policy.evaluate
+
+    def spy_validation(state, deps):
+        earlier = state.get("findings", [])
+        update = real_validation(state, deps)
+        seen["ingestion"] |= {f.code for f in earlier}
+        seen["validation"] |= {f.code for f in update["findings"][len(earlier) :]}
+        return update
+
+    def spy_evaluate(*args, **kwargs):
+        gate = real_evaluate(*args, **kwargs)
+        seen["gate"] |= {f.code for f in gate.findings}
+        return gate
+
+    monkeypatch.setattr(validation_node, "run", spy_validation)
+    monkeypatch.setattr(policy, "evaluate", spy_evaluate)
+    files = sorted(Path("data/invoices").iterdir())
+    for i, path in enumerate(files):
+        db = tmp_path / f"{i}.db"
+        conn = storage.connect(db)
+        storage.init_schema(conn)
+        seed.seed_inventory(conn)
+        conn.close()
+        process_invoice(path, ExecutionMode.offline, db, date(2026, 1, 31))
+    assert seen["validation"] and seen["gate"]  # the spies saw the corpus
+    assert seen["ingestion"] <= INGESTION_CODES
+    assert seen["validation"] <= VALIDATION_CODES
+    assert seen["gate"] <= GATE_CODES

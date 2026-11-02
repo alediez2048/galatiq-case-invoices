@@ -396,6 +396,15 @@ def get_version(conn: sqlite3.Connection, invoice_id: str, version: int) -> Vers
     )
 
 
+def get_version_by_id(conn: sqlite3.Connection, version_id: str) -> VersionRow:
+    row = conn.execute(
+        "SELECT invoice_id, version FROM invoice_versions WHERE version_id = ?", (version_id,)
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown version: {version_id}")
+    return get_version(conn, row["invoice_id"], row["version"])
+
+
 def get_source(conn: sqlite3.Connection, source_id: str) -> SourceDocument:
     row = conn.execute(
         "SELECT source_id, content_hash, original_name, format, size_bytes, parser_version, "
@@ -440,12 +449,16 @@ class RunSummary:
     error_code: str | None
     content_hash: str
     evaluation_date: date | None
+    trigger: str = "submission"
+    review_of: str | None = None
+    invoice_id: str | None = None
+    version_id: str | None = None
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
     row = conn.execute(
-        "SELECT r.run_id, r.mode, r.status, r.error_code, r.evaluation_date, s.content_hash "
-        "FROM runs r "
+        "SELECT r.run_id, r.mode, r.status, r.error_code, r.evaluation_date, s.content_hash, "
+        "r.trigger, r.review_of, r.invoice_id, r.version_id FROM runs r "
         "JOIN sources s ON s.source_id = r.source_id WHERE r.run_id = ?",
         (run_id,),
     ).fetchone()
@@ -458,6 +471,10 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
         row["error_code"],
         row["content_hash"],
         date.fromisoformat(row["evaluation_date"]) if row["evaluation_date"] else None,
+        row["trigger"],
+        row["review_of"],
+        row["invoice_id"],
+        row["version_id"],
     )
 
 

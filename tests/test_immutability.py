@@ -6,9 +6,9 @@ from datetime import UTC, date, datetime
 import pytest
 
 from invoice_processing import ledger, payments, seed, storage
-from invoice_processing.codes import ExecutionMode, HumanReviewAction, RunStatus
+from invoice_processing.codes import ExecutionMode, HumanReviewAction, RunStatus, SourceFormat
 from invoice_processing.policy import POLICY_VERSION
-from invoice_processing.schemas import Correction, HumanReview
+from invoice_processing.schemas import Correction, HumanReview, SourceDocument
 from invoice_processing.service import process_invoice
 from tests.test_payments import approved_run
 
@@ -174,7 +174,18 @@ def test_version_status_change_with_another_column_rejected(conn_with_history):
 
 def test_extracted_text_fill_allowed_once(conn_with_history):
     c = conn_with_history
-    source_id = c.execute("SELECT source_id FROM sources ORDER BY rowid").fetchone()[0]
+    # Processing fills extracted_text for every format (Decision 9), so use a fresh source.
+    processed = c.execute("SELECT extracted_text FROM sources ORDER BY rowid").fetchone()[0]
+    assert processed.startswith("INVOICE")
+    source = SourceDocument(
+        source_id="src-unprocessed",
+        content_hash="0" * 64,
+        original_name="unprocessed.txt",
+        format=SourceFormat.txt,
+        size_bytes=1,
+        parser_version="test",
+    )
+    source_id, _ = ledger.record_source(c, source)
 
     def text():
         row = c.execute("SELECT extracted_text FROM sources WHERE source_id = ?", (source_id,))

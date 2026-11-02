@@ -68,8 +68,11 @@ def test_crlf_bom_and_trailing_spaces_extract_identically(tmp_path):
     p.write_bytes(variant.encode())
     a, _ = normalize(parse_txt(*read_source(FIXTURE)))
     b, _ = normalize(parse_txt(*read_source(p)))
-    skip = {"source_id", "lines", "normalization_events"}
+    skip = {"source_id", "lines", "normalization_events", "field_evidence"}
     assert a.model_dump(exclude=skip) == b.model_dump(exclude=skip)
+    assert {k: [r.location for r in v] for k, v in a.field_evidence.items()} == {
+        k: [r.location for r in v] for k, v in b.field_evidence.items()
+    }
     assert [(x.item, x.quantity) for x in a.lines] == [(x.item, x.quantity) for x in b.lines]
 
 

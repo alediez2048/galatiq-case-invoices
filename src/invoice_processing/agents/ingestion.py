@@ -59,10 +59,9 @@ def run(state: InvoiceState, deps: Deps) -> dict:
             source_text = parsed.extracted_text
             if source_text is None:
                 source_text = state["raw"].decode("utf-8-sig", errors="replace")
-            if parsed.extracted_text is not None:
-                ledger.set_extracted_text(
-                    deps.conn, state["source"].source_id, parsed.extracted_text
-                )
+            # Kept for every format (only while unset) so review corrections can check
+            # their cited evidence against the text this version was read from.
+            ledger.set_extracted_text(deps.conn, state["source"].source_id, source_text)
             known = storage.inventory_items(deps.conn)
             invoice, findings = _normalize(draft, known)
             calls_used = state.get("model_calls_used", 0)

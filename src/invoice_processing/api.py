@@ -88,6 +88,7 @@ _STATUS_BY_CODE = {
     "not_failed": 409,
     "not_recoverable": 409,
     "source_mismatch": 409,
+    "not_current": 409,
     "already_paid": 409,
 }
 

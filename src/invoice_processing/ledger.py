@@ -157,6 +157,12 @@ def _insert_version(
     supersede: Literal["none", "base", "others"],
 ) -> tuple[str, int]:
     """Insert version max + 1 and move current_version to it (never off a paid version)."""
+    if supersede != "none":
+        status = conn.execute(
+            "SELECT status FROM invoices WHERE invoice_id = ?", (invoice_id,)
+        ).fetchone()
+        if status is not None and status["status"] == InvoiceStatus.paid_mock.value:
+            raise ValueError(f"cannot supersede a version of paid invoice {invoice_id}")
     latest = conn.execute(
         "SELECT COALESCE(MAX(version), 0) FROM invoice_versions WHERE invoice_id = ?",
         (invoice_id,),
@@ -390,6 +396,15 @@ def get_version(conn: sqlite3.Connection, invoice_id: str, version: int) -> Vers
     )
 
 
+def get_version_by_id(conn: sqlite3.Connection, version_id: str) -> VersionRow:
+    row = conn.execute(
+        "SELECT invoice_id, version FROM invoice_versions WHERE version_id = ?", (version_id,)
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown version: {version_id}")
+    return get_version(conn, row["invoice_id"], row["version"])
+
+
 def get_source(conn: sqlite3.Connection, source_id: str) -> SourceDocument:
     row = conn.execute(
         "SELECT source_id, content_hash, original_name, format, size_bytes, parser_version, "
@@ -434,12 +449,16 @@ class RunSummary:
     error_code: str | None
     content_hash: str
     evaluation_date: date | None
+    trigger: str = "submission"
+    review_of: str | None = None
+    invoice_id: str | None = None
+    version_id: str | None = None
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
     row = conn.execute(
-        "SELECT r.run_id, r.mode, r.status, r.error_code, r.evaluation_date, s.content_hash "
-        "FROM runs r "
+        "SELECT r.run_id, r.mode, r.status, r.error_code, r.evaluation_date, s.content_hash, "
+        "r.trigger, r.review_of, r.invoice_id, r.version_id FROM runs r "
         "JOIN sources s ON s.source_id = r.source_id WHERE r.run_id = ?",
         (run_id,),
     ).fetchone()
@@ -452,6 +471,10 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunSummary | None:
         row["error_code"],
         row["content_hash"],
         date.fromisoformat(row["evaluation_date"]) if row["evaluation_date"] else None,
+        row["trigger"],
+        row["review_of"],
+        row["invoice_id"],
+        row["version_id"],
     )
 
 
@@ -558,7 +581,7 @@ def get_human_review(
     conn: sqlite3.Connection, invoice_id: str, version: int, policy_version: str
 ) -> HumanReview | None:
     row = conn.execute(
-        "SELECT invoice_id, version, action, reviewer, reason, policy_version "
+        "SELECT invoice_id, version, action, reviewer, reason, policy_version, created_at "
         "FROM human_reviews WHERE invoice_id = ? AND version = ? AND policy_version = ? "
         "AND action IN ('approve', 'decline') ORDER BY review_id DESC LIMIT 1",
         (invoice_id, version, policy_version),
@@ -567,7 +590,10 @@ def get_human_review(
 
 
 def _iso(at: datetime) -> str:
-    return at.isoformat(timespec="microseconds").replace("+00:00", "Z")
+    """ISO-8601 UTC text like utcnow(); a naive datetime is ambiguous and refused."""
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise ValueError("review timestamps need a timezone")
+    return at.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def record_correction(conn: sqlite3.Connection, correction: Correction, run_id: str) -> int:

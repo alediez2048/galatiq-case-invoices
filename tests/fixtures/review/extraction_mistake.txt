@@ -1,0 +1,13 @@
+INVOICE
+
+Vendor: Correction Test Co
+Invoice Number: CT-3001
+Date: 2026-01-20
+Due Date: 2026-03-01
+
+Items:
+  WidgetA    qty: 7     unit price: $500.00
+
+Subtotal: $3,500.00
+Tax (0%): $0.00
+Total Amount: $3.500,00

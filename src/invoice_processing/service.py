@@ -5,6 +5,7 @@ import sqlite3
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 import langsmith
 
@@ -20,7 +21,7 @@ from invoice_processing.codes import (
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
 from invoice_processing.schemas import ProcessingResult, SourceDocument
-from invoice_processing.storage import connect, init_schema
+from invoice_processing.storage import connect, init_schema, write_transaction
 from invoice_processing.workflow import build_graph
 
 _INVOICE_STATUS = {
@@ -86,12 +87,19 @@ class RetryRefused(RuntimeError):
         self.receipt_id = receipt_id  # set for already_paid: the existing receipt
 
 
+class RetryNeedsFile(ValueError):
+    """A submission run is retried from its file; only a correction run needs none."""
+
+
 # Failures a retry can fix: model errors, a crash (startup sweep) or an unexpected exception.
 # Extraction and payment-refusal codes are deterministic; the same file fails the same way.
 RETRYABLE_ERROR_CODES = _MODEL_ERROR_CODES | {"interrupted", "unexpected_error"}
 
 
-def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> ledger.RunSummary:
+def _check_retry(
+    conn: sqlite3.Connection, run_id: str, content_hash: str | None
+) -> ledger.RunSummary:
+    """`content_hash` None skips the source check (a correction run needs no file)."""
     run = ledger.get_run(conn, run_id)
     if run is None:
         raise RetryRefused("unknown_run", run_id)
@@ -99,7 +107,7 @@ def _check_retry(conn: sqlite3.Connection, run_id: str, content_hash: str) -> le
         raise RetryRefused("not_failed", run_id)
     if run.error_code not in RETRYABLE_ERROR_CODES:
         raise RetryRefused("not_recoverable", run_id)
-    if run.content_hash != content_hash:
+    if content_hash is not None and run.content_hash != content_hash:
         raise RetryRefused("source_mismatch", run_id)
     # Another (non-failed) run already paid this version: a retry would only re-decide a
     # paid identity. A payer that crashed after paying is retried and re-pointed instead.
@@ -126,21 +134,36 @@ def _open_for_retry(db_path: str | Path, run_id: str) -> sqlite3.Connection:
 
 
 def check_retry(
-    run_id: str, path: str | Path, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
+    run_id: str, path: str | Path | None, db_path: str | Path, limits: Limits = DEFAULT_LIMITS
 ) -> ledger.RunSummary:
     """The failed run `retry_run` would retry, or RetryRefused. Creates no run; the only
-    write is the startup sweep (see `_open_for_retry`)."""
-    source, _ = intake.read_source(path, limits)
+    write is the startup sweep (see `_open_for_retry`). A correction run is checked without
+    a file (`path` is ignored); any other run without one raises RetryNeedsFile."""
+    source = None if path is None else intake.read_source(path, limits)[0]
     conn = _open_for_retry(db_path, run_id)
     try:
+        run = ledger.get_run(conn, run_id)
+        if run is not None and run.trigger == "correction":
+            return _check_retry(conn, run_id, None)
+        if source is None:
+            raise RetryNeedsFile(run_id)
         return _check_retry(conn, run_id, source.content_hash)
+    finally:
+        conn.close()
+
+
+def _is_correction_run(db_path: str | Path, run_id: str) -> bool:
+    conn = _open_for_retry(db_path, run_id)
+    try:
+        run = ledger.get_run(conn, run_id)
+        return run is not None and run.trigger == "correction"
     finally:
         conn.close()
 
 
 def retry_run(
     run_id: str,
-    path: str | Path,
+    path: str | Path | None,
     db_path: str | Path,
     evaluation_date: date,
     events: logging.Logger | None = None,
@@ -150,8 +173,19 @@ def retry_run(
 ) -> ProcessingResult:
     """Process `path` again as a new run linked to the failed `run_id` (`retry_of`), in the
     original run's mode. The ledger keeps no source bytes, so the caller re-supplies the
-    file; it must hash to the original source. Payment stays once per identity."""
-    source, raw = intake.read_source(path, limits)
+    file; it must hash to the original source. Payment stays once per identity.
+
+    A failed correction run is instead retried on its own (corrected) version from
+    validation (Decision 18): `path` is ignored, since re-extracting the source would
+    recreate the uncorrected version, and so is `evaluation_date` (a review run keeps the
+    base run's, Decision 16). A path that is given is still read first, so a bad
+    file is refused before the ledger is opened, as for any retry."""
+    read = None if path is None else intake.read_source(path, limits)
+    if _is_correction_run(db_path, run_id):
+        return _retry_correction(run_id, db_path, events, provider, on_run_started)
+    if read is None:
+        raise RetryNeedsFile(run_id)
+    source, raw = read
     conn = _open_for_retry(db_path, run_id)
     try:
         original = _check_retry(conn, run_id, source.content_hash)
@@ -169,6 +203,55 @@ def retry_run(
         retry_of=original.run_id,
         on_run_started=on_run_started,
     )
+
+
+def _retry_correction(
+    run_id: str,
+    db_path: str | Path,
+    events: logging.Logger | None,
+    provider: ReasoningProvider | None,
+    on_run_started: Callable[[str], None] | None,
+) -> ProcessingResult:
+    """A new correction run on the failed run's version (same mode, evaluation date, trigger
+    and review_of), carrying its ingestion-stage findings, executed from validation."""
+    conn = _open_for_retry(db_path, run_id)
+    try:
+        original = _check_retry(conn, run_id, None)
+        version = ledger.get_version_by_id(conn, original.version_id)
+        # A later version (e.g. a corrected submission) replaced this one: revalidating it
+        # could only reach a payment guard that refuses a non-current version.
+        if ledger.get_invoice(conn, original.invoice_id).current_version != version.version:
+            raise RetryRefused("not_current", run_id)
+        provider = provider or get_provider(original.mode)  # before anything is written
+        with write_transaction(conn):
+            new_run_id = ledger.start_run(
+                conn,
+                original.mode,
+                version.source_id,
+                original.evaluation_date,
+                retry_of=original.run_id,
+                trigger=original.trigger,
+                review_of=original.review_of,
+            )
+            ledger.attach_run(conn, new_run_id, original.invoice_id, version.version_id)
+            ledger.record_findings(
+                conn, new_run_id, version.version_id, ledger.carried_findings(conn, run_id)
+            )
+            ledger.update_run_status(conn, new_run_id, RunStatus.extracted)
+            ledger.append_audit_event(
+                conn,
+                new_run_id,
+                "review",
+                "review_run_created",
+                {"trigger": original.trigger, "review_of": original.review_of, "retry_of": run_id},
+                invoice_id=original.invoice_id,
+                version_id=version.version_id,
+            )
+    finally:
+        conn.close()
+    if on_run_started is not None:
+        on_run_started(new_run_id)
+    return run_existing_version(new_run_id, db_path=db_path, events=events, provider=provider)
 
 
 def process_invoice(
@@ -211,7 +294,6 @@ def _process(
     if events is None:
         events = observability.configure_events(None)
     provider = provider or get_provider(mode)  # config errors propagate before any run exists
-    budget = _call_budget(provider)
     conn = connect(db_path)
     try:
         init_schema(conn)
@@ -261,49 +343,118 @@ def _process(
                 emit(deps, state, "service", "duplicate", prior_run_id=prior.run_id)
                 return _result(
                     state,
-                    budget,
+                    _call_budget(provider),
                     invoice_id=prior.invoice_id,
                     receipt=prior.receipt,
                     prior_run_id=prior.run_id,
                 )
 
-            # LangSmith tracing is forced off in every mode: invoice bytes must not reach a
-            # third-party tracer through LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 by accident.
-            trace_off = langsmith.tracing_context(enabled=False)
-            with trace_off:
-                final: InvoiceState = build_graph(deps).invoke(state)
-            status = final["status"]
-            error_code = final.get("error_code")
-            if status not in TERMINAL_RUN_STATUSES:
-                status, error_code = RunStatus.failed, "incomplete_graph"
-                final = {**final, "status": status, "error_code": error_code}
-            ledger.finish_run(
-                conn,
-                run_id,
-                status,
-                error_code=error_code,
-                error_message=final.get("error_message"),
-                prior_run_id=final.get("prior_run_id"),
-            )
-            invoice_id = final.get("invoice_id")
-            if invoice_id is not None and status in _INVOICE_STATUS:
-                ledger.set_invoice_status(conn, invoice_id, _INVOICE_STATUS[status])
-            emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
-            return _result(final, budget)
+            return _finish(conn, deps, _invoke(deps, state, "ingestion"))
         except Exception as e:  # BaseException (Ctrl-C) propagates; mark_interrupted_runs recovers
-            current = ledger.get_run_status(conn, run_id)
-            if current not in TERMINAL_RUN_STATUSES:
-                ledger.finish_run(
-                    conn,
-                    run_id,
-                    RunStatus.failed,
-                    error_code="unexpected_error",
-                    error_message=type(e).__name__,
-                )
-                current = RunStatus.failed
-            state["status"] = current
-            state["error_code"] = "unexpected_error"
-            emit(deps, state, "service", "failed", error_type=type(e).__name__)
-            return _result(state, budget, invoice_id=state.get("invoice_id"))
+            return _fail(conn, deps, state, e)
+    finally:
+        conn.close()
+
+
+def _invoke(
+    deps: Deps, state: InvoiceState, start: Literal["ingestion", "validation"]
+) -> InvoiceState:
+    # LangSmith tracing is forced off in every mode: invoice bytes must not reach a
+    # third-party tracer through LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 by accident.
+    with langsmith.tracing_context(enabled=False):
+        return build_graph(deps, start=start).invoke(state)
+
+
+def _finish(conn: sqlite3.Connection, deps: Deps, state: InvoiceState) -> ProcessingResult:
+    """Close the run the graph left (a non-terminal status fails it as incomplete_graph),
+    move the invoice status, and build the result."""
+    final = state
+    status = final["status"]
+    error_code = final.get("error_code")
+    if status not in TERMINAL_RUN_STATUSES:
+        status, error_code = RunStatus.failed, "incomplete_graph"
+        final = {**final, "status": status, "error_code": error_code}
+    ledger.finish_run(
+        conn,
+        final["run_id"],
+        status,
+        error_code=error_code,
+        error_message=final.get("error_message"),
+        prior_run_id=final.get("prior_run_id"),
+    )
+    invoice_id = final.get("invoice_id")
+    if invoice_id is not None and status in _INVOICE_STATUS:
+        ledger.set_invoice_status(conn, invoice_id, _INVOICE_STATUS[status])
+    emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
+    return _result(final, _call_budget(deps.provider))
+
+
+def _fail(
+    conn: sqlite3.Connection, deps: Deps, state: InvoiceState, e: Exception
+) -> ProcessingResult:
+    """An unexpected exception: fail the run unless it already reached a terminal status."""
+    run_id = state["run_id"]
+    current = ledger.get_run_status(conn, run_id)
+    if current not in TERMINAL_RUN_STATUSES:
+        ledger.finish_run(
+            conn,
+            run_id,
+            RunStatus.failed,
+            error_code="unexpected_error",
+            error_message=type(e).__name__,
+        )
+        current = RunStatus.failed
+    state["status"] = current
+    state["error_code"] = "unexpected_error"
+    emit(deps, state, "service", "failed", error_type=type(e).__name__)
+    return _result(state, _call_budget(deps.provider), invoice_id=state.get("invoice_id"))
+
+
+def run_existing_version(
+    run_id: str,
+    *,
+    db_path: str | Path,
+    events: logging.Logger | None = None,
+    provider: ReasoningProvider | None = None,
+    approval: Literal["agent", "human"] = "agent",
+) -> ProcessingResult:
+    """Execute a review-created run (status `extracted`, attached to its version, carried
+    findings recorded) from the validation node on, then finish it like `process_invoice`.
+
+    The caller has committed the run; no transaction is held while the graph runs."""
+    if approval != "agent":
+        raise NotImplementedError("human approval runs arrive with the approve/decline actions")
+    if events is None:
+        events = observability.configure_events(None)
+    conn = connect(db_path)
+    try:
+        init_schema(conn)  # version check only: the run already exists
+        run = ledger.get_run(conn, run_id)
+        if run is None or run.status is not RunStatus.extracted or run.version_id is None:
+            raise ValueError(f"run {run_id} is not a review run ready for validation")
+        provider = provider or get_provider(run.mode)
+        version = ledger.get_version_by_id(conn, run.version_id)
+        source = ledger.get_source(conn, version.source_id)
+        deps = Deps(conn=conn, provider=provider, events=events)
+        state = InvoiceState(
+            run_id=run_id,
+            mode=run.mode,
+            evaluation_date=run.evaluation_date,
+            source=source,
+            source_text=source.extracted_text,
+            invoice=version.invoice,
+            invoice_id=run.invoice_id,
+            version_id=version.version_id,
+            version=version.version,
+            findings=ledger.carried_findings(conn, run_id),
+            status=RunStatus.extracted,
+            trigger=run.trigger,
+        )
+        if run.review_of is not None:
+            state["review_of"] = run.review_of
+        try:
+            return _finish(conn, deps, _invoke(deps, state, "validation"))
+        except Exception as e:  # as in _process
+            return _fail(conn, deps, state, e)
     finally:
         conn.close()

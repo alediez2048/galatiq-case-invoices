@@ -1,0 +1,12 @@
+INVOICE
+
+Vendor: OCR Test Co
+Invoice Number: OCR-3002
+Date: 2026-01-20
+Due Date: 2026-03-01
+
+Item  Qty  Unit Price  Amount
+WidgetA  7  $450.00  $3,5O0.00
+
+Subtotal: $3,150.00
+Total: $3,150.00

@@ -36,7 +36,7 @@ Resolved: see [decisions](decisions.md#d-pdf). Residual limit: the three committ
 ## 6. Revision handling and inventory semantics (row 6)
 
 - **Assumption (revisions):** a revision of an already-paid invoice is not paid again; it goes to `needs_review` with `revision_after_payment` (INV-1004 revised, `tests/test_acceptance.py`). Changed content under an existing unpaid identity yields `version_conflict`. Duplicates across formats are detected by semantic identity (INV-1013 PDF is a `duplicate` of the JSON).
-- **Assumption (inventory):** quantities are positive integers checked against current stock per item; lines for the same item are aggregated (INV-1013 aggregates 22/18/9). Stock is not decremented by a mock payment unless the code says so; this is simplified, with no reservations.
+- **Assumption (inventory):** quantities are positive integers checked against current stock per item; lines for the same item are aggregated (INV-1013 aggregates 22/18/9). Paying an invoice does not decrement stock and nothing is reserved (no inventory update exists in `src`), so two payable invoices can each fit the same stock.
 - **Consequence:** an evaluator who expects revisions to supersede and re-pay, or stock to be reserved, will see different behavior.
 
 <a id="l-cli-mode"></a>

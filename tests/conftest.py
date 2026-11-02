@@ -46,6 +46,10 @@ def no_grpc(request, monkeypatch):
 
     monkeypatch.setattr(grpc, "secure_channel", blocked)
     monkeypatch.setattr(grpc, "insecure_channel", blocked)
+    import grpc.aio
+
+    monkeypatch.setattr(grpc.aio, "secure_channel", blocked)
+    monkeypatch.setattr(grpc.aio, "insecure_channel", blocked)
     if request.node.get_closest_marker("real_xai_factory") is None:
         monkeypatch.setattr("invoice_processing.reasoning.xai.real_client_factory", blocked)
 

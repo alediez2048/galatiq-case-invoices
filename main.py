@@ -33,6 +33,12 @@ def _install_network_guard() -> None:
         return
     grpc.secure_channel = blocked  # type: ignore[assignment]
     grpc.insecure_channel = blocked  # type: ignore[assignment]
+    try:
+        import grpc.aio
+    except ImportError:
+        return
+    grpc.aio.secure_channel = blocked  # type: ignore[assignment]
+    grpc.aio.insecure_channel = blocked  # type: ignore[assignment]
 
 
 if os.environ.get("INVOICE_NETWORK_GUARD") == "1":

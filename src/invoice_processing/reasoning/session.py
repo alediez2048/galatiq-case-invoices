@@ -35,7 +35,7 @@ class ToolBox(Protocol):
 
 
 class NullToolBox:
-    """No tools for anyone (Task 3 brings the whitelisted dispatcher)."""
+    """No tools for anyone: the offline simulator and bare sessions."""
 
     def specs(self, agent: str) -> list[ToolSpecLike]:
         return []

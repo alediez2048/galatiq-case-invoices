@@ -10,6 +10,7 @@ from invoice_processing import ledger, observability
 from invoice_processing.codes import ExecutionMode, FindingCode, RunStatus
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning.base import ReasoningProvider
+from invoice_processing.reasoning.session import ModelSession
 from invoice_processing.schemas import (
     ApprovalDecision,
     GateResult,
@@ -18,6 +19,7 @@ from invoice_processing.schemas import (
     SourceDocument,
     ValidationFinding,
 )
+from invoice_processing.tools import Dispatcher, ReadOnlyConnection, ToolContext
 
 
 class InvoiceState(TypedDict, total=False):
@@ -26,6 +28,7 @@ class InvoiceState(TypedDict, total=False):
     evaluation_date: date
     source: SourceDocument
     raw: bytes
+    source_text: str | None  # decoded raw text, or extracted PDF text; for model tools
     invoice: NormalizedInvoice
     invoice_id: str
     version_id: str
@@ -47,6 +50,23 @@ class Deps:
     provider: ReasoningProvider
     events: logging.Logger
     limits: Limits = DEFAULT_LIMITS
+
+
+def make_session(deps: Deps, state: InvoiceState) -> ModelSession:
+    """A fresh model session; live providers also get the read-only tool dispatcher."""
+    session = ModelSession.for_provider(deps.provider)
+    settings = getattr(deps.provider, "settings", None)
+    if settings is not None:
+        ctx = ToolContext(
+            conn=ReadOnlyConnection(deps.conn),
+            run_id=state["run_id"],
+            invoice=state.get("invoice"),
+            invoice_id=state.get("invoice_id"),
+            version_id=state.get("version_id"),
+            source_text=state.get("source_text"),
+        )
+        session.tools = Dispatcher(ctx, excerpt_chars=settings.excerpt_chars, audit_conn=deps.conn)
+    return session
 
 
 def emit(

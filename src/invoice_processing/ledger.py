@@ -20,6 +20,7 @@ from invoice_processing.codes import (
     ExecutionMode,
     InvoiceStatus,
     RunStatus,
+    Severity,
 )
 from invoice_processing.money import MINOR_UNITS, canonical_amount
 from invoice_processing.schemas import (
@@ -364,6 +365,45 @@ def list_audit_events(conn: sqlite3.Connection, run_id: str) -> list[dict[str, A
         }
         for r in rows
     ]
+
+
+def list_findings(
+    conn: sqlite3.Connection, run_id: str, severity: Severity | None = None
+) -> list[dict[str, Any]]:
+    """Recorded findings of one run (read-only), optionally of one severity."""
+    sql = "SELECT payload_json FROM findings WHERE run_id = ?"
+    args: list[Any] = [run_id]
+    if severity is not None:
+        sql += " AND severity = ?"
+        args.append(severity.value)
+    rows = conn.execute(sql + " ORDER BY finding_id", args).fetchall()
+    return [json.loads(r["payload_json"]) for r in rows]
+
+
+def invoice_history(
+    conn: sqlite3.Connection, invoice_id: str, exclude_run_id: str | None = None
+) -> dict[str, Any]:
+    """Versions, earlier run outcomes and payment status of one invoice identity (read-only)."""
+    versions = conn.execute(
+        "SELECT version, origin, created_at FROM invoice_versions "
+        "WHERE invoice_id = ? ORDER BY version",
+        (invoice_id,),
+    ).fetchall()
+    runs = conn.execute(
+        "SELECT r.run_id, r.status, r.mode, v.version, r.started_at FROM runs r "
+        "LEFT JOIN invoice_versions v ON v.version_id = r.version_id "
+        "WHERE r.invoice_id = ? AND r.run_id != ? ORDER BY r.started_at, r.rowid",
+        (invoice_id, exclude_run_id or ""),
+    ).fetchall()
+    pay = conn.execute(
+        "SELECT version, receipt_id, status, amount, currency FROM payments WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    return {
+        "versions": [dict(v) for v in versions],
+        "runs": [dict(r) for r in runs],
+        "payment": None if pay is None else dict(pay),
+    }
 
 
 @dataclass(frozen=True)

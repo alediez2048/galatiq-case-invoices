@@ -37,6 +37,9 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 "error_message": str(e),
             }
         else:
+            source_text = parsed.extracted_text
+            if source_text is None:
+                source_text = state["raw"].decode("utf-8-sig", errors="replace")
             if parsed.extracted_text is not None:
                 ledger.set_extracted_text(
                     deps.conn, state["source"].source_id, parsed.extracted_text
@@ -78,6 +81,7 @@ def run(state: InvoiceState, deps: Deps) -> dict:
             ledger.record_findings(deps.conn, run_id, version_id, findings)
             ledger.update_run_status(deps.conn, run_id, RunStatus.extracted)
             update = {
+                "source_text": source_text,
                 "invoice": invoice,
                 "invoice_id": invoice_id,
                 "version_id": version_id,

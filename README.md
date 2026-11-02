@@ -4,7 +4,7 @@ This repository is a solution to the Galatiq invoice-processing case. The assign
 
 ## What it does
 
-A local command-line prototype takes one invoice file (TXT, JSON, CSV, XML or text PDF), extracts vendor, items, quantities, amounts and due date, and records every normalization with its source evidence. It checks the invoice against a SQLite inventory and its own arithmetic. An approval agent then makes a recommendation, critiques it and may revise it once, and a deterministic gate gives the final decision. Clean USD invoices up to USD 10,000.00 are paid through a guarded mock payment that pays each invoice identity at most once, including across reruns, file formats and revisions. Everything else ends `rejected`, `needs_review` or `awaiting_human_approval`, with stable reason codes. The workflow is a four-agent LangGraph graph over one shared processing service. Today it runs in **offline** mode, where a labeled deterministic simulator stands in for the model. **Live** mode on xAI Grok is in progress.
+A local command-line prototype takes one invoice file (TXT, JSON, CSV, XML or text PDF), extracts vendor, items, quantities, amounts and due date, and records every normalization with its source evidence. It checks the invoice against a SQLite inventory and its own arithmetic. An approval agent then makes a recommendation, critiques it and may revise it once, and a deterministic gate gives the final decision. Clean USD invoices up to USD 10,000.00 are paid through a guarded mock payment that pays each invoice identity at most once, including across reruns, file formats and revisions. Everything else ends `rejected`, `needs_review` or `awaiting_human_approval`, with stable reason codes. The workflow is a four-agent LangGraph graph over one shared processing service. It runs in **offline** mode by default, where a labeled deterministic simulator stands in for the model, or in **live** mode, where xAI Grok does the reasoning (needs your own API key).
 
 <!-- TODO(P6-04): add a UI screenshot here once the React UI (Phase 5) exists. -->
 
@@ -49,8 +49,22 @@ uv run ruff check . && uv run ruff format --check .
 
 CLI options: `--mode {offline,live}` (default `offline`), `--db`, `--output`, `--events` (JSON-lines log, default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD`. Exit codes: 0 processed, 1 run failed, 2 usage error. More detail is in [docs/development.md](docs/development.md).
 
-<!-- TODO(P6-04): add the API and UI start commands (FastAPI server, `npm` dev/build for the React app, Node version) once Phase 5 lands. -->
-<!-- TODO(P6-04): add the live smoke-test command (`RUN_LIVE_TESTS=1 uv run pytest -m live`, needs XAI_API_KEY and XAI_MODEL) once Phase 3 is merged. -->
+### API and UI
+
+```bash
+(cd frontend && npm ci && npm run build)            # Node 22 or newer (frontend/package.json engines)
+uv run python -m invoice_processing.api            # http://127.0.0.1:8000, API docs at /docs
+```
+
+The API binds to `127.0.0.1` only and serves the built UI from `frontend/dist` at `/`. For UI development, run the API as above and `npm run dev` in `frontend/` (http://127.0.0.1:5173, proxies `/api`). Browser end-to-end tests (Playwright) run with `cd frontend && npm run test:e2e`, which builds first. See [docs/development.md](docs/development.md#frontend).
+
+### Live smoke test (optional, paid)
+
+```bash
+RUN_LIVE_TESTS=1 uv run pytest -m live
+```
+
+This makes real, paid calls to xAI (about 11 invoices, up to 6 model steps each, so roughly 60 requests) and needs `XAI_API_KEY` and `XAI_MODEL`. Set a spending limit in the xAI console first; USD 10 is a sensible cap for a first run. Without `RUN_LIVE_TESTS=1` the test is skipped, and the default `uv run pytest` never touches the network. See [Offline and live modes](#offline-and-live-modes).
 
 ## Offline and live modes
 
@@ -58,12 +72,29 @@ The brief asks for Grok as the reasoning engine and also says to assume no inter
 
 | | Offline (default) | Live |
 | --- | --- | --- |
-| Status | Built and tested | **In progress: needs an xAI key; see Phase 3** ([plan](docs/superpowers/plans/2026-11-01-phase-3-live-grok.md)) |
 | Reasoning | Deterministic simulator, every summary labeled `offline simulation:` | Grok through the official `xai_sdk`, model named by `XAI_MODEL` |
-| Network | None; tests block sockets | Model calls only; inventory and payment stay local and mock |
+| Network | None; tests block sockets | Model calls only (invoice text is sent to xAI); inventory and payment stay local and mock |
 | Selected by | omitting `--mode`, or `--mode offline` | `--mode live` plus credentials |
 
-Both modes share the parsers, validation, gate and payment guard, so a mode never changes business rules. On `main`, `--mode live` exits with code 2 and "live mode is not available until Phase 3". The offline simulator is not a model. It shows that the agent flow and safety rules work, not that an LLM reasons well.
+Both modes share the parsers, validation, gate and payment guard, so a mode never changes business rules: the model recommends and critiques, the deterministic gate decides. The offline simulator is not a model. It shows that the agent flow and safety rules work, not that an LLM reasons well.
+
+### Running live
+
+Live mode needs `XAI_API_KEY` and `XAI_MODEL` (no default model). Set them in the environment or copy `.env.example` to a git-ignored `.env` (real environment variables win; offline mode never loads `.env`). Optional: `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6 model steps per invoice).
+
+```bash
+uv run python -m invoice_processing.readiness          # config only, no network; exit 0 ready, 2 not
+uv run python -m invoice_processing.readiness --ping   # one minimal SDK call: the only check that uses the network
+uv run python main.py --mode live --invoice_path=data/invoices/invoice_1001.txt
+```
+
+- **Without credentials** (or with an invalid setting) `--mode live` exits 2 before any run is created, naming the missing variable but never its value. Nothing falls back to offline.
+- **Budget.** Each invoice may use at most `MODEL_CALL_BUDGET` model steps (recommend, critique, at most one revision, plus bounded tool turns). Exhausting it ends the run as a model error instead of sending more requests.
+- **Model failure.** If the model errors or times out, the run ends `failed` with `recoverable: true`, "Payment was not attempted", and next actions `retry` / `run offline as a separate simulation`. Retry with `uv run python main.py --retry RUN_ID --invoice_path=<same file>`; the retry is a new linked run in the original mode. The same actions are buttons in the UI.
+- **Mode switch.** Running a file in the other mode is a separate, labeled run (`mode_switch_of`). It never reuses the earlier run's recommendation, and no code path turns a live failure into an offline result. An invoice is still paid at most once across modes.
+- **Privacy.** The key is never printed, logged or stored; LangSmith tracing is forced off in both modes.
+
+Developer details (retry refusal reasons, test coverage of the live path) are in [docs/development.md](docs/development.md#live-mode-configuration).
 
 <!-- TODO(P6-04): add live verification results (model id, SDK version, per-invoice status, calls, tokens, cost) from docs/verification/live-<date>.md once P3-10 runs. -->
 
@@ -258,11 +289,6 @@ python main.py --invoice_path=data/invoices/invoice1.txt
 ```
 
 Output should include structured logs and results.
-
-### Live mode (Grok)
-
-`--mode live` sends invoice text to xAI and needs `XAI_API_KEY` and `XAI_MODEL` (environment or a git-ignored `.env`; see `.env.example`). Offline mode (the default) never reads them and makes no network call. Check the setup with `python -m invoice_processing.readiness` (add `--ping` for one minimal live call).
-
 
 ## Evaluation Criteria
 

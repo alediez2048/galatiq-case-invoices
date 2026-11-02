@@ -278,12 +278,22 @@ def test_check_rejects_unsupported_proposals(kw):
     assert assist.check_proposal(_p(**kw), SOURCE, draft) == "unsupported"
 
 
+def test_check_accepts_an_amount_after_a_closed_parenthesis():
+    # a closed "(...)" before the amount is a label, not an accounting negative
+    source = {**SOURCE, "line:11": "Tax (8%): $40.00"}
+    p = _p(field="tax", value="40.00", quote="Tax (8%): $40.00", location="line:11")
+    assert assist.check_proposal(p, source, _draft(tax_raw=None)) == "accept"
+
+
 @pytest.mark.parametrize(
     "kw",
     [
         # an accounting-negative amount is never evidence for the positive value ...
         {"field": "total", "value": "5000.00", "quote": "($5,000.00)", "location": "line:7"},
         {"field": "total", "value": "5000.00", "quote": "( 5,000.00 )", "location": "line:8"},
+        # ... even with a currency code or credit marker before the closing parenthesis
+        {"field": "total", "value": "5000.00", "quote": "($5,000.00 USD)", "location": "line:9"},
+        {"field": "total", "value": "5000.00", "quote": "(5,000.00 CR)", "location": "line:10"},
         # ... nor, read by this check, for a negative one
         {"field": "total", "value": "-5000.00", "quote": "($5,000.00)", "location": "line:7"},
         # the hyphen inside an identifier is not a minus sign, nor are its digits an amount
@@ -292,7 +302,13 @@ def test_check_rejects_unsupported_proposals(kw):
     ],
 )
 def test_check_rejects_amounts_the_quote_does_not_state(kw):
-    source = {**SOURCE, "line:7": "Refund: ($5,000.00)", "line:8": "Refund: ( 5,000.00 )"}
+    source = {
+        **SOURCE,
+        "line:7": "Refund: ($5,000.00)",
+        "line:8": "Refund: ( 5,000.00 )",
+        "line:9": "Refund: ($5,000.00 USD)",
+        "line:10": "Credit: (5,000.00 CR)",
+    }
     assert assist.check_proposal(_p(**kw), source, _draft(total_raw=None)) == "unsupported"
 
 

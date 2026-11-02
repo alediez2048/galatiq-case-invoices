@@ -216,3 +216,21 @@ describe("Processing view (P5-07, screen 3)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("This run was not found.");
   });
 });
+
+describe("Processing view announcements (P5-10)", () => {
+  it("announces completion once in a status region and leaves failures to the alert", async () => {
+    let polls = 0;
+    renderApp(`/runs/${realRun.run_id}`, {
+      "GET /api/runs/:id": () => (polls++ < 1 ? prefix(2) : realRun),
+      "GET /api/invoices/:id": () => detail1001,
+      "GET /api/sources/:id/content": () => source1001,
+    });
+    const announcer = await screen.findByTestId("run-announcer");
+    expect(announcer).toHaveAttribute("role", "status");
+    expect(announcer).toBeEmptyDOMElement();
+    expect(screen.getByText("Checking requested quantities against local inventory.")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+  });
+});

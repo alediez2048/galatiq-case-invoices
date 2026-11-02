@@ -49,7 +49,7 @@ def received_state(deps) -> InvoiceState:
 @pytest.fixture
 def received_state_bad_bytes(deps, tmp_path) -> InvoiceState:
     path = tmp_path / "bad.txt"
-    path.write_bytes(b"\xff\xfe\x00bad")
+    path.write_bytes(b"\xff\xfebad")
     source, raw = intake.read_source(path)
     return _received(deps.conn, source, raw)
 
@@ -321,3 +321,21 @@ def test_service_returns_error_message(tmp_path, monkeypatch):
     assert result.status is RunStatus.failed
     assert result.errors == ["pdf_corrupt"]
     assert result.error_message == msg
+
+
+def test_line_cap_fails_run_and_records_no_version(tmp_path):
+    from invoice_processing.limits import Limits
+    from invoice_processing.service import process_invoice
+    from tests import fixture_factory as ff
+
+    result = process_invoice(
+        ff.txt_with_lines(tmp_path, 3),
+        ExecutionMode.offline,
+        tmp_path / "t.db",
+        EVAL_DATE,
+        limits=Limits(max_lines=2),
+    )
+    assert result.status is RunStatus.failed
+    assert result.errors == ["too_many_lines"]
+    assert result.error_message == "The invoice has 3 lines; the limit is 2."
+    assert result.receipt is None and result.invoice_id is None

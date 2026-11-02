@@ -59,7 +59,7 @@ def process_invoice(
     events: logging.Logger | None = None,
     limits: Limits = DEFAULT_LIMITS,
 ) -> ProcessingResult:
-    source, raw = intake.read_source(path)  # IntakeError propagates; no run is created
+    source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
     if events is None:
         events = observability.configure_events(None)
     provider = get_provider(mode)  # config errors propagate before any run exists

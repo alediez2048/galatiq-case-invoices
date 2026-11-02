@@ -17,6 +17,12 @@ def run(state: InvoiceState, deps: Deps) -> dict:
     with stage_timer() as t:
         try:
             draft = parse_document(state["source"], state["raw"], deps.limits).draft
+            if len(draft.lines) > deps.limits.max_lines:
+                raise ExtractionError(
+                    "too_many_lines",
+                    f"The invoice has {len(draft.lines)} lines; the limit is "
+                    f"{deps.limits.max_lines}.",
+                )
         except ExtractionError as e:
             emit(deps, state, STAGE, "extraction_failed", error_code=e.code)
             update: dict = {

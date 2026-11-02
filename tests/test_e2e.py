@@ -79,7 +79,7 @@ def test_e2e_restart_same_db(tmp_path):
 def test_e2e_corrupt_utf8_fails(tmp_path):
     db, ev = _paths(tmp_path)
     bad = tmp_path / "bad.txt"
-    bad.write_bytes(b"\xff\xfe\x00\xff invalid \x80\x81")
+    bad.write_bytes(b"\xff\xfe\xff invalid \x80\x81")
     proc, out = run_cli(f"--invoice_path={bad}", db=db, events=ev)
     assert proc.returncode == 1
     assert out["status"] == "failed"

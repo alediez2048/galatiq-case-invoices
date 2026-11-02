@@ -45,6 +45,23 @@ Source for every item below: user, 2026-11-01 session. Tracked by [P6-05](ticket
 
 Decisions from earlier rounds that close ticket rows: model disagreement waits for a human (round 3, item 1; row 11), scope cut line (round 3, item 2; row 12), provider adapter stays on `xai_sdk` (round 3, item 3; row 13).
 
+## Round 5 — Answers to the P6-05 questions (2026-11-01, user session)
+
+The user answered: "best practice" for Q1, Q2, Q4, Q5 and Q7; Q6 confirmed as proposed. Q3 (deadline, evaluator machine) stays open.
+
+<a id="d-dual-mode"></a>
+1. **Offline and live modes (Q1).** Ship both, clearly labeled. `offline` stays the default: deterministic, no network, reproducible on any machine, with the reasoning step marked "simulated". `live` (explicit `--mode live` plus an xAI key) is the primary agent demo on real Grok. Both share the same parsers, validation, gate and payment service, so a mode never changes business rules. The README states this interpretation up front.
+<a id="d-live-model-budget"></a>
+2. **Model and live-testing budget (Q2).** The model is never hard-coded: `XAI_MODEL` names it, and the live smoke test (P3-10) records the exact model id, SDK version, calls and token usage in `docs/verification/`. Use the current Grok 4 flagship available to the key at that time. Spend is bounded three ways: ≤ 6 top-level model steps per invoice (enforced in code), one smoke run of about 11 invoices per verification, and a spending limit set in the xAI console before the first live run (recommended USD 10 for P3-10 plus demo rehearsals). The verification record estimates the cost of each run.
+<a id="d-eur"></a>
+3. **EUR and other non-USD currencies (Q4).** Review-only. The amount and currency are preserved, never converted, and the invoice ends `needs_review` (`unsupported_currency`, `non_usd_currency`). Rationale: no trusted exchange-rate source and no non-USD settlement path exist, and silently converting money is the riskier error. A human cannot pay it in this prototype.
+<a id="d-revisions-inventory"></a>
+4. **Revisions and inventory (Q5).** A changed version of an already-paid identity is held for review (`revision_after_payment`) and never paid again; a changed version of an unpaid identity is a `version_conflict` until the corrected-submission flow (P4-05) supersedes it. Inventory is checked per item against current stock, with repeated lines aggregated; there is no reservation and paying does not decrement stock. This is a documented prototype simplification: a production system would reserve stock on approval and decrement it on payment inside the same transaction.
+<a id="d-supersede"></a>
+5. **Corrected submissions (Q6, confirmed as proposed).** A corrected invoice supersedes earlier versions only when none of them is paid, approved or awaiting human approval, and only through an explicit "Add corrected invoice" action with a required reason. A plain upload under the same identity stays a `version_conflict`. P4-05 implements this.
+<a id="d-readme"></a>
+6. **README layout (Q7).** Solution first, assignment preserved: a short summary, quickstart (install, seed, run one invoice, run all samples), the offline/live modes, architecture overview, results table, decisions and limitations links, then the original assignment text unchanged under an "Original assignment" heading at the end. P6-04 implements this.
+
 ## Consequences and verification
 
 - Add a persisted human-approval waiting state and version-bound correction/approval operations.

@@ -12,16 +12,16 @@ Track each item to a recorded resolution in `docs/decisions.md`, or a disclosure
 
 | # | Question | Source | Resolution |
 | --- | --- | --- | --- |
-| 1 | Does an offline simulator plus tested live integration satisfy the brief? | constraints | Disclosed: [limitations 1](../limitations.md#l-offline-vs-llm). Question Q1. |
-| 2 | Grok credentials, model, and live-testing budget | constraints | Partly resolved (key supplied later, only P3-10 waits; [decision 5](../decisions.md#d-speedups)). Model and budget disclosed: [limitations 2](../limitations.md#l-live-credentials). Question Q2. |
+| 1 | Does an offline simulator plus tested live integration satisfy the brief? | constraints | Resolved (best practice, user 2026-11-01): [round 5, item 1](../decisions.md#d-dual-mode); interpretation also disclosed in [limitations 1](../limitations.md#l-offline-vs-llm). |
+| 2 | Grok credentials, model, and live-testing budget | constraints | Resolved (best practice, user 2026-11-01): [round 5, item 2](../decisions.md#d-live-model-budget); key supplied later, only P3-10 waits ([decision 5](../decisions.md#d-speedups)). |
 | 3 | Deadline and target evaluator machine | constraints | Disclosed: [limitations 3](../limitations.md#l-deadline). Question Q3. |
-| 4 | EUR settlement vs review-only | constraints | Disclosed (review-only assumed): [limitations 4](../limitations.md#l-eur). Question Q4. |
+| 4 | EUR settlement vs review-only | constraints | Resolved review-only (best practice, user 2026-11-01): [round 5, item 3](../decisions.md#d-eur). |
 | 5 | Actual PDF extraction vs generator source | constraints (resolved by P2-07 if no divergence) | Resolved: [decision 3](../decisions.md#d-pdf); [limitations 5](../limitations.md#l-pdf). |
-| 6 | Evaluator view on revision handling and inventory semantics | constraints | Disclosed: [limitations 6](../limitations.md#l-revisions). Question Q5. |
+| 6 | Evaluator view on revision handling and inventory semantics | constraints | Resolved (best practice, user 2026-11-01): [round 5, item 4](../decisions.md#d-revisions-inventory); simplification disclosed in [limitations 6](../limitations.md#l-revisions). |
 | 7 | Default CLI mode when `--mode` is omitted | P1-09 | Resolved `offline`, user 2026-11-01: [decision 1](../decisions.md#d-cli-mode). |
 | 8 | INV-1012 auto-pay vs always review | P2-11 | Resolved auto-pay `paid_mock`, user 2026-11-01: [decision 2](../decisions.md#d-inv1012). |
-| 9 | How corrected submissions supersede unpaid versions | P4-05 | Disclosed (recommendation as working assumption): [limitations 9](../limitations.md#l-supersede). Question Q6. |
-| 10 | README layout for solution vs assignment | P6-04 | Disclosed: [limitations 10](../limitations.md#l-readme). Question Q7. |
+| 9 | How corrected submissions supersede unpaid versions | P4-05 | Resolved, confirmed by user 2026-11-01: [round 5, item 5](../decisions.md#d-supersede). |
+| 10 | README layout for solution vs assignment | P6-04 | Resolved (best practice, user 2026-11-01): [round 5, item 6](../decisions.md#d-readme). |
 | 11 | Model disagrees with a clean invoice → `awaiting_human_approval` | **Resolved 2026-11-01** (decisions.md round 3) | Resolved: [round 3, item 1](../decisions.md#round-3--plan-review-2026-11-01). |
 | 12 | Scope cut line (core vs deferred) | **Resolved 2026-11-01** (tickets index) | Resolved: [round 3, item 2](../decisions.md#round-3--plan-review-2026-11-01); tickets index. |
 | 13 | Provider adapter: official `xai_sdk` vs OpenAI-compatible client | **Resolved 2026-11-01**: keep `xai_sdk` | Resolved: [round 3, item 3](../decisions.md#round-3--plan-review-2026-11-01). |
@@ -32,14 +32,14 @@ Track each item to a recorded resolution in `docs/decisions.md`, or a disclosure
 ## Acceptance criteria
 
 - [x] Every row has a resolution or a published disclosure (Resolution column).
-- [ ] Drafted questions answered by the user; answers recorded in `docs/decisions.md` and the matching limitation updated or removed. The ticket closes then.
-- [ ] `docs/decisions.md` updated with any new decisions and their dates.
+- [ ] Drafted questions answered by the user; answers recorded in `docs/decisions.md` and the matching limitation updated or removed. Q1, Q2, Q4, Q5, Q6, Q7 answered 2026-11-01 ([round 5](../decisions.md#round-5--answers-to-the-p6-05-questions-2026-11-01-user-session)); only Q3 (deadline, evaluator machine) remains, so the ticket stays open.
+- [x] `docs/decisions.md` updated with any new decisions and their dates (rounds 4 and 5).
 
 Also recorded 2026-11-01 (user): process choices (subagent-driven, merge to main without PRs) and the Phase 3–6 speed-ups, in [decisions round 4](../decisions.md#round-4--open-question-resolution-2026-11-01-user-session); INV-1007's 110.00 total discrepancy, [decision 6](../decisions.md#d-inv1007).
 
 ## Questions to send (needs user approval)
 
-Nothing below has been sent. Each can go to the evaluator or case contact once the user approves the wording; Q2 and Q3 are for the user.
+Nothing below has been sent. Answered by the user 2026-11-01: Q1, Q2, Q4, Q5, Q7 (best practice) and Q6 (confirmed) — see decisions round 5. Still open: Q3. Each can go to the evaluator or case contact once the user approves the wording; Q2 and Q3 are for the user.
 
 - **Q1 (row 1, evaluator):** "The brief asks for LLM-based reasoning and also says the prototype must not depend on external APIs at runtime. We provide an `offline` mode (deterministic rules plus a clearly labeled simulated reasoning step, no network) and a separate `live` mode that calls Grok when an xAI key is supplied. Is that an acceptable reading, or do you expect real model inference with no network (e.g. a local model)?"
 - **Q2 (row 2, user):** "Which Grok model should the live mode use, and what is the maximum spend you allow for live testing (P3-10 and the live demo)? Current plan: you supply the xAI key later and only the smoke test waits on it."

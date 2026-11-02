@@ -2,7 +2,7 @@
 
 Work items derived from the [PRD](../PRD.md). One file per ticket, named `P<phase>-<number>-<slug>.md`. Requirement IDs (A01, P02, …) refer to [requirements.md](../requirements.md).
 
-Status values: `todo`, `in progress`, `blocked`, `done`. Update the status line in the ticket file and in the index below together.
+Status values: `todo`, `in progress`, `blocked`, `done`. Update the status line in the ticket file and in the index below together. Each ticket link is tagged (complete) when its status is `done` and (pending) otherwise.
 
 ## Phase 0 — Foundations
 
@@ -10,14 +10,14 @@ Goal: a scaffolded repository with contracts and storage in place. Exit criteria
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P0-01](P0-01-project-scaffolding.md) | Project scaffolding and tooling | — | done |
-| [P0-02](P0-02-money-and-currency.md) | Money and currency primitives | P0-01 | done |
-| [P0-03](P0-03-data-contracts.md) | Core Pydantic data contracts | P0-02 | done |
-| [P0-04](P0-04-sqlite-schema.md) | SQLite schema and storage module | P0-01 | done |
-| [P0-05](P0-05-inventory-seed.md) | Idempotent inventory seed | P0-04 | done |
-| [P0-06](P0-06-required-field-checks.md) | Required-field and value-sign checks | P0-03 | done |
-| [P0-07](P0-07-arithmetic-reconciliation.md) | Arithmetic reconciliation | P0-02, P0-03 | done |
-| [P0-08](P0-08-aggregation-and-inventory-check.md) | Item aggregation and inventory comparison | P0-03, P0-05 | done |
+| [P0-01](P0-01-project-scaffolding.md) (complete) | Project scaffolding and tooling | — | done |
+| [P0-02](P0-02-money-and-currency.md) (complete) | Money and currency primitives | P0-01 | done |
+| [P0-03](P0-03-data-contracts.md) (complete) | Core Pydantic data contracts | P0-02 | done |
+| [P0-04](P0-04-sqlite-schema.md) (complete) | SQLite schema and storage module | P0-01 | done |
+| [P0-05](P0-05-inventory-seed.md) (complete) | Idempotent inventory seed | P0-04 | done |
+| [P0-06](P0-06-required-field-checks.md) (complete) | Required-field and value-sign checks | P0-03 | done |
+| [P0-07](P0-07-arithmetic-reconciliation.md) (complete) | Arithmetic reconciliation | P0-02, P0-03 | done |
+| [P0-08](P0-08-aggregation-and-inventory-check.md) (complete) | Item aggregation and inventory comparison | P0-03, P0-05 | done |
 
 Suggested order: P0-01 → P0-02 and P0-04 in parallel → P0-03 and P0-05 → P0-06, P0-07, P0-08.
 
@@ -29,20 +29,20 @@ Goal: INV-1001 TXT flows through the CLI to a persisted mock receipt in offline 
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P1-01](P1-01-source-intake-and-txt-extraction.md) | Source intake and clean TXT extraction | P0-03 | done |
-| [P1-02](P1-02-ledger-writes.md) | Ledger writes and audit events | P0-03, P0-04 | done |
-| [P1-03](P1-03-reasoning-interface-and-offline-simulator.md) | Reasoning interface and offline simulator | P0-03 | done |
-| [P1-04](P1-04-eligibility-policy-gate.md) | Deterministic eligibility policy gate | P0-02, P0-03 | done |
-| [P1-05](P1-05-guarded-mock-payment-service.md) | Guarded, idempotent mock payment service | P0-04, P1-02, P1-04 | done |
-| [P1-06](P1-06-agent-nodes.md) | Ingestion, validation, approval, and payment agent nodes | P1-01, P1-03, P1-04, P1-05, P0-06–P0-08 | done |
-| [P1-07](P1-07-workflow-and-processing-service.md) | LangGraph workflow and shared processing service | P1-02, P1-06 | done |
-| [P1-08](P1-08-structured-logging-and-results.md) | Structured logging and result output | P0-01, P0-03 | done |
-| [P1-09](P1-09-cli-entry-point.md) | CLI entry point | P1-07, P1-08 | done |
-| [P1-10](P1-10-phase-1-end-to-end-tests.md) | Phase 1 end-to-end and offline-network tests | P1-09 | done |
+| [P1-01](P1-01-source-intake-and-txt-extraction.md) (complete) | Source intake and clean TXT extraction | P0-03 | done |
+| [P1-02](P1-02-ledger-writes.md) (complete) | Ledger writes and audit events | P0-03, P0-04 | done |
+| [P1-03](P1-03-reasoning-interface-and-offline-simulator.md) (complete) | Reasoning interface and offline simulator | P0-03 | done |
+| [P1-04](P1-04-eligibility-policy-gate.md) (complete) | Deterministic eligibility policy gate | P0-02, P0-03 | done |
+| [P1-05](P1-05-guarded-mock-payment-service.md) (complete) | Guarded, idempotent mock payment service | P0-04, P1-02, P1-04 | done |
+| [P1-06](P1-06-agent-nodes.md) (complete) | Ingestion, validation, approval, and payment agent nodes | P1-01, P1-03, P1-04, P1-05, P0-06–P0-08 | done |
+| [P1-07](P1-07-workflow-and-processing-service.md) (complete) | LangGraph workflow and shared processing service | P1-02, P1-06 | done |
+| [P1-08](P1-08-structured-logging-and-results.md) (complete) | Structured logging and result output | P0-01, P0-03 | done |
+| [P1-09](P1-09-cli-entry-point.md) (complete) | CLI entry point | P1-07, P1-08 | done |
+| [P1-10](P1-10-phase-1-end-to-end-tests.md) (complete) | Phase 1 end-to-end and offline-network tests | P1-09 | done |
 
 Suggested order: P1-01, P1-02, P1-03, P1-04, P1-08 in parallel → P1-05 → P1-06 → P1-07 → P1-09 → P1-10.
 
-Open decision in P1-09: default mode when `--mode` is omitted (recommended: `offline`, clearly labeled).
+Resolved 2026-11-01 (P1-09): the default mode when `--mode` is omitted is `offline`, clearly labeled.
 
 Pulled forward from Phase 2: the recorded USD assumption for invoices without a stated currency (P1-01), because INV-1001 states none and would otherwise be blocked.
 
@@ -52,21 +52,21 @@ Goal: every supplied fixture produces its expected outcome in offline mode. Exit
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P2-01](P2-01-input-limits-and-unsupported-documents.md) | Input limits and unsupported documents | P1-01 | todo |
-| [P2-02](P2-02-txt-labeled-layouts.md) | TXT extraction: labeled layouts, label typos, email bodies | P1-01 | todo |
-| [P2-03](P2-03-txt-table-layouts.md) | TXT extraction: column tables and footer totals | P2-02 | todo |
-| [P2-04](P2-04-json-parser.md) | JSON parser | P1-01 | todo |
-| [P2-05](P2-05-csv-parsers.md) | CSV parsers (field/value and row-table layouts) | P1-01 | todo |
-| [P2-06](P2-06-xml-parser.md) | Hardened XML parser | P1-01 | todo |
-| [P2-07](P2-07-pdf-text-extraction.md) | PDF text extraction | P2-01, P2-03 | todo |
-| [P2-08](P2-08-normalization-rules.md) | Evidence-backed normalization: items, OCR artifacts, identity | P2-02, P2-03 | todo |
-| [P2-09](P2-09-dates-currency-and-terms.md) | Dates, currency, and payment terms | P2-08 | todo |
-| [P2-10](P2-10-duplicates-formats-and-revisions.md) | Duplicates, alternate formats, and revisions | P1-02, P2-04, P2-07, P2-08, P2-09 | todo |
-| [P2-11](P2-11-fixture-acceptance-suite.md) | Fixture acceptance suite | P2-01 – P2-10 | todo |
+| [P2-01](P2-01-input-limits-and-unsupported-documents.md) (pending) | Input limits and unsupported documents | P1-01 | todo |
+| [P2-02](P2-02-txt-labeled-layouts.md) (pending) | TXT extraction: labeled layouts, label typos, email bodies | P1-01 | todo |
+| [P2-03](P2-03-txt-table-layouts.md) (pending) | TXT extraction: column tables and footer totals | P2-02 | todo |
+| [P2-04](P2-04-json-parser.md) (pending) | JSON parser | P1-01 | todo |
+| [P2-05](P2-05-csv-parsers.md) (pending) | CSV parsers (field/value and row-table layouts) | P1-01 | todo |
+| [P2-06](P2-06-xml-parser.md) (pending) | Hardened XML parser | P1-01 | todo |
+| [P2-07](P2-07-pdf-text-extraction.md) (pending) | PDF text extraction | P2-01, P2-03 | todo |
+| [P2-08](P2-08-normalization-rules.md) (pending) | Evidence-backed normalization: items, OCR artifacts, identity | P2-02, P2-03 | todo |
+| [P2-09](P2-09-dates-currency-and-terms.md) (pending) | Dates, currency, and payment terms | P2-08 | todo |
+| [P2-10](P2-10-duplicates-formats-and-revisions.md) (pending) | Duplicates, alternate formats, and revisions | P1-02, P2-04, P2-07, P2-08, P2-09 | todo |
+| [P2-11](P2-11-fixture-acceptance-suite.md) (pending) | Fixture acceptance suite | P2-01 – P2-10 | todo |
 
 Suggested order: P2-01, P2-02, P2-04, P2-05, P2-06 in parallel → P2-03 → P2-07 and P2-08 → P2-09 → P2-10 → P2-11.
 
-Open decision in P2-11: whether INV-1012 (all corrections rule-backed, USD 9,975.00) should auto-pay or always stop at `needs_review`.
+Resolved 2026-11-01 (P2-11): INV-1012 (all corrections rule-backed, USD 9,975.00) auto-pays as `paid_mock`.
 
 Refines Phase 1: P2-10 narrows the P1-02 semantic hash to payable content only, because 1011 PDF omits the subtotal/tax lines its TXT twin states.
 
@@ -78,16 +78,16 @@ Prerequisite: xAI credentials, a confirmed model, and a live-testing budget. Onl
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P3-01](P3-01-live-mode-configuration.md) | Live mode configuration and credentials | P1-03, P1-09 | todo |
-| [P3-02](P3-02-xai-reasoning-adapter.md) | xAI reasoning adapter | P1-03, P3-01 | todo |
-| [P3-03](P3-03-tool-registry-and-dispatcher.md) | Whitelisted tool registry and dispatcher | P0-08, P1-02, P1-06 | todo |
-| [P3-04](P3-04-model-call-budget.md) | Bounded agent loops and per-invoice model budget | P1-07, P3-02, P3-03 | todo |
-| [P3-05](P3-05-extraction-assist-and-repair.md) | Model-assisted extraction with one repair retry | P2-08, P3-02 – P3-04 | todo |
-| [P3-06](P3-06-live-approval-and-critique.md) | Live approval recommendation and critique loop | P1-04, P3-02 – P3-04 | todo |
-| [P3-07](P3-07-untrusted-input-safeguards.md) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | todo |
-| [P3-08](P3-08-live-failure-and-explicit-retry.md) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | todo |
-| [P3-09](P3-09-scripted-provider-contract-tests.md) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | todo |
-| [P3-10](P3-10-live-smoke-test-and-verification.md) | Live Grok smoke test and verification record | P3-01 – P3-09 | blocked |
+| [P3-01](P3-01-live-mode-configuration.md) (pending) | Live mode configuration and credentials | P1-03, P1-09 | todo |
+| [P3-02](P3-02-xai-reasoning-adapter.md) (pending) | xAI reasoning adapter | P1-03, P3-01 | todo |
+| [P3-03](P3-03-tool-registry-and-dispatcher.md) (pending) | Whitelisted tool registry and dispatcher | P0-08, P1-02, P1-06 | todo |
+| [P3-04](P3-04-model-call-budget.md) (pending) | Bounded agent loops and per-invoice model budget | P1-07, P3-02, P3-03 | todo |
+| [P3-05](P3-05-extraction-assist-and-repair.md) (pending) | Model-assisted extraction with one repair retry | P2-08, P3-02 – P3-04 | todo |
+| [P3-06](P3-06-live-approval-and-critique.md) (pending) | Live approval recommendation and critique loop | P1-04, P3-02 – P3-04 | todo |
+| [P3-07](P3-07-untrusted-input-safeguards.md) (pending) | Untrusted invoice text and prompt-injection safeguards | P3-05, P3-06 | todo |
+| [P3-08](P3-08-live-failure-and-explicit-retry.md) (pending) | Live failure handling and explicit retry | P1-07, P3-02, P3-04 | todo |
+| [P3-09](P3-09-scripted-provider-contract-tests.md) (pending) | Scripted fake provider and live-path contract tests | P3-02 – P3-08 | todo |
+| [P3-10](P3-10-live-smoke-test-and-verification.md) (pending) | Live Grok smoke test and verification record | P3-01 – P3-09 | blocked |
 
 Suggested order: P3-01 and P3-03 in parallel → P3-02 → P3-04 → P3-05, P3-06, P3-08 in parallel → P3-07 → P3-09 → P3-10.
 
@@ -101,13 +101,13 @@ Goal: corrections and high-value approvals work end to end through the shared se
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P4-01](P4-01-versioning-and-review-contracts.md) | Invoice versioning and review contracts | P0-04, P2-10 | todo |
-| [P4-02](P4-02-evidence-backed-corrections.md) | Evidence-backed correction and revalidation | P1-07, P3-05, P4-01 | todo |
-| [P4-03](P4-03-identity-corrections-and-duplicate-safety.md) | Identity corrections and duplicate safety | P2-10, P4-02 | todo |
-| [P4-04](P4-04-human-approval-for-high-value.md) | Human approval for high-value invoices | P1-05, P3-06, P4-01 | todo |
-| [P4-05](P4-05-review-queue-and-corrected-submissions.md) | Review queue and corrected-invoice submissions | P4-02, P4-04 | todo |
-| [P4-06](P4-06-review-cli.md) | Review CLI | P4-02 – P4-05 | todo |
-| [P4-07](P4-07-review-acceptance-tests.md) | Review workflow acceptance fixtures and tests | P4-01 – P4-06 | todo |
+| [P4-01](P4-01-versioning-and-review-contracts.md) (pending) | Invoice versioning and review contracts | P0-04, P2-10 | todo |
+| [P4-02](P4-02-evidence-backed-corrections.md) (pending) | Evidence-backed correction and revalidation | P1-07, P3-05, P4-01 | todo |
+| [P4-03](P4-03-identity-corrections-and-duplicate-safety.md) (pending) | Identity corrections and duplicate safety | P2-10, P4-02 | todo |
+| [P4-04](P4-04-human-approval-for-high-value.md) (pending) | Human approval for high-value invoices | P1-05, P3-06, P4-01 | todo |
+| [P4-05](P4-05-review-queue-and-corrected-submissions.md) (pending) | Review queue and corrected-invoice submissions | P4-02, P4-04 | todo |
+| [P4-06](P4-06-review-cli.md) (pending) | Review CLI | P4-02 – P4-05 | todo |
+| [P4-07](P4-07-review-acceptance-tests.md) (pending) | Review workflow acceptance fixtures and tests | P4-01 – P4-06 | todo |
 
 Suggested order: P4-01 → P4-02 and P4-04 in parallel → P4-03 and P4-05 → P4-06 → P4-07.
 
@@ -119,16 +119,16 @@ Goal: the approved mockup becomes a working React + TypeScript app backed by Fas
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P5-01](P5-01-fastapi-app-skeleton.md) | FastAPI application skeleton | P1-07, P2-11, P3-08 (retry only) | todo |
-| [P5-02](P5-02-submission-and-progress-endpoints.md) | Submission and processing-progress endpoints | P2-01, P5-01 | todo |
-| [P5-03](P5-03-read-and-dashboard-endpoints.md) | Invoice, detail, and dashboard read endpoints | P5-01 | todo |
-| [P5-04](P5-04-review-action-endpoints.md) | Review action endpoints | P4-02 – P4-05, P5-01 | todo |
-| [P5-05](P5-05-frontend-scaffold-and-app-frame.md) | Frontend scaffold, design tokens, and app frame | P5-01 | todo |
-| [P5-06](P5-06-overview-and-invoice-list.md) | Empty workspace, overview, and invoice list | P5-03, P5-05 | todo |
-| [P5-07](P5-07-add-invoice-and-processing.md) | Add invoice and processing views | P5-02, P5-05 | todo |
-| [P5-08](P5-08-invoice-detail-and-states.md) | Invoice detail and outcome states | P5-03, P5-05 | todo |
-| [P5-09](P5-09-needs-review-and-actions.md) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | todo |
-| [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | todo |
+| [P5-01](P5-01-fastapi-app-skeleton.md) (pending) | FastAPI application skeleton | P1-07, P2-11, P3-08 (retry only) | todo |
+| [P5-02](P5-02-submission-and-progress-endpoints.md) (pending) | Submission and processing-progress endpoints | P2-01, P5-01 | todo |
+| [P5-03](P5-03-read-and-dashboard-endpoints.md) (pending) | Invoice, detail, and dashboard read endpoints | P5-01 | todo |
+| [P5-04](P5-04-review-action-endpoints.md) (pending) | Review action endpoints | P4-02 – P4-05, P5-01 | todo |
+| [P5-05](P5-05-frontend-scaffold-and-app-frame.md) (pending) | Frontend scaffold, design tokens, and app frame | P5-01 | todo |
+| [P5-06](P5-06-overview-and-invoice-list.md) (pending) | Empty workspace, overview, and invoice list | P5-03, P5-05 | todo |
+| [P5-07](P5-07-add-invoice-and-processing.md) (pending) | Add invoice and processing views | P5-02, P5-05 | todo |
+| [P5-08](P5-08-invoice-detail-and-states.md) (pending) | Invoice detail and outcome states | P5-03, P5-05 | todo |
+| [P5-09](P5-09-needs-review-and-actions.md) (pending) | Needs-review queue, corrections, and approvals UI | P5-04, P5-08 | todo |
+| [P5-10](P5-10-accessibility-responsive-and-browser-tests.md) (pending) | Accessibility, responsive layout, and browser test suite | P5-06 – P5-09 | todo |
 
 Suggested order: P5-01 → P5-02, P5-03, P5-05 in parallel → P5-06, P5-07, P5-08 in parallel (these need only Phase 2, so they can run alongside Phases 3–4) → P5-04 and P5-09 after Phase 4 → P5-10.
 
@@ -140,12 +140,12 @@ Goal: a reproducible, documented public submission. Exit criteria: clean-install
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P6-01](P6-01-robustness-test-campaign.md) | Robustness test campaign | P2-11, P3-09, P4-07, P5-10 | todo |
-| [P6-02](P6-02-audit-trail-completeness.md) | Audit trail completeness and export | P4-07, P5-03 | todo |
-| [P6-03](P6-03-demo-setup-and-walkthrough.md) | Demo setup and evaluator walkthrough | P5-10 (offline half); P3-10 (live half) | todo |
-| [P6-04](P6-04-submission-documentation.md) | Submission documentation and business-impact narrative | P2-11, P6-03 offline half | todo |
-| [P6-05](P6-05-open-question-resolution.md) | Resolve or disclose open questions | — | todo |
-| [P6-06](P6-06-release-checks-and-publish.md) | Release checks and public GitHub submission | P6-01 – P6-05 | todo |
+| [P6-01](P6-01-robustness-test-campaign.md) (pending) | Robustness test campaign | P2-11, P3-09, P4-07, P5-10 | todo |
+| [P6-02](P6-02-audit-trail-completeness.md) (pending) | Audit trail completeness and export | P4-07, P5-03 | todo |
+| [P6-03](P6-03-demo-setup-and-walkthrough.md) (pending) | Demo setup and evaluator walkthrough | P5-10 (offline half); P3-10 (live half) | todo |
+| [P6-04](P6-04-submission-documentation.md) (pending) | Submission documentation and business-impact narrative | P2-11, P6-03 offline half | todo |
+| [P6-05](P6-05-open-question-resolution.md) (pending) | Resolve or disclose open questions | — | todo |
+| [P6-06](P6-06-release-checks-and-publish.md) (pending) | Release checks and public GitHub submission | P6-01 – P6-05 | todo |
 
 Suggested order: P6-05 can start now → P6-01 and P6-02 in parallel → P6-03 → P6-04 → P6-06.
 
@@ -168,7 +168,7 @@ An independent review of all 62 tickets produced 24 findings; every fixture valu
 
 ## All open decisions
 
-Collected in [P6-05](P6-05-open-question-resolution.md): default CLI mode (P1-09), INV-1012 auto-pay (P2-11), corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics). Resolved 2026-11-01: model disagreement routes to human approval; scope cut line adopted; provider adapter stays on the official `xai_sdk`.
+Collected in [P6-05](P6-05-open-question-resolution.md): corrected-submission supersede rule (P4-05), README layout (P6-04), plus the constraints document's open questions (offline/LLM interpretation, credentials and budget, deadline, EUR, revision semantics). Resolved 2026-11-01: default CLI mode is `offline` (P1-09); INV-1012 auto-pays (P2-11); model disagreement routes to human approval; scope cut line adopted; provider adapter stays on the official `xai_sdk`.
 
 ## Phase 1 carry-overs (recorded 2026-11-01)
 

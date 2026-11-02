@@ -5,6 +5,7 @@ normalized invoices carry typed values. Money fields serialize as decimal string
 """
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -153,6 +154,8 @@ class ApprovalDecision(Contract):
     mode: ExecutionMode
     provider: str | None = None
     model: str | None = None
+    prompt_version: str | None = None
+    model_calls_used: int = 0
 
 
 class MockReceipt(Contract):
@@ -162,25 +165,72 @@ class MockReceipt(Contract):
     paid_at: datetime
 
 
-class ApprovalRecommendation(Contract):
+class RecommendationOutput(Contract):
+    """What a live model returns for recommend/revise; provenance is added locally."""
+
     recommendation: Recommendation
     reasons: list[str]
     cited_codes: list[FindingCode]
     summary: str
-    mode: ExecutionMode
-    provider: str
-    model: str
 
 
-class Critique(Contract):
+class CritiqueOutput(Contract):
+    """What a live model returns for critique; provenance is added locally."""
+
     agrees: bool
     omissions: list[FindingCode]
     high_value: bool
     revised_recommendation: Recommendation | None
     summary: str
+
+
+class ApprovalRecommendation(RecommendationOutput):
     mode: ExecutionMode
     provider: str
     model: str
+
+
+class Critique(CritiqueOutput):
+    mode: ExecutionMode
+    provider: str
+    model: str
+
+
+class SourceExcerpt(Contract):
+    location: str  # an evidence location such as "line:9"
+    text: str
+
+
+class ExtractionAssistRequest(Contract):
+    """Bounded context for one extraction-assist step: never the whole source by default."""
+
+    issues: list[str]  # finding codes plus the affected field, e.g. "missing_vendor:vendor"
+    excerpts: list[SourceExcerpt] = Field(default_factory=list)
+    known_items: list[str] = Field(default_factory=list)
+
+
+ProposalField = Literal[
+    "vendor",
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "currency",
+    "subtotal",
+    "tax",
+    "shipping",
+    "total",
+]
+
+
+class FieldProposal(Contract):
+    field: ProposalField
+    value: str
+    quote: str  # verbatim source text supporting the value
+    location: str
+
+
+class ExtractionProposals(Contract):
+    proposals: list[FieldProposal] = Field(default_factory=list)
 
 
 class GateResult(Contract):
@@ -218,6 +268,10 @@ class ProcessingResult(Contract):
     prior_run_id: str | None = None
     evaluation_date: date | None = None
     error_message: str | None = None
+    model_calls_used: int = 0
+    model_calls_budget: int | None = None
+    recoverable: bool = False
+    next_actions: list[str] = Field(default_factory=list)
 
 
 class AggregatedItem(Contract):

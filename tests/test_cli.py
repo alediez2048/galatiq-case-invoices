@@ -1,12 +1,15 @@
 import json
+import sqlite3
 from pathlib import Path
 
+import grpc
 import main
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
 INVOICE = "data/invoices/invoice_1001.txt"
+SENTINEL = "sk-SENTINEL-123"
 
 
 def _args(tmp_path, *extra, invoice=INVOICE, flag="--invoice_path"):
@@ -62,18 +65,35 @@ def test_live_mode_without_env_names_variable_and_touches_nothing(tmp_path, caps
     assert "XAI_API_KEY" in err and not (tmp_path / "i.db").exists()
 
 
-def test_live_mode_never_leaks_key(tmp_path, capsys, monkeypatch):
-    # Until Task 2 lands the live provider, get_provider raises after settings load, so the
-    # "Mode: live model (...)" banner (printed only once a provider exists) is not testable yet.
+def test_live_mode_banner_then_clean_failure_never_leaks_key(tmp_path, capsys, monkeypatch):
+    # The real client is swapped for a scripted one that fails like a blocked network: the
+    # Python-level guard cannot stop gRPC's C-core sockets, so the real client must never send.
+    from invoice_processing.reasoning import xai
+    from tests.fakes.xai_client import FakeXaiClient, Raise
+
+    built = []
+
+    def offline_factory(settings):
+        built.append(settings.model)
+        return FakeXaiClient([Raise(grpc.StatusCode.UNAVAILABLE, details=f"Bearer {SENTINEL}")] * 2)
+
+    monkeypatch.setattr(xai, "real_client_factory", offline_factory)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("XAI_API_KEY", "sk-SENTINEL-123")
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
     monkeypatch.setenv("XAI_MODEL", "grok-test")
+    monkeypatch.setenv("INVOICE_NETWORK_GUARD", "1")
     code = main.main(_args(tmp_path, "--mode=live", invoice=str(ROOT / INVOICE)))
     out, err = capsys.readouterr()
-    assert code == 2
-    assert "arrives in Task 2" in err
-    assert "sk-SENTINEL-123" not in out + err
-    assert not (tmp_path / "i.db").exists() and not (tmp_path / "e.jsonl").exists()
+    assert code == 1 and built == ["grok-test"]
+    assert "Mode: live model (grok-test)" in err and "sent to xAI" in err
+    assert json.loads(out)["status"] == "failed"
+    events = (tmp_path / "e.jsonl").read_text()
+    assert "ModelError" in events
+    db = sqlite3.connect(tmp_path / "i.db")
+    dumped = "\n".join(map(str, db.iterdump()))
+    db.close()
+    for text in (out, err, events, dumped):
+        assert SENTINEL not in text
 
 
 def test_missing_file_is_usage_error(tmp_path, capsys):

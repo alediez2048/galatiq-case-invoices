@@ -85,6 +85,19 @@ class ExecutionMode(StrEnum):
     live = "live"
 
 
+class ModelErrorCode(StrEnum):
+    """Why a live model step failed. Every one is recoverable: retry or run offline."""
+
+    model_auth_error = "model_auth_error"
+    model_rate_limited = "model_rate_limited"
+    model_timeout = "model_timeout"
+    model_unavailable = "model_unavailable"
+    model_output_invalid = "model_output_invalid"
+    model_refused = "model_refused"
+    model_budget_exhausted = "model_budget_exhausted"
+    model_tool_loop_exceeded = "model_tool_loop_exceeded"
+
+
 class SourceFormat(StrEnum):
     txt = "txt"
     json = "json"

@@ -1,11 +1,16 @@
-"""Deterministic offline stand-in for the reasoning model. Imports no model SDK."""
+"""Deterministic offline stand-in for the reasoning model. Imports no model SDK.
+
+It never charges or records anything on the session it receives (offline uses no budget).
+"""
 
 from invoice_processing.codes import ExecutionMode, FindingCode, Recommendation, Severity
 from invoice_processing.reasoning.base import PolicyContext
+from invoice_processing.reasoning.session import ModelSession
 from invoice_processing.schemas import (
     ApprovalRecommendation,
     Critique,
-    InvoiceDraft,
+    ExtractionAssistRequest,
+    ExtractionProposals,
     NormalizedInvoice,
     ValidationFinding,
 )
@@ -35,12 +40,14 @@ class OfflineSimulator:
     mode = ExecutionMode.offline
     provider = "offline"
     model = "simulated"
+    prompt_version = None
 
     def recommend(
         self,
         invoice: NormalizedInvoice,
         findings: list[ValidationFinding],
         policy: PolicyContext,
+        session: ModelSession,
     ) -> ApprovalRecommendation:
         rec = _rule(findings)
         cited = _cited_codes(findings)
@@ -60,6 +67,7 @@ class OfflineSimulator:
         findings: list[ValidationFinding],
         recommendation: ApprovalRecommendation,
         policy: PolicyContext,
+        session: ModelSession,
     ) -> Critique:
         omissions = [c for c in _cited_codes(findings) if c not in recommendation.cited_codes]
         expected = _rule(findings)
@@ -83,5 +91,29 @@ class OfflineSimulator:
             model=self.model,
         )
 
-    def assist_extraction(self, source_text: str, draft: InvoiceDraft) -> InvoiceDraft:
-        return draft
+    def revise(
+        self,
+        invoice: NormalizedInvoice,
+        findings: list[ValidationFinding],
+        recommendation: ApprovalRecommendation,
+        critique: Critique,
+        policy: PolicyContext,
+        session: ModelSession,
+    ) -> ApprovalRecommendation:
+        rec = critique.revised_recommendation or recommendation.recommendation
+        cited = [*recommendation.cited_codes]
+        cited += [c for c in critique.omissions if c not in cited]
+        return ApprovalRecommendation(
+            recommendation=rec,
+            reasons=[c.value for c in cited],
+            cited_codes=cited,
+            summary=f"{_PREFIX}revised to {rec.value} after critique",
+            mode=self.mode,
+            provider=self.provider,
+            model=self.model,
+        )
+
+    def assist_extraction(
+        self, request: ExtractionAssistRequest, session: ModelSession
+    ) -> ExtractionProposals:
+        return ExtractionProposals(proposals=[])

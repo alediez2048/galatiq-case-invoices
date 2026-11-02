@@ -4,6 +4,7 @@ from invoice_processing import ledger, policy
 from invoice_processing.agents.state import Deps, InvoiceState, emit
 from invoice_processing.codes import RunStatus
 from invoice_processing.observability import stage_timer
+from invoice_processing.reasoning.session import ModelSession
 from invoice_processing.schemas import ApprovalDecision
 
 STAGE = "approval"
@@ -17,8 +18,9 @@ def run(state: InvoiceState, deps: Deps) -> dict:
         findings = list(state.get("findings", []))
         ledger.update_run_status(conn, run_id, RunStatus.approval_pending)
         ctx = policy.context()
+        session = ModelSession.for_provider(provider)
 
-        initial = provider.recommend(invoice, findings, ctx)
+        initial = provider.recommend(invoice, findings, ctx, session)
         emit(
             deps,
             state,
@@ -27,7 +29,7 @@ def run(state: InvoiceState, deps: Deps) -> dict:
             recommendation=initial.recommendation.value,
             codes=initial.cited_codes,
         )
-        critique = provider.critique(invoice, findings, initial, ctx)
+        critique = provider.critique(invoice, findings, initial, ctx, session)
         emit(
             deps,
             state,
@@ -57,6 +59,8 @@ def run(state: InvoiceState, deps: Deps) -> dict:
             mode=provider.mode,
             provider=provider.provider,
             model=provider.model,
+            prompt_version=provider.prompt_version,
+            model_calls_used=session.used,
         )
         ledger.record_decision(conn, run_id, state.get("version_id"), decision)
         status = RunStatus(gate.outcome.value)

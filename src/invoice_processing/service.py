@@ -20,6 +20,7 @@ from invoice_processing.codes import (
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning import ReasoningProvider, get_provider
+from invoice_processing.reasoning.base import NoModelProvider
 from invoice_processing.schemas import ProcessingResult, SourceDocument
 from invoice_processing.storage import connect, init_schema, write_transaction
 from invoice_processing.workflow import build_graph
@@ -357,12 +358,15 @@ def _process(
 
 
 def _invoke(
-    deps: Deps, state: InvoiceState, start: Literal["ingestion", "validation"]
+    deps: Deps,
+    state: InvoiceState,
+    start: Literal["ingestion", "validation"],
+    approval: Literal["agent", "human"] = "agent",
 ) -> InvoiceState:
     # LangSmith tracing is forced off in every mode: invoice bytes must not reach a
     # third-party tracer through LANGSMITH_TRACING/LANGCHAIN_TRACING_V2 by accident.
     with langsmith.tracing_context(enabled=False):
-        return build_graph(deps, start=start).invoke(state)
+        return build_graph(deps, start=start, approval=approval).invoke(state)
 
 
 def _finish(conn: sqlite3.Connection, deps: Deps, state: InvoiceState) -> ProcessingResult:
@@ -421,9 +425,9 @@ def run_existing_version(
     """Execute a review-created run (status `extracted`, attached to its version, carried
     findings recorded) from the validation node on, then finish it like `process_invoice`.
 
-    The caller has committed the run; no transaction is held while the graph runs."""
-    if approval != "agent":
-        raise NotImplementedError("human approval runs arrive with the approve/decline actions")
+    The caller has committed the run; no transaction is held while the graph runs.
+    `approval="human"` (an approve/decline run) resumes the waiting run's decision in the
+    approval node and calls no model: its provider defaults to `NoModelProvider`."""
     if events is None:
         events = observability.configure_events(None)
     conn = connect(db_path)
@@ -432,7 +436,8 @@ def run_existing_version(
         run = ledger.get_run(conn, run_id)
         if run is None or run.status is not RunStatus.extracted or run.version_id is None:
             raise ValueError(f"run {run_id} is not a review run ready for validation")
-        provider = provider or get_provider(run.mode)
+        if provider is None:
+            provider = NoModelProvider(run.mode) if approval == "human" else get_provider(run.mode)
         version = ledger.get_version_by_id(conn, run.version_id)
         source = ledger.get_source(conn, version.source_id)
         deps = Deps(conn=conn, provider=provider, events=events)
@@ -453,7 +458,7 @@ def run_existing_version(
         if run.review_of is not None:
             state["review_of"] = run.review_of
         try:
-            return _finish(conn, deps, _invoke(deps, state, "validation"))
+            return _finish(conn, deps, _invoke(deps, state, "validation", approval))
         except Exception as e:  # as in _process
             return _fail(conn, deps, state, e)
     finally:

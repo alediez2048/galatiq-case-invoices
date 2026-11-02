@@ -12,11 +12,13 @@ from invoice_processing.codes import (
     ExecutionMode,
     FindingCode,
     GateOutcome,
+    HumanReviewAction,
+    Recommendation,
     RunStatus,
     Severity,
 )
 from invoice_processing.reasoning.offline import OfflineSimulator
-from invoice_processing.schemas import ValidationFinding
+from invoice_processing.schemas import HumanReview, ValidationFinding
 
 EVAL_DATE = date(2026, 1, 20)
 INV_1001 = Path("data/invoices/invoice_1001.txt")
@@ -357,3 +359,50 @@ def test_validation_skips_missing_total_when_total_is_unparseable(deps, tmp_path
     got = [(f.code, f.field) for f in update["findings"]]
     assert (FindingCode.unparseable_value, "total") in got
     assert FindingCode.missing_total not in [c for c, _ in got]
+
+
+def test_approval_node_applies_existing_human_approval(deps):
+    # carry-over P4-04: the agent approval node honours a matching approval of this version
+    source, raw = intake.read_source(Path("tests/fixtures/threshold/valid_10000_01.json"))
+    state = _received(deps.conn, source, raw)
+    state = {**state, **ingestion.run(state, deps)}
+    state = {**state, **validation.run(state, deps)}
+    review = HumanReview(
+        invoice_id=state["invoice_id"],
+        version=1,
+        action=HumanReviewAction.approve,
+        reviewer="Ana",
+        reason="Checked against PO",
+        policy_version=policy.POLICY_VERSION,
+    )
+    ledger.record_human_review(deps.conn, review, state["run_id"])
+    update = approval.run(state, deps)
+    assert update["status"] == RunStatus.approved
+    assert update["gate"].rule_ids == ["R4_human_approved"]
+    assert update["decision"].final_decision == GateOutcome.approved
+
+
+def test_approval_node_ignores_approval_of_another_invoice(deps):
+    source, raw = intake.read_source(Path("tests/fixtures/threshold/valid_10000_01.json"))
+    state = _received(deps.conn, source, raw)
+    state = {**state, **ingestion.run(state, deps)}
+    state = {**state, **validation.run(state, deps)}
+    review = HumanReview(
+        invoice_id="inv-other",
+        version=1,
+        action=HumanReviewAction.approve,
+        reviewer="Ana",
+        reason="Wrong invoice",
+        policy_version=policy.POLICY_VERSION,
+    )
+    # get_human_review filters by invoice; the gate check is the second line of defence
+    gate = policy.evaluate(
+        state["invoice"],
+        state["findings"],
+        Recommendation.approve,
+        review,
+        version=1,
+        invoice_id=state["invoice_id"],
+    )
+    assert gate.outcome == GateOutcome.awaiting_human_approval
+    assert approval.run(state, deps)["status"] == RunStatus.awaiting_human_approval

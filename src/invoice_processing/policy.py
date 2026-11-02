@@ -43,7 +43,10 @@ def evaluate(
     human_review: HumanReview | None = None,
     *,
     version: int | None = None,
+    invoice_id: str | None = None,
 ) -> GateResult:
+    """A human review counts only when its invoice, version and policy version all match.
+    Under rule 3 a matching approve approves; a matching decline rejects (Decision 14)."""
     # Rule 1: blockers reject; a human review never clears them.
     if any(f.severity == Severity.blocker for f in findings):
         return GateResult(outcome=GateOutcome.rejected, rule_ids=["R1_blocker"], findings=[])
@@ -61,13 +64,15 @@ def evaluate(
         return GateResult(outcome=GateOutcome.needs_review, rule_ids=rule_ids, findings=added)
 
     # Rule 3: high value or model disagreement requires a matching human approval.
-    approved_by_human = (
+    matching = (
         human_review is not None
-        and human_review.action == HumanReviewAction.approve
         and human_review.policy_version == POLICY_VERSION
         and version is not None
         and human_review.version == version
+        and invoice_id is not None
+        and human_review.invoice_id == invoice_id
     )
+    action = human_review.action if matching else None
     total = invoice.stated.total
     high_value = total is not None and total > HIGH_VALUE_THRESHOLD_USD
     disagreement = recommendation != Recommendation.approve
@@ -77,7 +82,12 @@ def evaluate(
         rule_ids.append("R3_high_value")
     if disagreement:
         rule_ids.append("R3_model_disagreement")
-    if rule_ids and not approved_by_human:
+    if rule_ids and action == HumanReviewAction.decline:
+        added.append(_added(FindingCode.human_declined))
+        return GateResult(
+            outcome=GateOutcome.rejected, rule_ids=["R3_human_declined"], findings=added
+        )
+    if rule_ids and action != HumanReviewAction.approve:
         return GateResult(
             outcome=GateOutcome.awaiting_human_approval, rule_ids=rule_ids, findings=added
         )

@@ -70,8 +70,8 @@ CASES = [
         [],
         "approve",
         HR(action="decline"),
-        "awaiting_human_approval",
-        ["R3_high_value"],
+        "rejected",
+        ["R3_human_declined"],
     ),
     (
         "blocker_approve",
@@ -130,7 +130,9 @@ def _inv(total, currency):
 )
 def test_gate(total, currency, fcodes, rec, hr, outcome, rule_ids):
     findings = [finding(FindingCode(c)) for c in fcodes]
-    result = evaluate(_inv(total, currency), findings, Recommendation(rec), hr, version=1)
+    result = evaluate(
+        _inv(total, currency), findings, Recommendation(rec), hr, version=1, invoice_id="i"
+    )
     assert result.outcome == GateOutcome(outcome)
     assert result.rule_ids == rule_ids
 
@@ -146,7 +148,7 @@ def test_gate_adds_disagreement_and_currency_findings():
     assert r.findings[0].severity == DEFAULT_SEVERITY[FindingCode.model_disagreement]
 
     # disagreement is recorded even when a human approval lets it through
-    r = evaluate(_inv("5000.00", "USD"), [], Recommendation.review, HR(), version=1)
+    r = evaluate(_inv("5000.00", "USD"), [], Recommendation.review, HR(), version=1, invoice_id="i")
     assert r.outcome == GateOutcome.approved
     assert codes(r.findings) == [FindingCode.model_disagreement]
 
@@ -200,3 +202,65 @@ def test_context():
     ctx = context()
     assert ctx.policy_version == POLICY_VERSION == "2026-11-01.1"
     assert ctx.high_value_threshold == HIGH_VALUE_THRESHOLD_USD == Decimal("10000.00")
+
+
+def test_human_review_for_other_invoice_does_not_count():
+    inv = _inv("10000.01", "USD")
+    r = evaluate(inv, [], Recommendation.approve, HR(), version=1, invoice_id="other")
+    assert r.outcome == GateOutcome.awaiting_human_approval
+    assert r.rule_ids == ["R3_high_value"]
+    r = evaluate(inv, [], Recommendation.approve, HR(), version=1)  # no invoice_id given
+    assert r.outcome == GateOutcome.awaiting_human_approval
+
+
+def test_matching_decline_rejects():
+    inv = _inv("10000.01", "USD")
+    r = evaluate(inv, [], Recommendation.approve, HR(action="decline"), version=1, invoice_id="i")
+    assert r.outcome == GateOutcome.rejected
+    assert r.rule_ids == ["R3_human_declined"]
+    assert codes(r.findings) == [FindingCode.human_declined]
+    assert r.findings[0].severity == DEFAULT_SEVERITY[FindingCode.human_declined]
+    # disagreement plus a decline: both findings are recorded
+    r = evaluate(
+        _inv("5000.00", "USD"),
+        [],
+        Recommendation.reject,
+        HR(action="decline"),
+        version=1,
+        invoice_id="i",
+    )
+    assert r.outcome == GateOutcome.rejected
+    assert codes(r.findings) == [FindingCode.model_disagreement, FindingCode.human_declined]
+
+
+def test_decline_never_reached_past_blockers_or_review():
+    blocker = [finding(FindingCode.zero_stock)]
+    r = evaluate(
+        _inv("10000.01", "USD"),
+        blocker,
+        Recommendation.approve,
+        HR(action="decline"),
+        version=1,
+        invoice_id="i",
+    )
+    assert r.rule_ids == ["R1_blocker"] and r.findings == []
+    r = evaluate(
+        _inv("10000.01", "EUR"),
+        [],
+        Recommendation.approve,
+        HR(action="decline"),
+        version=1,
+        invoice_id="i",
+    )
+    assert r.outcome == GateOutcome.needs_review
+
+
+def test_mismatched_decline_does_not_reject():
+    inv = _inv("10000.01", "USD")
+    for hr, kw in [
+        (HR(version=2, action="decline"), {"invoice_id": "i"}),
+        (HR(action="decline", pv="old"), {"invoice_id": "i"}),
+        (HR(action="decline"), {"invoice_id": "other"}),
+    ]:
+        r = evaluate(inv, [], Recommendation.approve, hr, version=1, **kw)
+        assert r.outcome == GateOutcome.awaiting_human_approval

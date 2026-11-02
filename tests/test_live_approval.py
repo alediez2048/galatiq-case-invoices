@@ -216,11 +216,14 @@ def test_reject_on_clean_1001_waits_for_a_human_then_approve_pays(db):
     assert n_payments(db) == 1
 
 
-def test_reject_on_clean_1001_then_decline_is_never_paid(db):
+def test_reject_on_clean_1001_then_decline_rejects_and_is_never_paid(db):
+    # Decision 14: a matching decline is a gate outcome, so a later run of the version rejects
     first, _ = _reject_1001(db)
     provider, _ = provider_with(Parsed(rec("reject")), Parsed(crit()))
     out = _second_run(db, first, provider, "decline")
-    assert out["status"] is RunStatus.awaiting_human_approval
+    assert out["status"] is RunStatus.rejected
+    assert out["decision"].reasons == ["R3_human_declined"]
+    assert FindingCode.human_declined in [f.code for f in out["findings"]]
     assert n_payments(db) == 0
 
 

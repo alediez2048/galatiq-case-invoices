@@ -2,7 +2,8 @@
 
 `pay` is the only caller of `mock_payment`. It rereads persisted state inside one write
 transaction and never trusts in-memory graph state, so it cannot pay a non-approved,
-non-USD or unapproved high-value invoice, and cannot pay the same invoice twice.
+non-USD or unapproved high-value invoice, or a version that is no longer current, and cannot
+pay the same invoice twice.
 """
 
 import sqlite3
@@ -140,6 +141,21 @@ def pay(conn: sqlite3.Connection, invoice_id: str, version_id: str, run_id: str)
             review = ledger.get_human_review(conn, invoice_id, row["version"], POLICY_VERSION)
             if review is None or review.action != HumanReviewAction.approve:
                 raise PaymentNotAuthorized("human_approval_required")
+
+        # Only the invoice's current version can be paid: a superseded version keeps its
+        # recorded approvals, but they no longer authorize anything (Decision 13).
+        current = conn.execute(
+            "SELECT i.current_version, v.version_status FROM invoices i "
+            "JOIN invoice_versions v ON v.invoice_id = i.invoice_id AND v.version_id = ? "
+            "WHERE i.invoice_id = ?",
+            (version_id, invoice_id),
+        ).fetchone()
+        if (
+            current is None
+            or current["current_version"] != row["version"]
+            or current["version_status"] == "superseded"
+        ):
+            raise PaymentNotAuthorized("stale_version")
 
         amount = canonical_amount(total, "USD")
         vendor = invoice.vendor_name or ""

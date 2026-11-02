@@ -6,7 +6,7 @@ Nothing a provider returns can authorize payment: the deterministic gate decides
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol
+from typing import NoReturn, Protocol
 
 from invoice_processing.codes import ExecutionMode
 from invoice_processing.reasoning.session import ModelSession
@@ -64,3 +64,22 @@ class ReasoningProvider(Protocol):
     def assist_extraction(
         self, request: ExtractionAssistRequest, session: ModelSession
     ) -> ExtractionProposals: ...
+
+
+class NoModelProvider:
+    """The provider of a human-review run (Decision 13): it carries the run's mode and makes
+    no model call. Any call is a bug, so every method raises."""
+
+    provider = "none"
+    model = "none"
+    prompt_version: str | None = None
+    extract_prompt_version: str | None = None
+    excerpt_chars = 0
+
+    def __init__(self, mode: ExecutionMode) -> None:
+        self.mode = mode
+
+    def _refuse(self, *args: object, **kwargs: object) -> NoReturn:
+        raise AssertionError("human-review runs make no model calls")
+
+    recommend = critique = revise = assist_extraction = _refuse

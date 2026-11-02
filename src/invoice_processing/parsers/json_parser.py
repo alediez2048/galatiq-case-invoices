@@ -1,6 +1,7 @@
 """JSON invoice parser. Numbers are parsed as Decimal so money never passes through float."""
 
 import json
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from typing import Any
 
@@ -41,21 +42,30 @@ _LINE_FIELDS = {
 _KNOWN_TOP = {k for keys in _TOP_FIELDS.values() for k in keys} | {"vendor", "line_items"}
 _ABSENT = object()
 
+_Scalar = Callable[[Any, str], str | None]
+_Ref = Callable[[str, Any], EvidenceRef]
+_Issue = Callable[[FindingCode, str, str, Any], None]
+
 
 def _reject_constant(name: str) -> Any:
     raise ValueError(f"{name} is not valid JSON")
 
 
 def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
-    duplicates: list[str] = []
+    # Objects that had repeated keys, held by reference so ids cannot be reused.
+    with_duplicates: dict[int, tuple[dict[str, Any], list[str]]] = {}
 
     def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         out: dict[str, Any] = {}
+        repeated: list[str] = []
         for key, value in pairs:
             if key in out:
-                duplicates.append(key)
+                if key not in repeated:
+                    repeated.append(key)
             else:
                 out[key] = value
+        if repeated:
+            with_duplicates[id(out)] = (out, repeated)
         return out
 
     try:
@@ -94,12 +104,13 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
         text = str(value)
         return text if text.strip() else None
 
-    for key in dict.fromkeys(duplicates):
-        issue(
-            "duplicate_field",
-            f"Key '{key}' appears more than once; the first value is used.",
-            f"$.{key}",
-        )
+    if with_duplicates:
+        for path, key in _duplicate_paths(doc, with_duplicates, "$"):
+            issue(
+                "duplicate_field",
+                f"Key '{key}' appears more than once; the first value is used.",
+                f"{path}.{key}",
+            )
 
     for field, keys in _TOP_FIELDS.items():
         for key in keys:
@@ -122,7 +133,22 @@ def parse_json(source: SourceDocument, data: bytes) -> InvoiceDraft:
     return draft
 
 
-def _vendor(doc: dict[str, Any], draft: InvoiceDraft, scalar, ref) -> None:
+def _duplicate_paths(
+    node: Any, registry: dict[int, tuple[dict[str, Any], list[str]]], path: str
+) -> Iterator[tuple[str, str]]:
+    """Yield (object path, repeated key) for every object in the tree that had repeats."""
+    if isinstance(node, dict):
+        if id(node) in registry:
+            for key in registry[id(node)][1]:
+                yield path, key
+        for key, child in node.items():
+            yield from _duplicate_paths(child, registry, f"{path}.{key}")
+    elif isinstance(node, list):
+        for i, child in enumerate(node):
+            yield from _duplicate_paths(child, registry, f"{path}[{i}]")
+
+
+def _vendor(doc: dict[str, Any], draft: InvoiceDraft, scalar: _Scalar, ref: _Ref) -> None:
     if "vendor" not in doc:
         return
     vendor = doc["vendor"]
@@ -142,7 +168,7 @@ def _vendor(doc: dict[str, Any], draft: InvoiceDraft, scalar, ref) -> None:
         draft.field_evidence.setdefault("vendor", []).append(ref("$.vendor", vendor))
 
 
-def _lines(doc: dict[str, Any], draft: InvoiceDraft, scalar, issue) -> None:
+def _lines(doc: dict[str, Any], draft: InvoiceDraft, scalar: _Scalar, issue: _Issue) -> None:
     if "line_items" not in doc:
         return
     items = doc["line_items"]

@@ -58,6 +58,19 @@ def test_duplicate_and_unknown_keys(tmp_path):
     x = _parse(tmp_path, '{"invoice_number": "A", "invoice_number": "B", "po": "X"}')
     assert x.invoice_number_raw == "A"
     assert sorted(i.code for i in x.issues) == ["duplicate_field", "unrecognized_field"]
+    dup = next(i for i in x.issues if i.code == "duplicate_field")
+    assert dup.evidence[0].location == "$.invoice_number"
+
+
+def test_nested_duplicate_key_uses_real_path(tmp_path):
+    x = _parse(
+        tmp_path,
+        '{"line_items": [{"item": "A", "quantity": 1}, {"item": "B", "quantity": 2},'
+        ' {"item": "C", "quantity": 3, "quantity": 9}], "vendor": {"name": "V", "name": "W"}}',
+    )
+    assert x.lines[2].quantity_raw == "3" and x.vendor_raw == "V"
+    locs = sorted(i.evidence[0].location for i in x.issues if i.code == "duplicate_field")
+    assert locs == ["$.line_items[2].quantity", "$.vendor.name"]
 
 
 def test_invalid_json(tmp_path):

@@ -177,7 +177,10 @@ npm run typecheck
 npm run lint
 npm test           # Vitest + Testing Library, fixture data only
 npm run build      # dist/, then checks the bundle references no external origin and no test fixtures
+npm run test:e2e   # Playwright: builds into frontend/dist, then runs against e2e/serve.py
 ```
+
+`npm run test:e2e` needs `npm ci` first (and `npx playwright install chromium` once per machine). It overwrites `frontend/dist` with a fresh build and serves it from a throwaway offline database in a temp directory (`e2e/serve.py`, on `127.0.0.1:18765`), so it never touches `inventory.db` or `data/invoices/`.
 
 `VITE_MOCK_API=1 npm run dev` serves the UI against the test fixtures without a backend (dev server only; `import.meta.env.DEV` removes it from builds, and `npm run build` fails if fixture data leaks into `dist/`).
 

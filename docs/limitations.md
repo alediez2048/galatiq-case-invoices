@@ -68,6 +68,19 @@ Resolved: pays as `paid_mock` ([decisions](decisions.md#d-inv1012)). Residual li
 - **Decided 2026-11-01** ([decisions round 5, item 6](decisions.md#d-readme)): solution section on top with the original assignment text preserved below. Decided in P6-04 once the user answers.
 - **Consequence:** purely presentational; the assignment text is not altered either way.
 
+<a id="l-web-security"></a>
+## 11. Local web security
+
+- **Threat model:** the API has no authentication and listens on loopback only. The attacker considered is a web page open in a browser on the same machine (cross-site requests, DNS rebinding, a malicious uploaded file opened on the app's origin). Other local processes and users are trusted; anyone who can run `curl` against `127.0.0.1` can use the API as the operator can.
+- **What is checked** (`src/invoice_processing/api.py`, tests in `tests/test_api_security.py`):
+  - **Host:** only `127.0.0.1`, `localhost` and `::1` are served (`TrustedHostMiddleware`, 400 otherwise), which stops DNS rebinding. Tests add `testserver` (TestClient) through `ApiSettings.allowed_hosts`; the default never includes it.
+  - **Origin:** a POST/PUT/PATCH/DELETE under `/api` that carries an `Origin` header must come from the page's own origin or the Vite dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`); anything else, including `null`, is 403 `forbidden_origin`. Requests without `Origin` (curl, scripts) are not browser cross-site requests and pass.
+  - **Content-Type:** JSON routes accept only `application/json` and uploads only `multipart/form-data` (415 otherwise), so a `text/plain` "simple" request cannot reach a handler.
+  - **Idempotency-Key** is required on every POST. A custom header forces a CORS preflight, which a foreign origin fails. On `POST /api/runs` the key is bound to mode, evaluation date and sample name or upload hash; another request under the same key is 422 `idempotency_key_reused`.
+  - **Original files:** `GET /api/sources/{id}/original` sends `Content-Security-Policy: sandbox; default-src 'none'` and `X-Content-Type-Options: nosniff`. A PDF is served inline (the UI embeds it); every other format is served as `text/plain` with `Content-Disposition: attachment`, and only PDFs get an `original_url`.
+  - **Limits and errors:** JSON bodies up to 64 KiB, multipart bodies up to the file cap plus 1 MiB with at most 16 parts (413/422). A malformed multipart body is a 422 envelope, and an unexpected error is `{code: "internal_error"}` with no exception text or paths. Readiness reports the database file name, not its path.
+- **Not covered:** no authentication or CSRF token, no TLS, no rate limiting. `--allow-public-bind` removes the loopback assumption, and these checks are not enough for a shared network.
+
 ## Other known limits
 
 - Local single operator, serialized processing, no authentication; reviewer identity is recorded for audit only ([constraints](contraints.md)).

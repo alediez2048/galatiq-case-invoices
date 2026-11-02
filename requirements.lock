@@ -14,10 +14,18 @@ certifi==2026.10.23
     #   httpx
     #   langchain-core
     #   requests
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+    # via cryptography
 charset-normalizer==3.5.2
-    # via requests
+    # via
+    #   pdfminer-six
+    #   requests
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
+cryptography==50.0.2
+    # via pdfminer-six
+defusedxml==0.7.1
+    # via invoice-processing
 distro==1.9.0
     # via langsmith
 h11==0.16.0
@@ -69,7 +77,9 @@ langgraph-prebuilt==1.1.1
 langgraph-sdk==0.4.11
     # via langgraph
 langsmith==0.14.16
-    # via langchain-core
+    # via
+    #   invoice-processing
+    #   langchain-core
 orjson==3.13.0
     # via
     #   langgraph-sdk
@@ -81,8 +91,16 @@ packaging==26.3
     #   langchain-core
     #   langsmith
     #   pytest
+pdfminer-six==20260107
+    # via pdfplumber
+pdfplumber==0.11.10
+    # via invoice-processing
+pillow==13.0.0
+    # via pdfplumber
 pluggy==1.7.0
     # via pytest
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 pydantic==2.14.2
     # via
     #   invoice-processing
@@ -93,6 +111,9 @@ pydantic-core==2.50.2
     # via pydantic
 pygments==2.21.0
     # via pytest
+pypdf==6.21.4
+pypdfium2==5.14.0
+    # via pdfplumber
 pytest==9.2.0
 pyyaml==6.0.3
     # via langchain-core

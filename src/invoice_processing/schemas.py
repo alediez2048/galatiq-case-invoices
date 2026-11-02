@@ -43,7 +43,7 @@ class SourceDocument(Contract):
 
 
 class ExtractionIssue(Contract):
-    code: str
+    code: FindingCode
     message: str
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
@@ -55,6 +55,14 @@ class DraftLine(Contract):
     line_total_raw: str | None = None
     note: str | None = None
     evidence: list[EvidenceRef] = Field(default_factory=list)
+
+
+class NormalizationEvent(Contract):
+    field: str
+    raw_value: str | None = None
+    normalized_value: str | None = None
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    provenance: str  # "rule:<name>" or "model:<provider>/<model>"
 
 
 class InvoiceDraft(Contract):
@@ -70,17 +78,14 @@ class InvoiceDraft(Contract):
     tax_raw: str | None = None
     shipping_raw: str | None = None
     total_raw: str | None = None
+    payment_terms_raw: str | None = None
+    notes_raw: str | None = None
+    tax_rate_fraction_raw: str | None = None  # a fraction such as "0.08" (JSON/XML)
     lines: list[DraftLine] = Field(default_factory=list)
     issues: list[ExtractionIssue] = Field(default_factory=list)
     evidence: list[EvidenceRef] = Field(default_factory=list)
-
-
-class NormalizationEvent(Contract):
-    field: str
-    raw_value: str | None = None
-    normalized_value: str | None = None
-    evidence: list[EvidenceRef] = Field(default_factory=list)
-    provenance: str  # "rule:<name>" or "model:<provider>/<model>"
+    field_evidence: dict[str, list[EvidenceRef]] = Field(default_factory=dict)
+    normalization_events: list[NormalizationEvent] = Field(default_factory=list)
 
 
 class LineItem(Contract):
@@ -119,6 +124,8 @@ class NormalizedInvoice(Contract):
     invoice_date: date | None = None
     due_date: date | None = None
     currency: str | None = None
+    payment_terms: str | None = None
+    notes: str | None = None
     lines: list[LineItem] = Field(default_factory=list)
     stated: StatedTotals = Field(default_factory=StatedTotals)
     computed: ComputedTotals | None = None
@@ -210,6 +217,7 @@ class ProcessingResult(Contract):
     source_hash: str | None = None
     prior_run_id: str | None = None
     evaluation_date: date | None = None
+    error_message: str | None = None
 
 
 class AggregatedItem(Contract):

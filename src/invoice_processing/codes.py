@@ -121,6 +121,21 @@ class FindingCode(StrEnum):
     model_disagreement = "model_disagreement"
     non_usd_currency = "non_usd_currency"
     unparsed_line = "unparsed_line"
+    ambiguous_normalization = "ambiguous_normalization"
+    unparseable_value = "unparseable_value"
+    risk_signal_urgency = "risk_signal_urgency"
+    due_date_unresolved = "due_date_unresolved"
+    ambiguous_date = "ambiguous_date"
+    due_before_invoice_date = "due_before_invoice_date"
+    terms_inconsistent = "terms_inconsistent"
+    unsupported_currency = "unsupported_currency"
+    currency_conflict = "currency_conflict"
+    revision_after_payment = "revision_after_payment"
+    version_conflict = "version_conflict"
+    unrecognized_field = "unrecognized_field"
+    duplicate_field = "duplicate_field"
+    malformed_row = "malformed_row"
+    inconsistent_row_header = "inconsistent_row_header"
 
 
 C = FindingCode
@@ -153,11 +168,50 @@ FINDING_DESCRIPTIONS: dict[FindingCode, str] = {
     C.model_disagreement: "The final recommendation was not approve on an otherwise clean invoice.",
     C.non_usd_currency: "Invoice currency is not USD.",
     C.unparsed_line: "A source line matched no known field and was ignored.",
+    C.ambiguous_normalization: "A value could be normalized in more than one way.",
+    C.unparseable_value: "A value could not be converted to its expected type.",
+    C.risk_signal_urgency: "The document contains urgency language that is a risk signal.",
+    C.due_date_unresolved: "The due date could not be resolved to a calendar date.",
+    C.ambiguous_date: "A date could be read as day-month or month-day.",
+    C.due_before_invoice_date: "The due date is before the invoice date.",
+    C.terms_inconsistent: "Payment terms disagree with the invoice and due dates.",
+    C.unsupported_currency: "The currency is not one the system supports.",
+    C.currency_conflict: "The document states conflicting currencies.",
+    C.revision_after_payment: "A revision arrived for an invoice that was already paid.",
+    C.version_conflict: "A revision conflicts with an existing version of the invoice.",
+    C.unrecognized_field: "A field was not recognized and was ignored.",
+    C.duplicate_field: "A field appears more than once with different content.",
+    C.malformed_row: "A table row does not match the expected shape.",
+    C.inconsistent_row_header: "Line item rows are inconsistent with their header.",
 }
 
-_WARNINGS = {C.due_date_past, C.arithmetic_unverifiable, C.model_disagreement}
-_INFO = {C.rounding_tolerated, C.currency_assumed_usd, C.unparsed_line}
-_REVIEW = {C.non_usd_currency}
+_WARNINGS = {
+    C.due_date_past,
+    C.arithmetic_unverifiable,
+    C.model_disagreement,
+    C.due_before_invoice_date,
+    C.terms_inconsistent,
+}
+_INFO = {
+    C.rounding_tolerated,
+    C.currency_assumed_usd,
+    C.unparsed_line,
+    C.risk_signal_urgency,
+    C.unrecognized_field,
+}
+_REVIEW = {
+    C.non_usd_currency,
+    C.ambiguous_normalization,
+    C.unparseable_value,
+    C.due_date_unresolved,
+    C.ambiguous_date,
+    C.unsupported_currency,
+    C.currency_conflict,
+    C.revision_after_payment,
+    C.version_conflict,
+    C.duplicate_field,
+    C.malformed_row,
+}
 
 DEFAULT_SEVERITY: dict[FindingCode, Severity] = {
     code: (

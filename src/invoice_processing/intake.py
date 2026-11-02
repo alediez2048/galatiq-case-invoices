@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 
 from invoice_processing.codes import SourceFormat
-from invoice_processing.parsers.txt import PARSER_VERSION
+from invoice_processing.parsers import PARSER_VERSIONS
 from invoice_processing.schemas import SourceDocument
 
 SUPPORTED_EXTENSIONS = {".txt"}
@@ -33,6 +33,6 @@ def read_source(path: str | Path) -> tuple[SourceDocument, bytes]:
         format=SourceFormat.txt,
         size_bytes=len(data),
         extracted_text=None,
-        parser_version=PARSER_VERSION,
+        parser_version=PARSER_VERSIONS[SourceFormat.txt],
     )
     return source, data

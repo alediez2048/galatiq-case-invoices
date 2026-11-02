@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 
 from invoice_processing import ledger, observability
 from invoice_processing.codes import ExecutionMode, FindingCode, RunStatus
+from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.reasoning.base import ReasoningProvider
 from invoice_processing.schemas import (
     ApprovalDecision,
@@ -44,6 +45,7 @@ class Deps:
     conn: sqlite3.Connection
     provider: ReasoningProvider
     events: logging.Logger
+    limits: Limits = DEFAULT_LIMITS
 
 
 def emit(

@@ -36,3 +36,29 @@ def test_phase1_codes_and_severities():
     assert set(FINDING_DESCRIPTIONS) == set(FindingCode)
     assert BUSINESS_OUTCOMES < TERMINAL_RUN_STATUSES
     assert RunStatus.failed not in BUSINESS_OUTCOMES
+
+
+PHASE2 = {
+    "ambiguous_normalization": Severity.review,
+    "unparseable_value": Severity.review,
+    "risk_signal_urgency": Severity.info,
+    "due_date_unresolved": Severity.review,
+    "ambiguous_date": Severity.review,
+    "due_before_invoice_date": Severity.warning,
+    "terms_inconsistent": Severity.warning,
+    "unsupported_currency": Severity.review,
+    "currency_conflict": Severity.review,
+    "revision_after_payment": Severity.review,
+    "version_conflict": Severity.review,
+    "unrecognized_field": Severity.info,
+    "duplicate_field": Severity.review,
+    "malformed_row": Severity.review,
+    "inconsistent_row_header": Severity.blocker,
+}
+
+
+def test_phase2_codes_and_severities():
+    for name, severity in PHASE2.items():
+        code = FindingCode(name)
+        assert DEFAULT_SEVERITY[code] is severity
+        assert FINDING_DESCRIPTIONS[code]

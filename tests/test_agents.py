@@ -271,3 +271,53 @@ def test_pay_node_paid_event_reports_created(deps, approved_state):
     second = [e for e in ledger.list_audit_events(deps.conn, run2) if e["event"] == "paid"][0]
     assert second["payload"]["created"] is False
     assert deps.conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1
+
+
+def _parsed_with(draft):
+    from invoice_processing.parsers import ParsedDocument
+
+    return lambda source, data, limits: ParsedDocument(draft=draft)
+
+
+def test_ingestion_converts_every_issue_to_finding(deps, received_state, monkeypatch):
+    from invoice_processing.schemas import ExtractionIssue, InvoiceDraft
+
+    draft = InvoiceDraft(
+        source_id=received_state["source"].source_id,
+        issues=[ExtractionIssue(code=FindingCode.duplicate_field, message="dup")],
+    )
+    monkeypatch.setattr(ingestion, "parse_document", _parsed_with(draft))
+    update = ingestion.run(received_state, deps)
+    dup = [f for f in update["findings"] if f.code == FindingCode.duplicate_field]
+    assert len(dup) == 1 and dup[0].severity is Severity.review
+
+
+def test_ingestion_extraction_error_sets_code_and_message(deps, received_state, monkeypatch):
+    from invoice_processing.parsers.base import ExtractionError
+
+    msg = "This PDF is damaged and cannot be read."
+
+    def boom(*a, **k):
+        raise ExtractionError("pdf_corrupt", msg)
+
+    monkeypatch.setattr(ingestion, "parse_document", boom)
+    update = ingestion.run(received_state, deps)
+    assert update["status"] == RunStatus.failed
+    assert update["error_code"] == "pdf_corrupt"
+    assert update["error_message"] == msg
+
+
+def test_service_returns_error_message(tmp_path, monkeypatch):
+    from invoice_processing.parsers.base import ExtractionError
+    from invoice_processing.service import process_invoice
+
+    msg = "This PDF is damaged and cannot be read."
+
+    def boom(*a, **k):
+        raise ExtractionError("pdf_corrupt", msg)
+
+    monkeypatch.setattr(ingestion, "parse_document", boom)
+    result = process_invoice(INV_1001, ExecutionMode.offline, tmp_path / "t.db", EVAL_DATE)
+    assert result.status is RunStatus.failed
+    assert result.errors == ["pdf_corrupt"]
+    assert result.error_message == msg

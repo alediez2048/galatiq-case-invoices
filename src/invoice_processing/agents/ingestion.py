@@ -2,10 +2,11 @@
 
 from invoice_processing import ledger
 from invoice_processing.agents.state import Deps, InvoiceState, emit
-from invoice_processing.codes import DEFAULT_SEVERITY, FindingCode, RunStatus
+from invoice_processing.codes import DEFAULT_SEVERITY, RunStatus
 from invoice_processing.normalize import normalize
 from invoice_processing.observability import stage_timer
-from invoice_processing.parsers.txt import ExtractionError, parse_txt
+from invoice_processing.parsers import parse_document
+from invoice_processing.parsers.base import ExtractionError
 from invoice_processing.schemas import ValidationFinding
 
 STAGE = "ingestion"
@@ -15,10 +16,14 @@ def run(state: InvoiceState, deps: Deps) -> dict:
     timings = state.get("timings_ms", {})
     with stage_timer() as t:
         try:
-            draft = parse_txt(state["source"], state["raw"])
+            draft = parse_document(state["source"], state["raw"], deps.limits).draft
         except ExtractionError as e:
             emit(deps, state, STAGE, "extraction_failed", error_code=e.code)
-            update: dict = {"status": RunStatus.failed, "error_code": e.code}
+            update: dict = {
+                "status": RunStatus.failed,
+                "error_code": e.code,
+                "error_message": str(e),
+            }
         else:
             invoice, findings = normalize(draft)
             issues = [
@@ -30,12 +35,11 @@ def run(state: InvoiceState, deps: Deps) -> dict:
                 *findings,
                 *(
                     ValidationFinding(
-                        code=FindingCode.unparsed_line,
-                        severity=DEFAULT_SEVERITY[FindingCode.unparsed_line],
+                        code=i.code,
+                        severity=DEFAULT_SEVERITY[i.code],
                         evidence=list(i.evidence),
                     )
                     for i in draft.issues
-                    if i.code == "unparsed_line"
                 ),
             ]
             source = state["source"]

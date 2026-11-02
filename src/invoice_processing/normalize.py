@@ -32,7 +32,7 @@ def invoice_number_key(number: str) -> str:
 
 
 def normalize(draft: InvoiceDraft) -> tuple[NormalizedInvoice, list[ValidationFinding]]:
-    events: list[NormalizationEvent] = []
+    events: list[NormalizationEvent] = list(draft.normalization_events)
 
     def convert(field: str, raw: str | None, parser, evidence: list[EvidenceRef]):
         if raw is None:

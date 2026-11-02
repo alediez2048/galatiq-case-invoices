@@ -2,6 +2,8 @@
 
 import re
 
+from invoice_processing.codes import FindingCode
+from invoice_processing.parsers.base import ExtractionError
 from invoice_processing.schemas import (
     DraftLine,
     EvidenceRef,
@@ -10,7 +12,9 @@ from invoice_processing.schemas import (
     SourceDocument,
 )
 
-PARSER_VERSION = "txt-1"
+PARSER_VERSION = "txt-2"
+
+__all__ = ["PARSER_VERSION", "ExtractionError", "parse_txt"]
 
 _FIELDS = {
     "Vendor": "vendor_raw",
@@ -26,12 +30,6 @@ _IGNORED = {"Payment Terms"}
 _LABELED = re.compile(r"^(?P<label>[^:]+?)\s*:\s*(?P<value>.*)$")
 _TAX_LABEL = re.compile(r"^Tax \((?P<rate>[^%()]*)%\)$")
 _ITEM = re.compile(r"^\s*(?P<name>\S+)\s+qty:\s*(?P<qty>\S+)\s+unit price:\s*(?P<price>\S+)\s*$")
-
-
-class ExtractionError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 def parse_txt(source: SourceDocument, data: bytes) -> InvoiceDraft:
@@ -88,5 +86,7 @@ def parse_txt(source: SourceDocument, data: bytes) -> InvoiceDraft:
 
 def _unparsed(draft: InvoiceDraft, ref: EvidenceRef) -> None:
     draft.issues.append(
-        ExtractionIssue(code="unparsed_line", message="line not recognized", evidence=[ref])
+        ExtractionIssue(
+            code=FindingCode.unparsed_line, message="line not recognized", evidence=[ref]
+        )
     )

@@ -192,11 +192,19 @@ class RunAccepted(ApiModel):
     idempotent_replay: bool = False
 
 
+# Inline schema whose enum refs point at the app's shared components (ExecutionMode is
+# already there via RunAccepted); a bare model_json_schema() would leave dangling #/$defs refs.
+_RUN_REQUEST_SCHEMA = {
+    k: v
+    for k, v in RunRequest.model_json_schema(ref_template="#/components/schemas/{model}").items()
+    if k != "$defs"
+}
+
 _RUN_BODY_DOC = {
     "requestBody": {
         "required": True,
         "content": {
-            "application/json": {"schema": RunRequest.model_json_schema()},
+            "application/json": {"schema": _RUN_REQUEST_SCHEMA},
             "multipart/form-data": {
                 "schema": {
                     "type": "object",

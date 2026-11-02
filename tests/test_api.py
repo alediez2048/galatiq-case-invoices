@@ -509,3 +509,115 @@ def test_queued_submissions_are_processed_one_at_a_time(client):
         starts, starts[1:], strict=False
     ):  # no overlap: each run finished before the next began
         assert a["finished_at"] <= b["started_at"]
+
+
+# ------------------------------------------------------------------ UI contract (P5-07/P5-08)
+
+
+def _evidence_locations(detail: dict) -> set[str]:
+    refs = [e for f in detail["findings"] for e in f["evidence"]]
+    refs += [e for n in detail["normalization_events"] for e in n["evidence"]]
+    refs += [e for ln in detail["line_items"] for e in ln["evidence"]]
+    src = detail["source"]["source_id"]
+    return {e["location"] for e in refs if e["source_id"] == src}
+
+
+@pytest.mark.parametrize("name", ["invoice_1001.txt", "invoice_1011.pdf", "invoice_1002.txt"])
+def test_evidence_locations_equal_source_line_anchors(client, name):
+    done = process(client, name)[0]
+    d = client.get(f"/api/invoices/{done['result']['invoice_id']}").json()
+    body = client.get(f"/api/sources/{d['source']['source_id']}/content").json()
+    anchors = {ln["anchor"] for ln in body["lines"]}
+    locations = _evidence_locations(d)
+    assert locations, "fixture has line-addressed evidence"
+    assert locations <= anchors
+
+
+def test_csv_evidence_rows_resolve_to_row_anchors(client):
+    done = process(client, "invoice_1007.csv")[0]
+    d = client.get(f"/api/invoices/{done['result']['invoice_id']}").json()
+    body = client.get(f"/api/sources/{d['source']['source_id']}/content").json()
+    rows = {r["anchor"] for r in body["rows"]}
+    row_parts = {loc.split(",")[0] for loc in _evidence_locations(d)}
+    assert row_parts and row_parts <= rows
+
+
+def test_detail_carries_source_run_context_and_latest_result(client):
+    done = process(client, "invoice_1001.txt")[0]
+    d = client.get(f"/api/invoices/{done['result']['invoice_id']}").json()
+    assert d["source"] == {
+        "source_id": done["source"]["source_id"],
+        "original_name": "invoice_1001.txt",
+        "format": "txt",
+        "size_bytes": (SAMPLES / "invoice_1001.txt").stat().st_size,
+        "page_count": None,
+    }
+    assert d["evaluation_date"] == EVAL.isoformat()
+    assert d["latest_result"] == done["result"]
+    (run,) = d["runs"]
+    assert run["original_name"] == "invoice_1001.txt"
+    assert run["evaluation_date"] == EVAL.isoformat()
+    assert run["error_code"] is None and run["retry_of"] is None
+    assert run["provider"] == "offline"
+    assert run["events"] == done["events"]
+    (version,) = d["versions"]
+    assert version["original_name"] == "invoice_1001.txt"
+    assert version["total"] == "5000.00" and version["currency"] == "USD"
+    assert [ln["item"] for ln in version["lines"]] == ["WidgetA", "WidgetB"]
+    assert version["receipt"] == d["receipt"]
+
+
+def test_duplicate_run_exposes_prior_run_in_progress_and_detail(client):
+    first, dup = process(client, "invoice_1011.txt", "invoice_1011.pdf")
+    assert dup["status"] == "duplicate" and dup["prior_run_id"] == first["run_id"]
+    d = client.get(f"/api/invoices/{first['result']['invoice_id']}").json()
+    latest = d["runs"][-1]
+    assert latest["status"] == "duplicate" and latest["prior_run_id"] == first["run_id"]
+    assert latest["original_name"] == "invoice_1011.pdf"
+    assert d["latest_result"]["status"] == "duplicate"
+    assert d["source"]["original_name"] == "invoice_1011.txt"
+
+
+def test_pdf_source_reports_pages_and_preview_limitation(client):
+    done = process(client, "invoice_1011.pdf")[0]
+    d = client.get(f"/api/invoices/{done['result']['invoice_id']}").json()
+    assert d["source"]["format"] == "pdf" and d["source"]["page_count"] == 1
+    body = client.get(f"/api/sources/{d['source']['source_id']}/content").json()
+    assert body["preview_limitation"]
+    txt = process(client, "invoice_1001.txt")[0]
+    txt_body = client.get(f"/api/sources/{txt['source']['source_id']}/content").json()
+    assert txt_body["preview_limitation"] is None
+
+
+def test_invoice_summary_has_due_date(client):
+    process(client, "invoice_1001.txt")
+    (item,) = client.get("/api/invoices").json()["items"]
+    assert item["due_date"] == "2026-02-01"
+
+
+def test_committed_openapi_matches_the_app(client):
+    """frontend/src/api/openapi.json (and the TS types generated from it) must be current.
+    Regenerate: uv run python scripts/export_openapi.py && (cd frontend && npm run gen:api)."""
+    import json
+
+    committed = json.loads(Path("frontend/src/api/openapi.json").read_text())
+    assert committed == client.get("/openapi.json").json()
+
+
+def test_openapi_refs_all_resolve(client):
+    spec = client.get("/openapi.json").json()
+    names = set(spec["components"]["schemas"])
+
+    def walk(node):
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if ref is not None:
+                assert ref.startswith("#/components/schemas/"), ref
+                assert ref.rsplit("/", 1)[1] in names, ref
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(spec)

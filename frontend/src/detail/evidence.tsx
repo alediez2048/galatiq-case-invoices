@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { lineAnchor } from "../api/adapters";
 import type { EvidenceRef } from "../api/types";
 
 interface EvidenceState {
@@ -23,8 +24,9 @@ export function EvidenceProvider({ children }: { children: ReactNode }) {
 
 export const useEvidence = () => useContext(EvidenceContext);
 
+/** Keyed by the source line the location points at (CSV "row:3,col:Qty" -> "row:3"). */
 export function evidenceKey(ref: { source_id: string; location: string }) {
-  return `${ref.source_id}|${ref.location}`;
+  return `${ref.source_id}|${lineAnchor(ref.location)}`;
 }
 
 /**
@@ -38,7 +40,7 @@ export function EvidenceRefs({ refs }: { refs: EvidenceRef[] }) {
     <span className="evidence-refs">
       {refs.map((ref) => (
         <button
-          key={evidenceKey(ref)}
+          key={`${ref.source_id}|${ref.location}`}
           type="button"
           className="evidence-ref"
           onMouseEnter={() => setActive([ref])}

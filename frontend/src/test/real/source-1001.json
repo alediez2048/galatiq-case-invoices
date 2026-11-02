@@ -1,0 +1,77 @@
+{
+  "content_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+  "format": "txt",
+  "lines": [
+    {
+      "anchor": "line:1",
+      "text": "INVOICE"
+    },
+    {
+      "anchor": "line:2",
+      "text": ""
+    },
+    {
+      "anchor": "line:3",
+      "text": "Vendor: Widgets Inc."
+    },
+    {
+      "anchor": "line:4",
+      "text": "Invoice Number: INV-1001"
+    },
+    {
+      "anchor": "line:5",
+      "text": "Date: 2026-01-15"
+    },
+    {
+      "anchor": "line:6",
+      "text": "Due Date: 2026-02-01"
+    },
+    {
+      "anchor": "line:7",
+      "text": ""
+    },
+    {
+      "anchor": "line:8",
+      "text": "Items:"
+    },
+    {
+      "anchor": "line:9",
+      "text": "  WidgetA    qty: 10    unit price: $250.00"
+    },
+    {
+      "anchor": "line:10",
+      "text": "  WidgetB    qty: 5     unit price: $500.00"
+    },
+    {
+      "anchor": "line:11",
+      "text": ""
+    },
+    {
+      "anchor": "line:12",
+      "text": "Subtotal: $5,000.00"
+    },
+    {
+      "anchor": "line:13",
+      "text": "Tax (0%): $0.00"
+    },
+    {
+      "anchor": "line:14",
+      "text": "Total Amount: $5,000.00"
+    },
+    {
+      "anchor": "line:15",
+      "text": ""
+    },
+    {
+      "anchor": "line:16",
+      "text": "Payment Terms: Net 15"
+    }
+  ],
+  "original_name": "invoice_1001.txt",
+  "original_url": "/api/sources/src-7308ab3d7ff26ee3/original",
+  "page_count": null,
+  "preview_limitation": null,
+  "rows": null,
+  "size_bytes": 273,
+  "source_id": "src-7308ab3d7ff26ee3"
+}

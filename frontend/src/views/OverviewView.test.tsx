@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { emptyOverviewFixture, overviewFixture, inv1001 } from "../test/fixtures";
+import * as wire from "../test/wire";
 import { renderApp } from "../test/render";
 
 const metric = (key: string) => document.querySelector(`[data-metric="${key}"]`) as HTMLElement;
@@ -40,7 +41,7 @@ describe("Overview with results (P5-03 data: 1001, 1004, 1002, 1014)", () => {
 
   it("adds a Failed card as soon as a failed invoice exists, keeping the other four", async () => {
     renderApp("/", {
-      "GET /api/overview": () => ({
+      "GET /api/overview": () => wire.overview({
         ...overviewFixture,
         counts: { ...overviewFixture.counts, unique_invoices: 5, failed: 1 },
       }),
@@ -52,7 +53,7 @@ describe("Overview with results (P5-03 data: 1001, 1004, 1002, 1014)", () => {
 
   it("adds an Awaiting approval card when non-zero", async () => {
     renderApp("/", {
-      "GET /api/overview": () => ({
+      "GET /api/overview": () => wire.overview({
         ...overviewFixture,
         counts: { ...overviewFixture.counts, awaiting_human_approval: 1 },
       }),
@@ -62,7 +63,7 @@ describe("Overview with results (P5-03 data: 1001, 1004, 1002, 1014)", () => {
 
   it("lists mock-paid totals per currency, never combined", async () => {
     renderApp("/", {
-      "GET /api/overview": () => ({ ...overviewFixture, mock_paid_totals: { USD: "6890.00", EUR: "100.00" } }),
+      "GET /api/overview": () => wire.overview({ ...overviewFixture, mock_paid_totals: { USD: "6890.00", EUR: "100.00" } }),
     });
     const totals = await screen.findByLabelText("Mock-paid totals");
     expect(totals).toHaveTextContent("Mock paid: EUR 100.00 · USD 6,890.00");
@@ -70,7 +71,7 @@ describe("Overview with results (P5-03 data: 1001, 1004, 1002, 1014)", () => {
 
   it("renders whatever the API returns (no hard-coded rows)", async () => {
     renderApp("/", {
-      "GET /api/overview": () => ({
+      "GET /api/overview": () => wire.overview({
         ...overviewFixture,
         counts: { ...overviewFixture.counts, unique_invoices: 1, paid_mock: 1, needs_review: 0, rejected: 0 },
         mock_paid_totals: { USD: "5000.00" },
@@ -90,7 +91,7 @@ describe("Overview with results (P5-03 data: 1001, 1004, 1002, 1014)", () => {
 });
 
 describe("Empty workspace", () => {
-  const empty = { "GET /api/overview": () => emptyOverviewFixture };
+  const empty = { "GET /api/overview": () => wire.overview(emptyOverviewFixture) };
 
   it("shows the hero, actions, decorative mesh and empty copy", async () => {
     renderApp("/", empty);

@@ -27,13 +27,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const readiness = useReadiness();
   const [chosen, setChosen] = useState<ExecutionMode | null>(storedMode);
 
-  // Offline unless the operator explicitly chose live (or the backend default is live)
-  // and live is actually configured: live is never enabled silently.
-  const preferred = chosen ?? readiness.data?.default_mode ?? "offline";
-  const mode: ExecutionMode =
-    preferred === "live" && readiness.data?.live_available !== true && chosen !== "live"
-      ? "offline"
-      : preferred;
+  // Offline until the operator explicitly chooses live in Setup (only possible while live is
+  // configured); live is never enabled silently. The backend has no workspace-mode setting,
+  // so the choice is remembered in this browser. A remembered live choice stays live when
+  // live becomes unavailable: submissions are then refused with the actionable notice
+  // rather than silently switched to offline.
+  const mode: ExecutionMode = chosen ?? "offline";
 
   const selectMode = useCallback(
     (next: ExecutionMode) => {

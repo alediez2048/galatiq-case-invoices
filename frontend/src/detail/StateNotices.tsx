@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useRetryRun } from "../api/hooks";
 import type { InvoiceDetail } from "../api/types";
 import { formatMoney, MODE_LABEL } from "../format";
@@ -76,7 +76,7 @@ export function StateNotices({ detail, onChanged }: { detail: InvoiceDetail; onC
           <div>
             <dt>Original outcome</dt>
             <dd>
-              {original?.original_name ?? detail.source.original_name} · <StatusBadge status={detail.status} />
+              {original?.original_name ?? detail.source?.original_name ?? "Source"} · <StatusBadge status={detail.status} />
             </dd>
           </div>
         </dl>

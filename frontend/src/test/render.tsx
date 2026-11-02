@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
-import { providerFuture, routerFuture, routes } from "../App";
+import { routes } from "../App";
 import { WorkspaceProvider } from "../workspace";
 import { createFetch, defaultRoutes, type Routes } from "./mockApi";
 
@@ -9,10 +9,10 @@ import { createFetch, defaultRoutes, type Routes } from "./mockApi";
 export function renderApp(path: string, routes_: Routes = {}) {
   const { fetchStub, calls } = createFetch({ ...defaultRoutes, ...routes_ });
   vi.stubGlobal("fetch", fetchStub);
-  const router = createMemoryRouter(routes, { initialEntries: [path], future: routerFuture });
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
   const utils = render(
     <WorkspaceProvider>
-      <RouterProvider router={router} future={providerFuture} />
+      <RouterProvider router={router} />
     </WorkspaceProvider>,
   );
   return { ...utils, router, calls };

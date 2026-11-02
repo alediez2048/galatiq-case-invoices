@@ -1,5 +1,16 @@
+import {
+  toInvoiceDetail,
+  toInvoiceList,
+  toOverview,
+  toReadiness,
+  toRunCreated,
+  toRunProgress,
+  toSample,
+  toSourceContent,
+} from "./adapters";
 import type {
   ApiErrorBody,
+  ExecutionMode,
   InvoiceDetail,
   InvoiceList,
   InvoiceListQuery,
@@ -9,6 +20,7 @@ import type {
   RunProgress,
   Sample,
   SourceContent,
+  Wire,
 } from "./types";
 
 /** All API routes live under /api on the same origin (Vite proxies it in development). */
@@ -114,22 +126,62 @@ function query(params: Record<string, string | number | undefined | null>): stri
 
 const enc = encodeURIComponent;
 
-/** Typed endpoint functions. Views reach these only through hooks.ts. */
+/** What one Process click submits: a bundled sample by name, or an uploaded file. */
+export type RunInput =
+  | { kind: "sample"; sample: string; mode: ExecutionMode; evaluationDate?: string }
+  | { kind: "file"; file: File; mode: ExecutionMode; evaluationDate?: string };
+
+function runBody(input: RunInput): Pick<RequestOptions, "json" | "body"> {
+  if (input.kind === "sample") {
+    const json: Wire["RunRequest"] = { sample: input.sample, mode: input.mode };
+    if (input.evaluationDate) json.evaluation_date = input.evaluationDate;
+    return { json };
+  }
+  const form = new FormData();
+  form.append("mode", input.mode);
+  if (input.evaluationDate) form.append("evaluation_date", input.evaluationDate);
+  form.append("file", input.file, input.file.name);
+  return { body: form };
+}
+
+/** Typed endpoint functions; responses are adapted to view models. Views use hooks.ts. */
 export const api = {
-  readiness: (signal?: AbortSignal) => request<Readiness>("/settings/readiness", { signal }),
-  overview: (signal?: AbortSignal) => request<Overview>("/overview", { signal }),
-  invoices: (q: InvoiceListQuery, signal?: AbortSignal) =>
-    request<InvoiceList>(`/invoices${query({ ...q })}`, { signal }),
-  invoice: (id: string, signal?: AbortSignal) =>
-    request<InvoiceDetail>(`/invoices/${enc(id)}`, { signal }),
-  sourceContent: (sourceId: string, signal?: AbortSignal) =>
-    request<SourceContent>(`/sources/${enc(sourceId)}/content`, { signal }),
-  samples: (signal?: AbortSignal) => request<Sample[]>("/samples", { signal }),
-  run: (runId: string, signal?: AbortSignal) =>
-    request<RunProgress>(`/runs/${enc(runId)}`, { signal }),
-  /** P5-02 explicit retry of a recoverable failure; creates a linked run. */
-  retryRun: (runId: string, idempotencyKey: string) =>
-    request<RunCreated>(`/runs/${enc(runId)}/retry`, { method: "POST", idempotencyKey }),
+  readiness: async (signal?: AbortSignal): Promise<Readiness> =>
+    toReadiness(await request<Wire["Readiness"]>("/settings/readiness", { signal })),
+  overview: async (signal?: AbortSignal): Promise<Overview> =>
+    toOverview(await request<Wire["Overview"]>("/overview", { signal })),
+  invoices: async (q: InvoiceListQuery, signal?: AbortSignal): Promise<InvoiceList> =>
+    toInvoiceList(await request<Wire["InvoiceList"]>(`/invoices${query({ ...q })}`, { signal })),
+  invoice: async (id: string, signal?: AbortSignal): Promise<InvoiceDetail> =>
+    toInvoiceDetail(await request<Wire["InvoiceDetail"]>(`/invoices/${enc(id)}`, { signal })),
+  sourceContent: async (sourceId: string, signal?: AbortSignal): Promise<SourceContent> =>
+    toSourceContent(
+      await request<Wire["SourceContent"]>(`/sources/${enc(sourceId)}/content`, { signal }),
+    ),
+  samples: async (signal?: AbortSignal): Promise<Sample[]> =>
+    (await request<Wire["Sample"][]>("/samples", { signal })).map(toSample),
+  /** P5-02: one run per idempotency key; the backend replays the same run for a repeat. */
+  createRun: async (input: RunInput, idempotencyKey: string): Promise<RunCreated> =>
+    toRunCreated(
+      await request<Wire["RunAccepted"]>("/runs", {
+        method: "POST",
+        idempotencyKey,
+        ...runBody(input),
+      }),
+    ),
+  run: async (runId: string, signal?: AbortSignal): Promise<RunProgress> =>
+    toRunProgress(await request<Wire["RunView"]>(`/runs/${enc(runId)}`, { signal })),
+  /**
+   * P5-02 explicit retry of a recoverable failure; creates a linked run.
+   * TODO(P3-08): the backend route lands with Phase 3; the response shape is assumed.
+   */
+  retryRun: async (runId: string, idempotencyKey: string): Promise<RunCreated> =>
+    toRunCreated(
+      await request<Wire["RunAccepted"]>(`/runs/${enc(runId)}/retry`, {
+        method: "POST",
+        idempotencyKey,
+      }),
+    ),
 };
 
 /** Persisted result download (P5-03); a plain link, never transient UI state. */

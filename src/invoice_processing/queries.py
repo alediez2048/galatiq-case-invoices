@@ -75,6 +75,7 @@ class InvoiceSummary(ApiModel):
     invoice_number: str | None = None
     total: DecimalStr | None = None
     currency: str | None = None
+    due_date: str | None = None
     outcome: InvoiceStatus
     mode: ExecutionMode | None = None
     latest_run_id: str | None = None
@@ -107,6 +108,7 @@ SELECT * FROM (
          json_extract(v.payload_json, '$.invoice_number') AS invoice_number,
          json_extract(v.payload_json, '$.stated.total') AS total,
          json_extract(v.payload_json, '$.currency') AS currency,
+         json_extract(v.payload_json, '$.due_date') AS due_date,
          (SELECT r.run_id FROM runs r WHERE r.invoice_id = i.invoice_id
             ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1) AS latest_run_id,
          (SELECT r.mode FROM runs r WHERE r.invoice_id = i.invoice_id
@@ -126,6 +128,7 @@ def _summary(row: sqlite3.Row) -> InvoiceSummary:
         invoice_number=row["invoice_number"],
         total=None if total is None else Decimal(str(total)),
         currency=row["currency"],
+        due_date=row["due_date"],
         outcome=InvoiceStatus(row["outcome"]),
         mode=None if row["mode"] is None else ExecutionMode(row["mode"]),
         latest_run_id=row["latest_run_id"],
@@ -296,14 +299,24 @@ class RunView(ApiModel):
     finished_at: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    prior_run_id: str | None = None  # set on a duplicate run: the run that holds the outcome
+    retry_of: str | None = None  # set on an explicit retry (P3-08): the failed run it retries
     events: list[AuditEventView]
     result: ProcessingResult | None = None
+
+
+def _events(conn: sqlite3.Connection, run_id: str) -> list[AuditEventView]:
+    return [AuditEventView(**e) for e in ledger.list_audit_events(conn, run_id)]
+
+
+def _is_terminal(run: sqlite3.Row) -> bool:
+    return RunStatus(run["status"]) in TERMINAL_RUN_STATUSES and run["finished_at"] is not None
 
 
 def get_run(conn: sqlite3.Connection, run_id: str) -> RunView:
     run = _run_row(conn, run_id)
     status = RunStatus(run["status"])
-    terminal = status in TERMINAL_RUN_STATUSES and run["finished_at"] is not None
+    terminal = _is_terminal(run)
     src = conn.execute(
         "SELECT source_id, original_name, format FROM sources WHERE source_id = ?",
         (run["source_id"],),
@@ -320,7 +333,9 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunView:
         finished_at=run["finished_at"],
         error_code=run["error_code"],
         error_message=run["error_message"],
-        events=[AuditEventView(**e) for e in ledger.list_audit_events(conn, run_id)],
+        prior_run_id=run["prior_run_id"],
+        retry_of=run["retry_of"],
+        events=_events(conn, run_id),
         result=build_result(conn, run_id) if terminal else None,
     )
 
@@ -343,6 +358,12 @@ class VersionView(ApiModel):
     parent_version: int | None
     origin: str
     source_id: str
+    original_name: str | None = None
+    revision: str | None = None
+    total: DecimalStr | None = None
+    currency: str | None = None
+    lines: list[LineItem] = []
+    receipt: MockReceipt | None = None  # mock payment made against this version, if any
     created_at: str
 
 
@@ -372,9 +393,25 @@ class RunSummary(ApiModel):
     status: RunStatus
     mode: ExecutionMode
     source_id: str
+    original_name: str | None = None
     prior_run_id: str | None
+    retry_of: str | None = None
+    evaluation_date: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    provider: str | None = None  # from the run's decision, when one was recorded
+    model: str | None = None
     started_at: str
     finished_at: str | None
+    events: list[AuditEventView] = []
+
+
+class SourceSummary(ApiModel):
+    source_id: str
+    original_name: str
+    format: SourceFormat
+    size_bytes: int
+    page_count: int | None = None
 
 
 class InvoiceDetail(ApiModel):
@@ -387,6 +424,9 @@ class InvoiceDetail(ApiModel):
     latest_run_id: str | None
     decision_run_id: str | None
     source_id: str | None
+    source: SourceSummary | None = None  # the source of the current version
+    evaluation_date: str | None = None  # of the latest run; drives the "Overdue" warning
+    latest_result: ProcessingResult | None = None  # the latest run's result once terminal
     invoice: NormalizedInvoice | None
     normalization_events: list[NormalizationEvent]
     findings: list[ValidationFinding]
@@ -462,21 +502,20 @@ def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceDetail:
         latest_run_id=None if latest is None else latest["run_id"],
         decision_run_id=None if decision_run is None else decision_run["run_id"],
         source_id=None if version_row is None else version_row["source_id"],
+        source=None if version_row is None else _source_summary(conn, version_row["source_id"]),
+        evaluation_date=None if latest is None else latest["evaluation_date"],
+        latest_result=(
+            build_result(conn, latest["run_id"])
+            if latest is not None and _is_terminal(latest)
+            else None
+        ),
         invoice=invoice,
         normalization_events=[] if invoice is None else invoice.normalization_events,
         findings=[] if decision_run is None else _findings(conn, decision_run["run_id"]),
         line_items=lines,
         decision=None if decision_run is None else _decision(conn, decision_run["run_id"]),
         receipt=_receipt_where(conn, "invoice_id", invoice_id),
-        versions=[
-            VersionView(**{k: r[k] for k in VersionView.model_fields})
-            for r in _rows(
-                conn,
-                "SELECT version, parent_version, origin, source_id, created_at "
-                "FROM invoice_versions WHERE invoice_id = ? ORDER BY version",
-                invoice_id,
-            )
-        ],
+        versions=_versions(conn, invoice_id),
         corrections=[
             CorrectionView(**{k: r[k] for k in CorrectionView.model_fields})
             for r in _rows(
@@ -494,10 +533,94 @@ def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceDetail:
             )
         ],
         runs=[
-            RunSummary(**{k: r[k] for k in RunSummary.model_fields})
-            for r in sorted(runs, key=lambda r: (r["started_at"], r["rowid"]))
+            _run_summary(conn, r) for r in sorted(runs, key=lambda r: (r["started_at"], r["rowid"]))
         ],
         allowed_actions=[],
+    )
+
+
+def _source_summary(conn: sqlite3.Connection, source_id: str) -> SourceSummary | None:
+    row = conn.execute(
+        "SELECT source_id, original_name, format, size_bytes, extracted_text FROM sources "
+        "WHERE source_id = ?",
+        (source_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    pages = _pdf_pages(row["extracted_text"]) if row["format"] == SourceFormat.pdf.value else None
+    return SourceSummary(
+        source_id=row["source_id"],
+        original_name=row["original_name"],
+        format=SourceFormat(row["format"]),
+        size_bytes=row["size_bytes"],
+        page_count=None if pages is None else len(pages),
+    )
+
+
+def _versions(conn: sqlite3.Connection, invoice_id: str) -> list[VersionView]:
+    rows = _rows(
+        conn,
+        "SELECT v.version, v.parent_version, v.origin, v.source_id, v.payload_json, v.created_at, "
+        "s.original_name FROM invoice_versions v LEFT JOIN sources s ON s.source_id = v.source_id "
+        "WHERE v.invoice_id = ? ORDER BY v.version",
+        invoice_id,
+    )
+    paid = {
+        r["version"]: MockReceipt(
+            receipt_id=r["receipt_id"],
+            amount=Decimal(r["amount"]),
+            currency=r["currency"],
+            paid_at=datetime.fromisoformat(r["created_at"]),
+        )
+        for r in _rows(
+            conn,
+            "SELECT version, receipt_id, amount, currency, created_at FROM payments "
+            "WHERE invoice_id = ? AND status != 'failed'",
+            invoice_id,
+        )
+    }
+    out: list[VersionView] = []
+    for r in rows:
+        payload = NormalizedInvoice.model_validate_json(r["payload_json"])
+        out.append(
+            VersionView(
+                version=r["version"],
+                parent_version=r["parent_version"],
+                origin=r["origin"],
+                source_id=r["source_id"],
+                original_name=r["original_name"],
+                revision=payload.revision,
+                total=payload.stated.total,
+                currency=payload.currency,
+                lines=payload.lines,
+                receipt=paid.get(r["version"]),
+                created_at=r["created_at"],
+            )
+        )
+    return out
+
+
+def _run_summary(conn: sqlite3.Connection, run: sqlite3.Row) -> RunSummary:
+    name = conn.execute(
+        "SELECT original_name FROM sources WHERE source_id = ?", (run["source_id"],)
+    ).fetchone()
+    decision = _decision(conn, run["run_id"])
+    return RunSummary(
+        run_id=run["run_id"],
+        status=RunStatus(run["status"]),
+        mode=ExecutionMode(run["mode"]),
+        source_id=run["source_id"],
+        original_name=None if name is None else name["original_name"],
+        prior_run_id=run["prior_run_id"],
+        retry_of=run["retry_of"],
+        evaluation_date=run["evaluation_date"],
+        error_code=run["error_code"],
+        error_message=run["error_message"],
+        provider=None if decision is None else decision.provider,
+        model=None if decision is None else decision.model,
+        started_at=run["started_at"],
+        finished_at=run["finished_at"],
+        events=_events(conn, run["run_id"]),
     )
 
 
@@ -538,6 +661,7 @@ class SourceContent(ApiModel):
     lines: list[SourceLine]
     rows: list[SourceRow] | None = None
     original_url: str | None = None  # set when the original bytes are available for preview
+    preview_limitation: str | None = None  # why the readable view may differ from the original
 
 
 class SourceRecord(ApiModel):
@@ -560,6 +684,20 @@ def get_source_record(conn: sqlite3.Connection, source_id: str) -> SourceRecord:
     return SourceRecord(**dict(row))
 
 
+PDF_PREVIEW_LIMITATION = (
+    "Text below is what the parser extracted from the PDF; layout, images and handwriting "
+    "are not shown."
+)
+MISSING_ORIGINAL_LIMITATION = (
+    "The original file is no longer available; showing the text stored at intake."
+)
+
+
+def _pdf_pages(extracted_text: str | None) -> list[str]:
+    # Same page separator the PDF parser joins with, so anchors equal evidence locations.
+    return extracted_text.split("\n\f\n") if extracted_text else []
+
+
 def source_content(record: SourceRecord, raw_text: str | None, has_original: bool) -> SourceContent:
     """Readable lines (and CSV rows) for a source. PDFs use the extracted text, one anchor per
     page and line; other formats use the original text when it is still on disk."""
@@ -567,7 +705,7 @@ def source_content(record: SourceRecord, raw_text: str | None, has_original: boo
     lines: list[SourceLine] = []
     rows: list[SourceRow] | None = None
     if record.format is SourceFormat.pdf:
-        pages = (record.extracted_text or "").split("\n\f\n") if record.extracted_text else []
+        pages = _pdf_pages(record.extracted_text)
         page_count = len(pages)
         for p, page in enumerate(pages, start=1):
             for n, text in enumerate(page.splitlines(), start=1):
@@ -591,6 +729,13 @@ def source_content(record: SourceRecord, raw_text: str | None, has_original: boo
         lines=lines,
         rows=rows,
         original_url=f"/api/sources/{record.source_id}/original" if has_original else None,
+        preview_limitation=(
+            PDF_PREVIEW_LIMITATION
+            if record.format is SourceFormat.pdf
+            else None
+            if has_original
+            else MISSING_ORIGINAL_LIMITATION
+        ),
     )
 
 

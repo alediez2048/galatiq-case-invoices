@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { readinessFixture } from "../test/fixtures";
+import * as wire from "../test/wire";
 import { renderApp } from "../test/render";
 
 describe("App frame", () => {
@@ -47,10 +48,10 @@ describe("App frame", () => {
   it("badge follows the mode chosen in Setup; live is refused when not configured", async () => {
     const user = userEvent.setup();
     renderApp("/setup", {
-      "GET /api/settings/readiness": () => ({ ...readinessFixture, live_available: true, live_model: "grok-4" }),
+      "GET /api/settings/readiness": () => wire.readiness({ ...readinessFixture, live_available: true, live_unavailable_reason: null }),
     });
     const live = await screen.findByRole("radio", { name: /Live model/ });
-    await screen.findByText(/Configured · grok-4/);
+    await screen.findByText("Configured");
     await user.click(live);
     expect(screen.getByLabelText("Workspace mode: Live model")).toBeInTheDocument();
   });
@@ -78,7 +79,7 @@ describe("App frame", () => {
   });
 
   it("warns when inventory is not set up", async () => {
-    renderApp("/", { "GET /api/settings/readiness": () => ({ ...readinessFixture, inventory_seeded: false }) });
+    renderApp("/", { "GET /api/settings/readiness": () => wire.readiness({ ...readinessFixture, inventory_seeded: false }) });
     expect(await screen.findByRole("status", { name: "Setup required" })).toHaveTextContent(
       "Inventory is not set up.",
     );

@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { resultJsonUrl } from "../api/client";
 import { useInvoice } from "../api/hooks";
 import type { InvoiceDetail } from "../api/types";
@@ -98,7 +98,13 @@ function Detail({ detail, reload }: { detail: InvoiceDetail; reload: () => void 
       <Outcome detail={detail} />
       <StateNotices detail={detail} onChanged={reload} />
       <div className="detail-grid">
-        <SourcePanel source={detail.source} />
+        {detail.source ? (
+          <SourcePanel source={detail.source} />
+        ) : (
+          <section className="panel source-panel" aria-label="Source">
+            <p className="sub">No source document is recorded for this invoice.</p>
+          </section>
+        )}
         <DecisionPanel detail={detail} />
       </div>
       <LineItemsTable lines={detail.line_items} currency={detail.currency} />

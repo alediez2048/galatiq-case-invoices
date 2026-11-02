@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import type { InvoiceSummary } from "../api/types";
 import { formatMoney, MODE_LABEL } from "../format";
 import { Icon } from "./Icon";
@@ -51,7 +51,7 @@ export function InvoiceTable({
                 <td>
                   <StatusBadge status={i.status} />
                 </td>
-                {showMode && <td className="muted">{MODE_LABEL[i.mode]}</td>}
+                {showMode && <td className="muted">{i.mode ? MODE_LABEL[i.mode] : "No run yet"}</td>}
                 <td className="open-cell">
                   <Link
                     to={`/invoices/${encodeURIComponent(i.invoice_id)}`}
@@ -76,7 +76,7 @@ export function InvoiceTable({
               </span>
               <span className="invoice-card__vendor">{i.vendor ?? "Vendor missing"}</span>
               <span className="invoice-card__bottom">
-                <span className="muted">{MODE_LABEL[i.mode]}</span>
+                <span className="muted">{i.mode ? MODE_LABEL[i.mode] : "No run yet"}</span>
                 <span className="num">{formatMoney(i.total, i.currency)}</span>
               </span>
             </Link>

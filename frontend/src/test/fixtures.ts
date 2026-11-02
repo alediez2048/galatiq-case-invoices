@@ -14,13 +14,13 @@ import type {
 } from "../api/types";
 
 export const readinessFixture: Readiness = {
-  default_mode: "offline",
   offline_available: true,
   live_available: false,
   live_unavailable_reason: "XAI_API_KEY is not set",
-  live_model: null,
+  live_settings_present: false,
   inventory_seeded: true,
   db_path: "fixture-inventory.db", // sentinel: the bundle check fails if fixtures leak into a build
+  schema_version: 5,
 };
 
 const summary = (s: Partial<InvoiceSummary> & Pick<InvoiceSummary, "invoice_id">): InvoiceSummary => ({
@@ -108,11 +108,11 @@ export const emptyOverviewFixture: Overview = {
 };
 
 export const samplesFixture: Sample[] = [
-  { name: "invoice_1001.txt", label: "Clean invoice", invoice_number: "INV-1001", format: "txt" },
-  { name: "invoice_1002.txt", label: "Stock mismatch", invoice_number: "INV-1002", format: "txt" },
-  { name: "invoice_1012.txt", label: "Messy formatting", invoice_number: "INV-1012", format: "txt" },
-  { name: "invoice_1013.json", label: "Conflicting totals", invoice_number: "INV-1013", format: "json" },
-  { name: "invoice_1014.xml", label: "Unsupported currency", invoice_number: "INV-1014", format: "xml" },
+  { name: "invoice_1001.txt", label: "Clean invoice", invoice_number: "INV-1001", format: "txt", size_bytes: 400 },
+  { name: "invoice_1002.txt", label: "Stock mismatch", invoice_number: "INV-1002", format: "txt", size_bytes: 400 },
+  { name: "invoice_1012.txt", label: "Messy formatting", invoice_number: "INV-1012", format: "txt", size_bytes: 400 },
+  { name: "invoice_1013.json", label: "Conflicting totals", invoice_number: "INV-1013", format: "json", size_bytes: 400 },
+  { name: "invoice_1014.xml", label: "Unsupported currency", invoice_number: "INV-1014", format: "xml", size_bytes: 400 },
 ];
 
 const run = (r: Partial<RunSummary> & Pick<RunSummary, "run_id" | "status">): RunSummary => ({
@@ -122,6 +122,8 @@ const run = (r: Partial<RunSummary> & Pick<RunSummary, "run_id" | "status">): Ru
   started_at: "2026-11-01T18:00:00Z",
   finished_at: "2026-11-01T18:00:01Z",
   prior_run_id: null,
+  retry_of: null,
+  evaluation_date: "2026-01-20",
   error_code: null,
   error_message: null,
   provider: null,
@@ -167,7 +169,6 @@ export function detailFixture(overrides: Partial<InvoiceDetail> = {}): InvoiceDe
       size_bytes: 412,
       page_count: null,
     },
-    extracted: { vendor_raw: "Widgets Inc.", invoice_number_raw: "INV-1001" },
     stated: { subtotal: "5000.00", tax: "0.00", total: "5000.00" },
     computed: { line_totals: ["2500.00", "2500.00"], subtotal: "5000.00", tax: "0.00", total: "5000.00" },
     normalization_events: [],
@@ -196,10 +197,10 @@ export function detailFixture(overrides: Partial<InvoiceDetail> = {}): InvoiceDe
         status: "paid_mock",
         original_name: "invoice_1001.txt",
         events: [
-          { sequence: 1, stage: "ingestion", event: "extracted", message: "Vendor, invoice number, due date, and two items extracted.", at: "2026-11-01T18:00:00Z" },
-          { sequence: 2, stage: "validation", event: "validated", message: null, at: "2026-11-01T18:00:00Z" },
-          { sequence: 3, stage: "approval", event: "approved", message: null, at: "2026-11-01T18:00:01Z" },
-          { sequence: 4, stage: "payment", event: "paid", message: null, at: "2026-11-01T18:00:01Z" },
+          { sequence: 1, stage: "ingestion", event: "extracted", message: "Vendor, invoice number, due date, and two items extracted.", at: "2026-11-01T18:00:00Z", payload: {} },
+          { sequence: 2, stage: "validation", event: "validated", message: null, at: "2026-11-01T18:00:00Z", payload: {} },
+          { sequence: 3, stage: "approval", event: "approved", message: null, at: "2026-11-01T18:00:01Z", payload: {} },
+          { sequence: 4, stage: "payment", event: "paid", message: null, at: "2026-11-01T18:00:01Z", payload: {} },
         ],
       }),
     ],
@@ -255,7 +256,7 @@ export const detail1002 = detailFixture({
   status: "rejected",
   total: "15000.00",
   due_date: "2026-01-30",
-  source: { source_id: "src-1002", original_name: "invoice_1002.txt", format: "txt", size_bytes: 160 },
+  source: { source_id: "src-1002", original_name: "invoice_1002.txt", format: "txt", size_bytes: 160, page_count: null },
   stated: { total: "15000.00" },
   computed: { line_totals: ["15000.00"], subtotal: "15000.00", total: "15000.00" },
   findings: [
@@ -286,7 +287,7 @@ export const detail1013 = detailFixture({
   status: "rejected",
   total: "22562.80",
   due_date: "2026-03-24",
-  source: { source_id: "src-1013", original_name: "invoice_1013.json", format: "json", size_bytes: 1500 },
+  source: { source_id: "src-1013", original_name: "invoice_1013.json", format: "json", size_bytes: 1500, page_count: null },
   stated: { subtotal: "21040.00", tax_rate: "0.07", tax: "1472.80", total: "22562.80" },
   computed: { line_totals: [], subtotal: "21040.00", tax: "1472.80", total: "22512.80" },
   findings: [
@@ -312,7 +313,7 @@ export const detail1012 = detailFixture({
   vendor: "QuickShip Distributers",
   total: "9975.00",
   due_date: "2026-02-25",
-  source: { source_id: "src-1012", original_name: "invoice_1012.txt", format: "txt", size_bytes: 900 },
+  source: { source_id: "src-1012", original_name: "invoice_1012.txt", format: "txt", size_bytes: 900, page_count: null },
   normalization_events: [
     { field: "invoice_number", raw_value: "INV 1012", normalized_value: "INV-1012", evidence: [{ source_id: "src-1012", location: "line:6" }], provenance: "rule:invoice_number_format" },
     { field: "invoice_date", raw_value: "26-Jan-2O26", normalized_value: "2026-01-26", evidence: [{ source_id: "src-1012", location: "line:7" }], provenance: "rule:ocr_digit" },
@@ -330,7 +331,7 @@ export const detail1014 = detailFixture({
   total: "4125.00",
   currency: "EUR",
   due_date: "2026-02-26",
-  source: { source_id: "src-1014", original_name: "invoice_1014.xml", format: "xml", size_bytes: 1200 },
+  source: { source_id: "src-1014", original_name: "invoice_1014.xml", format: "xml", size_bytes: 1200, page_count: null },
   findings: [
     finding({ code: "non_usd_currency", severity: "review", field: "currency", observed: "EUR" }),
     finding({ code: "unsupported_currency", severity: "review", field: "currency", observed: "EUR" }),
@@ -350,7 +351,7 @@ export const detail1011Duplicate = detailFixture({
   invoice_number: "INV-1011",
   vendor: "Summit Supply Co.",
   total: "3250.00",
-  source: { source_id: "src-1011", original_name: "invoice_1011.txt", format: "txt", size_bytes: 600 },
+  source: { source_id: "src-1011", original_name: "invoice_1011.txt", format: "txt", size_bytes: 600, page_count: null },
   receipt: { receipt_id: "rcpt-1011", amount: "3250.00", currency: "USD", paid_at: "2026-11-01T18:01:00Z" },
   runs: [
     run({ run_id: "run-1011-pdf", status: "duplicate", original_name: "invoice_1011.pdf", prior_run_id: "run-1011-txt", started_at: "2026-11-01T18:02:00Z" }),
@@ -369,12 +370,12 @@ export const detail1004Revised = detailFixture({
   total: "5940.00",
   due_date: "2026-02-22",
   current_version: 2,
-  source: { source_id: "src-1004r", original_name: "invoice_1004_revised.json", format: "json", size_bytes: 700 },
+  source: { source_id: "src-1004r", original_name: "invoice_1004_revised.json", format: "json", size_bytes: 700, page_count: null },
   findings: [finding({ code: "revision_after_payment", severity: "review" })],
   receipt: receipt1004,
   versions: [
-    { version: 1, source_id: "src-1004", original_name: "invoice_1004.json", revision: null, total: "1890.00", currency: "USD", created_at: "2026-11-01T18:03:00Z", status: "paid_mock", receipt: receipt1004, lines: [] },
-    { version: 2, source_id: "src-1004r", original_name: "invoice_1004_revised.json", revision: "R1", total: "5940.00", currency: "USD", created_at: "2026-11-01T18:04:00Z", status: "needs_review", receipt: null, lines: [] },
+    { version: 1, source_id: "src-1004", original_name: "invoice_1004.json", revision: null, total: "1890.00", currency: "USD", created_at: "2026-11-01T18:03:00Z", receipt: receipt1004, lines: [] },
+    { version: 2, source_id: "src-1004r", original_name: "invoice_1004_revised.json", revision: "R1", total: "5940.00", currency: "USD", created_at: "2026-11-01T18:04:00Z", receipt: null, lines: [] },
   ],
   decision: offlineDecision("needs_review", "review", "Revision after payment requires review.", []),
   runs: [
@@ -394,8 +395,8 @@ export const detailVersionConflict = detailFixture({
   receipt: null,
   decision: null,
   versions: [
-    { version: 1, source_id: "a", original_name: "inv_2001.txt", total: "5000.00", currency: "USD", created_at: "2026-11-01T10:00:00Z", status: "needs_review", receipt: null, lines: [{ item: "WidgetA", quantity: "10", evidence: [] }] },
-    { version: 2, source_id: "b", original_name: "inv_2001_b.txt", total: "5250.00", currency: "USD", created_at: "2026-11-01T11:00:00Z", status: "needs_review", receipt: null, lines: [{ item: "WidgetA", quantity: "11", evidence: [] }] },
+    { version: 1, source_id: "a", original_name: "inv_2001.txt", revision: null, total: "5000.00", currency: "USD", created_at: "2026-11-01T10:00:00Z", receipt: null, lines: [{ item: "WidgetA", quantity: "10", evidence: [] }] },
+    { version: 2, source_id: "b", original_name: "inv_2001_b.txt", revision: null, total: "5250.00", currency: "USD", created_at: "2026-11-01T11:00:00Z", receipt: null, lines: [{ item: "WidgetA", quantity: "11", evidence: [] }] },
   ],
   runs: [run({ run_id: "run-2001", status: "needs_review" })],
 });
@@ -420,7 +421,7 @@ const failedDetail = (code: string, message: string, mode: "offline" | "live" = 
         mode,
         error_code: code,
         error_message: message,
-        events: [{ sequence: 1, stage: lastStage, event: "failed", message: null, at: "2026-11-01T18:00:00Z" }],
+        events: [{ sequence: 1, stage: lastStage, event: "failed", message: null, at: "2026-11-01T18:00:00Z", payload: {} }],
       }),
     ],
     allowed_actions: { ...noActions, retry: code.startsWith("model_") || code === "unexpected_error" },

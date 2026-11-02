@@ -2,8 +2,9 @@
  * Fixture-backed fetch stub. Tests install it with explicit routes; the dev server can
  * install the default routes with VITE_MOCK_API=1 (never included in production builds).
  */
-import type { InvoiceDetail, InvoiceList, InvoiceSummary } from "../api/types";
+import type { InvoiceDetail, InvoiceSummary } from "../api/types";
 import * as f from "./fixtures";
+import * as wire from "./wire";
 
 export type Route = (url: URL, init?: RequestInit) => unknown | Response | Promise<unknown | Response>;
 export type Routes = Record<string, Route>;
@@ -51,7 +52,7 @@ const details: Record<string, InvoiceDetail> = Object.fromEntries(
 );
 
 export function listFrom(items: InvoiceSummary[]) {
-  return (url: URL): InvoiceList => {
+  return (url: URL) => {
     const status = url.searchParams.get("status");
     const mode = url.searchParams.get("mode");
     const q = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -61,20 +62,21 @@ export function listFrom(items: InvoiceSummary[]) {
         (!mode || i.mode === mode) &&
         (!q || `${i.invoice_number} ${i.vendor}`.toLowerCase().includes(q)),
     );
-    return { items: filtered, page: 1, page_size: 50, total: filtered.length };
+    return wire.list({ items: filtered, page: 1, page_size: 50, total: filtered.length });
   };
 }
 
 export const defaultRoutes: Routes = {
-  "GET /api/settings/readiness": () => f.readinessFixture,
-  "GET /api/overview": () => f.overviewFixture,
+  "GET /api/settings/readiness": () => wire.readiness(f.readinessFixture),
+  "GET /api/overview": () => wire.overview(f.overviewFixture),
   "GET /api/invoices": listFrom(f.fourInvoices),
   "GET /api/invoices/:id": (url) => {
     const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
-    return details[id] ?? json({ code: "not_found", message: "Invoice not found." }, 404);
+    const found = details[id];
+    return found ? wire.detail(found) : json({ code: "not_found", message: "Invoice not found." }, 404);
   },
-  "GET /api/sources/:id/content": () => f.source1001,
-  "GET /api/samples": () => f.samplesFixture,
+  "GET /api/sources/:id/content": () => wire.source(f.source1001),
+  "GET /api/samples": () => wire.samples(f.samplesFixture),
 };
 
 export function installMockApi(routes: Routes = defaultRoutes) {

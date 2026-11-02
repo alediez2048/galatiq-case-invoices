@@ -1,7 +1,7 @@
 // Fails the build if the production bundle could make a request to an external origin.
 // HTML and CSS may not contain any absolute URL (no fonts, CDNs, stylesheets, images).
 // JS may contain absolute URLs only from a short allowlist of non-request strings:
-// XML namespace identifiers and React's error-message documentation link.
+// XML namespace identifiers and documentation links inside React / React Router messages.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 
@@ -12,6 +12,9 @@ const JS_ALLOWED = [
   /^https?:\/\/www\.w3\.org\//,
   /^https?:\/\/reactjs\.org\/docs\/error-decoder\.html/,
   /^https?:\/\/react\.dev\/errors\//,
+  // React Router 7 invariant/warning messages (text only, never fetched).
+  /^https:\/\/reactrouter\.com\/en\/main\/routers\/picking-a-router\.?$/,
+  /^https:\/\/github\.com\/ungap\/url-search-params\.?$/,
 ];
 
 function walk(dir) {

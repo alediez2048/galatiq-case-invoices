@@ -1,0 +1,463 @@
+{
+  "allowed_actions": [],
+  "corrections": [],
+  "current_version": 1,
+  "decision": {
+    "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+    "final_decision": "approved",
+    "initial_recommendation": "approve",
+    "mode": "offline",
+    "model": "simulated",
+    "policy_version": "2026-11-01.1",
+    "provider": "offline",
+    "reasons": [
+      "R4_auto_approve"
+    ],
+    "revised_recommendation": null
+  },
+  "decision_run_id": "run-26db292b56444810be596c01ec0705f6",
+  "evaluation_date": "2026-01-31",
+  "findings": [
+    {
+      "code": "terms_inconsistent",
+      "evidence": [
+        {
+          "location": "line:16",
+          "snippet": "Payment Terms: Net 15",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "expected": "2026-01-30",
+      "field": "payment_terms",
+      "item": null,
+      "observed": "2026-02-01",
+      "resolved": false,
+      "severity": "warning"
+    },
+    {
+      "code": "currency_assumed_usd",
+      "evidence": [
+        {
+          "location": "line:12",
+          "snippet": "Subtotal: $5,000.00",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "expected": null,
+      "field": "currency",
+      "item": null,
+      "observed": "USD",
+      "resolved": false,
+      "severity": "info"
+    }
+  ],
+  "human_reviews": [],
+  "invoice": {
+    "computed": null,
+    "currency": "USD",
+    "due_date": "2026-02-01",
+    "invoice_date": "2026-01-15",
+    "invoice_number": "INV-1001",
+    "invoice_number_key": "1001",
+    "lines": [
+      {
+        "evidence": [
+          {
+            "location": "line:9",
+            "snippet": "WidgetA    qty: 10    unit price: $250.00",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "item": "WidgetA",
+        "line_total": null,
+        "note": null,
+        "quantity": "10",
+        "unit_price": "250.00"
+      },
+      {
+        "evidence": [
+          {
+            "location": "line:10",
+            "snippet": "WidgetB    qty: 5     unit price: $500.00",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "item": "WidgetB",
+        "line_total": null,
+        "note": null,
+        "quantity": "5",
+        "unit_price": "500.00"
+      }
+    ],
+    "normalization_events": [
+      {
+        "evidence": [
+          {
+            "location": "line:4",
+            "snippet": "Invoice Number: INV-1001",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "field": "invoice_number",
+        "normalized_value": "1001",
+        "provenance": "rule:invoice_number_format",
+        "raw_value": "INV-1001"
+      },
+      {
+        "evidence": [
+          {
+            "location": "line:12",
+            "snippet": "Subtotal: $5,000.00",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "field": "currency",
+        "normalized_value": "USD",
+        "provenance": "rule:dataset_usd_assumption",
+        "raw_value": null
+      }
+    ],
+    "notes": null,
+    "payment_terms": "Net 15",
+    "revision": null,
+    "source_id": "src-7308ab3d7ff26ee3",
+    "stated": {
+      "shipping": null,
+      "subtotal": "5000.00",
+      "tax": "0.00",
+      "tax_rate": "0",
+      "total": "5000.00"
+    },
+    "vendor_key": "widgets inc.",
+    "vendor_name": "Widgets Inc."
+  },
+  "invoice_id": "inv-c39ae7ae02374761904391340c2101eb",
+  "invoice_number": "INV-1001",
+  "latest_result": {
+    "decision": {
+      "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+      "final_decision": "approved",
+      "initial_recommendation": "approve",
+      "mode": "offline",
+      "model": "simulated",
+      "policy_version": "2026-11-01.1",
+      "provider": "offline",
+      "reasons": [
+        "R4_auto_approve"
+      ],
+      "revised_recommendation": null
+    },
+    "error_message": null,
+    "errors": [],
+    "evaluation_date": "2026-01-31",
+    "findings": [
+      {
+        "code": "terms_inconsistent",
+        "evidence": [
+          {
+            "location": "line:16",
+            "snippet": "Payment Terms: Net 15",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "expected": "2026-01-30",
+        "field": "payment_terms",
+        "item": null,
+        "observed": "2026-02-01",
+        "resolved": false,
+        "severity": "warning"
+      },
+      {
+        "code": "currency_assumed_usd",
+        "evidence": [
+          {
+            "location": "line:12",
+            "snippet": "Subtotal: $5,000.00",
+            "source_id": "src-7308ab3d7ff26ee3"
+          }
+        ],
+        "expected": null,
+        "field": "currency",
+        "item": null,
+        "observed": "USD",
+        "resolved": false,
+        "severity": "info"
+      }
+    ],
+    "invoice_id": "inv-c39ae7ae02374761904391340c2101eb",
+    "mode": "offline",
+    "prior_run_id": null,
+    "receipt": {
+      "amount": "5000.00",
+      "currency": "USD",
+      "paid_at": "2026-11-02T03:56:22.666934Z",
+      "receipt_id": "rcpt-cdd856bb92d9"
+    },
+    "run_id": "run-26db292b56444810be596c01ec0705f6",
+    "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+    "status": "paid_mock",
+    "timings_ms": {}
+  },
+  "latest_run_id": "run-26db292b56444810be596c01ec0705f6",
+  "line_items": [
+    {
+      "available": 15,
+      "evidence": [
+        {
+          "location": "line:9",
+          "snippet": "WidgetA    qty: 10    unit price: $250.00",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "item": "WidgetA",
+      "line_total": null,
+      "quantity": "10",
+      "requested_total": "10",
+      "unit_price": "250.00"
+    },
+    {
+      "available": 10,
+      "evidence": [
+        {
+          "location": "line:10",
+          "snippet": "WidgetB    qty: 5     unit price: $500.00",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "item": "WidgetB",
+      "line_total": null,
+      "quantity": "5",
+      "requested_total": "5",
+      "unit_price": "500.00"
+    }
+  ],
+  "mode": "offline",
+  "normalization_events": [
+    {
+      "evidence": [
+        {
+          "location": "line:4",
+          "snippet": "Invoice Number: INV-1001",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "field": "invoice_number",
+      "normalized_value": "1001",
+      "provenance": "rule:invoice_number_format",
+      "raw_value": "INV-1001"
+    },
+    {
+      "evidence": [
+        {
+          "location": "line:12",
+          "snippet": "Subtotal: $5,000.00",
+          "source_id": "src-7308ab3d7ff26ee3"
+        }
+      ],
+      "field": "currency",
+      "normalized_value": "USD",
+      "provenance": "rule:dataset_usd_assumption",
+      "raw_value": null
+    }
+  ],
+  "outcome": "paid_mock",
+  "receipt": {
+    "amount": "5000.00",
+    "currency": "USD",
+    "paid_at": "2026-11-02T03:56:22.666934Z",
+    "receipt_id": "rcpt-cdd856bb92d9"
+  },
+  "runs": [
+    {
+      "error_code": null,
+      "error_message": null,
+      "evaluation_date": "2026-01-31",
+      "events": [
+        {
+          "created_at": "2026-11-02T03:56:22.640770Z",
+          "event": "received",
+          "payload": {
+            "mode": "offline",
+            "original_name": "invoice_1001.txt",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "received"
+          },
+          "stage": "intake"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.657690Z",
+          "event": "extracted",
+          "payload": {
+            "codes": [
+              "terms_inconsistent",
+              "currency_assumed_usd"
+            ],
+            "issues": [],
+            "mode": "offline",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "extracted",
+            "version": 1
+          },
+          "stage": "ingestion"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.659189Z",
+          "event": "validated",
+          "payload": {
+            "codes": [
+              "terms_inconsistent",
+              "currency_assumed_usd"
+            ],
+            "mode": "offline",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "validated"
+          },
+          "stage": "validation"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.660264Z",
+          "event": "recommendation",
+          "payload": {
+            "codes": [],
+            "mode": "offline",
+            "recommendation": "approve",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "validated"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.660626Z",
+          "event": "critique",
+          "payload": {
+            "agrees": true,
+            "mode": "offline",
+            "revised_recommendation": null,
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "validated"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.663426Z",
+          "event": "decision",
+          "payload": {
+            "final_decision": "approved",
+            "mode": "offline",
+            "policy_version": "2026-11-01.1",
+            "rule_ids": [
+              "R4_auto_approve"
+            ],
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "approved"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.667035Z",
+          "event": "payment_succeeded",
+          "payload": {
+            "amount": "5000.00",
+            "currency": "USD",
+            "receipt_id": "rcpt-cdd856bb92d9"
+          },
+          "stage": "payment"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.667618Z",
+          "event": "paid",
+          "payload": {
+            "amount": "5000.00",
+            "created": true,
+            "currency": "USD",
+            "mode": "offline",
+            "receipt_id": "rcpt-cdd856bb92d9",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "paid_mock"
+          },
+          "stage": "payment"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.668523Z",
+          "event": "finished",
+          "payload": {
+            "errors": [],
+            "mode": "offline",
+            "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
+            "status": "paid_mock"
+          },
+          "stage": "service"
+        }
+      ],
+      "finished_at": "2026-11-02T03:56:22.668051Z",
+      "mode": "offline",
+      "model": "simulated",
+      "original_name": "invoice_1001.txt",
+      "prior_run_id": null,
+      "provider": "offline",
+      "retry_of": null,
+      "run_id": "run-26db292b56444810be596c01ec0705f6",
+      "source_id": "src-7308ab3d7ff26ee3",
+      "started_at": "2026-11-02T03:56:22.640535Z",
+      "status": "paid_mock"
+    }
+  ],
+  "source": {
+    "format": "txt",
+    "original_name": "invoice_1001.txt",
+    "page_count": null,
+    "size_bytes": 273,
+    "source_id": "src-7308ab3d7ff26ee3"
+  },
+  "source_id": "src-7308ab3d7ff26ee3",
+  "vendor_name": "Widgets Inc.",
+  "versions": [
+    {
+      "created_at": "2026-11-02T03:56:22.655688Z",
+      "currency": "USD",
+      "lines": [
+        {
+          "evidence": [
+            {
+              "location": "line:9",
+              "snippet": "WidgetA    qty: 10    unit price: $250.00",
+              "source_id": "src-7308ab3d7ff26ee3"
+            }
+          ],
+          "item": "WidgetA",
+          "line_total": null,
+          "note": null,
+          "quantity": "10",
+          "unit_price": "250.00"
+        },
+        {
+          "evidence": [
+            {
+              "location": "line:10",
+              "snippet": "WidgetB    qty: 5     unit price: $500.00",
+              "source_id": "src-7308ab3d7ff26ee3"
+            }
+          ],
+          "item": "WidgetB",
+          "line_total": null,
+          "note": null,
+          "quantity": "5",
+          "unit_price": "500.00"
+        }
+      ],
+      "origin": "extracted",
+      "original_name": "invoice_1001.txt",
+      "parent_version": null,
+      "receipt": {
+        "amount": "5000.00",
+        "currency": "USD",
+        "paid_at": "2026-11-02T03:56:22.666934Z",
+        "receipt_id": "rcpt-cdd856bb92d9"
+      },
+      "revision": null,
+      "source_id": "src-7308ab3d7ff26ee3",
+      "total": "5000.00",
+      "version": 1
+    }
+  ]
+}

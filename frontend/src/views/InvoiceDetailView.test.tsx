@@ -3,11 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { InvoiceDetail } from "../api/types";
 import * as f from "../test/fixtures";
+import * as wire from "../test/wire";
 import { renderApp } from "../test/render";
 
 function renderDetail(detail: InvoiceDetail, extra = {}) {
   return renderApp(`/invoices/${detail.invoice_id}`, {
-    "GET /api/invoices/:id": () => detail,
+    "GET /api/invoices/:id": () => wire.detail(detail),
     ...extra,
   });
 }
@@ -100,9 +101,7 @@ describe("Invoice detail — 1001 paid (screen 5)", () => {
     const history = screen.getByRole("tab", { name: "History" });
     expect(history).toHaveFocus();
     expect(history).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(
-      "Vendor, invoice number, due date, and two items extracted.",
-    );
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Invoice details extracted.");
   });
 
   it("shows provider and model for a live decision", async () => {

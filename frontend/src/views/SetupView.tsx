@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import type { ExecutionMode } from "../api/types";
 import { MODE_LABEL } from "../format";
 import { useWorkspace } from "../workspace";
@@ -79,8 +79,10 @@ export function SetupView() {
             <dt>Live model</dt>
             <dd>
               {data.live_available
-                ? `Configured${data.live_model ? ` · ${data.live_model}` : ""}`
-                : "Not configured"}
+                ? "Configured"
+                : data.live_settings_present
+                  ? "Settings present but unavailable"
+                  : "Not configured"}
             </dd>
           </div>
           <div>

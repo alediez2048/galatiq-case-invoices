@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useOverview } from "../api/hooks";
 import type { Overview } from "../api/types";
 import { formatMoney } from "../format";

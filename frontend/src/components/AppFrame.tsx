@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { useOverview } from "../api/hooks";
 import { MODE_LABEL } from "../format";
 import { useWorkspace } from "../workspace";

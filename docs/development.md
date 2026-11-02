@@ -114,4 +114,12 @@ npm run build      # dist/, then checks the bundle references no external origin
 
 `VITE_MOCK_API=1 npm run dev` serves the UI against the test fixtures without a backend (dev server only; `import.meta.env.DEV` removes it from builds, and `npm run build` fails if fixture data leaks into `dist/`).
 
-The API types in `frontend/src/api/types.ts` are hand-written from the P5-02/P5-03 tickets and `schemas.py`; replace them with `openapi-typescript` output from `frontend/src/api/openapi.json` once the backend exports it. No fonts, CDNs or analytics are loaded at runtime; the font stack is `Aventa, Arial, sans-serif` with no bundled Aventa.
+API types are generated, never hand-written. After changing a response model in `api.py` / `queries.py`:
+
+```bash
+uv run python scripts/export_openapi.py        # writes frontend/src/api/openapi.json
+(cd frontend && npm run gen:api)               # writes frontend/src/api/schema.d.ts
+uv run python scripts/export_ui_fixtures.py    # optional: refresh real-response test fixtures
+```
+
+`tests/test_api.py` fails if `openapi.json` is stale and `src/api/schema.test.ts` fails if `schema.d.ts` is stale. `frontend/src/api/adapters.ts` maps the wire types to the view models components render; it is the only file that knows both shapes. No fonts, CDNs or analytics are loaded at runtime; the font stack is `Aventa, Arial, sans-serif` with no bundled Aventa.

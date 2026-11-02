@@ -490,6 +490,17 @@
             ],
             "title": "Decision Run Id"
           },
+          "evaluation_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Date"
+          },
           "findings": {
             "items": {
               "$ref": "#/components/schemas/ValidationFinding"
@@ -528,6 +539,16 @@
               }
             ],
             "title": "Invoice Number"
+          },
+          "latest_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessingResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "latest_run_id": {
             "anyOf": [
@@ -583,6 +604,16 @@
             },
             "title": "Runs",
             "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_id": {
             "anyOf": [
@@ -709,6 +740,17 @@
               }
             ],
             "title": "Current Version"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
           },
           "invoice_id": {
             "title": "Invoice Id",
@@ -1432,6 +1474,47 @@
       "RunSummary": {
         "additionalProperties": false,
         "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "evaluation_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Date"
+          },
+          "events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AuditEventView"
+            },
+            "title": "Events",
+            "type": "array"
+          },
           "finished_at": {
             "anyOf": [
               {
@@ -1446,6 +1529,28 @@
           "mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
           "prior_run_id": {
             "anyOf": [
               {
@@ -1456,6 +1561,28 @@
               }
             ],
             "title": "Prior Run Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
           },
           "run_id": {
             "title": "Run Id",
@@ -1542,6 +1669,17 @@
           "mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
+          "prior_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Run Id"
+          },
           "result": {
             "anyOf": [
               {
@@ -1551,6 +1689,17 @@
                 "type": "null"
               }
             ]
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
           },
           "run_id": {
             "title": "Run Id",
@@ -1688,6 +1837,17 @@
             ],
             "title": "Page Count"
           },
+          "preview_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview Limitation"
+          },
           "rows": {
             "anyOf": [
               {
@@ -1772,6 +1932,45 @@
           "cells"
         ],
         "title": "SourceRow",
+        "type": "object"
+      },
+      "SourceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/SourceFormat"
+          },
+          "original_name": {
+            "title": "Original Name",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "original_name",
+          "format",
+          "size_bytes"
+        ],
+        "title": "SourceSummary",
         "type": "object"
       },
       "StatedTotals": {
@@ -2045,9 +2244,39 @@
             "title": "Created At",
             "type": "string"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LineItem"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
           },
           "parent_version": {
             "anyOf": [
@@ -2060,9 +2289,41 @@
             ],
             "title": "Parent Version"
           },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MockReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
           "source_id": {
             "title": "Source Id",
             "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
           },
           "version": {
             "title": "Version",
@@ -2318,16 +2579,6 @@
           "content": {
             "application/json": {
               "schema": {
-                "$defs": {
-                  "ExecutionMode": {
-                    "enum": [
-                      "offline",
-                      "live"
-                    ],
-                    "title": "ExecutionMode",
-                    "type": "string"
-                  }
-                },
                 "additionalProperties": false,
                 "description": "JSON body of ``POST /api/runs`` when submitting a bundled sample.",
                 "properties": {
@@ -2344,7 +2595,7 @@
                     "title": "Evaluation Date"
                   },
                   "mode": {
-                    "$ref": "#/$defs/ExecutionMode"
+                    "$ref": "#/components/schemas/ExecutionMode"
                   },
                   "sample": {
                     "title": "Sample",

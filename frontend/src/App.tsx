@@ -1,4 +1,5 @@
-import { createBrowserRouter, RouterProvider, type RouteObject } from "react-router-dom";
+import { createBrowserRouter, type RouteObject } from "react-router";
+import { RouterProvider } from "react-router/dom";
 import { AppFrame } from "./components/AppFrame";
 import { AddInvoiceView } from "./views/AddInvoiceView";
 import { InvoiceDetailView } from "./views/InvoiceDetailView";
@@ -24,15 +25,12 @@ export const routes: RouteObject[] = [
   },
 ];
 
-export const routerFuture = { v7_relativeSplatPath: true } as const;
-export const providerFuture = { v7_startTransition: true } as const;
-
-const router = createBrowserRouter(routes, { future: routerFuture });
+const router = createBrowserRouter(routes);
 
 export function App() {
   return (
     <WorkspaceProvider>
-      <RouterProvider router={router} future={providerFuture} />
+      <RouterProvider router={router} />
     </WorkspaceProvider>
   );
 }

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useInvoices } from "../api/hooks";
 import type { ExecutionMode, InvoiceStatus } from "../api/types";
 import { MODE_LABEL } from "../format";

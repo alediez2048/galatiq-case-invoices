@@ -1,0 +1,429 @@
+{
+  "allowed_actions": [],
+  "corrections": [],
+  "current_version": 1,
+  "decision": {
+    "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+    "final_decision": "approved",
+    "initial_recommendation": "approve",
+    "mode": "offline",
+    "model": "simulated",
+    "policy_version": "2026-11-01.1",
+    "provider": "offline",
+    "reasons": [
+      "R4_auto_approve"
+    ],
+    "revised_recommendation": null
+  },
+  "decision_run_id": "run-7716141262294a9cade08378af002eca",
+  "evaluation_date": "2026-01-31",
+  "findings": [
+    {
+      "code": "currency_assumed_usd",
+      "evidence": [
+        {
+          "location": "page:1,line:9",
+          "snippet": "Total:     $3,000.00",
+          "source_id": "src-bf3d624f6dceec42"
+        }
+      ],
+      "expected": null,
+      "field": "currency",
+      "item": null,
+      "observed": "USD",
+      "resolved": false,
+      "severity": "info"
+    }
+  ],
+  "human_reviews": [],
+  "invoice": {
+    "computed": null,
+    "currency": "USD",
+    "due_date": "2026-02-20",
+    "invoice_date": "2026-01-20",
+    "invoice_number": "INV-1011",
+    "invoice_number_key": "1011",
+    "lines": [
+      {
+        "evidence": [
+          {
+            "location": "page:1,line:7",
+            "snippet": "WidgetA                             6            $250.00     $1,500.00",
+            "source_id": "src-bf3d624f6dceec42"
+          }
+        ],
+        "item": "WidgetA",
+        "line_total": "1500.00",
+        "note": null,
+        "quantity": "6",
+        "unit_price": "250.00"
+      },
+      {
+        "evidence": [
+          {
+            "location": "page:1,line:8",
+            "snippet": "WidgetB                             3            $500.00     $1,500.00",
+            "source_id": "src-bf3d624f6dceec42"
+          }
+        ],
+        "item": "WidgetB",
+        "line_total": "1500.00",
+        "note": null,
+        "quantity": "3",
+        "unit_price": "500.00"
+      }
+    ],
+    "normalization_events": [
+      {
+        "evidence": [
+          {
+            "location": "page:1,line:2",
+            "snippet": "Invoice Number:   INV-1011",
+            "source_id": "src-bf3d624f6dceec42"
+          }
+        ],
+        "field": "invoice_number",
+        "normalized_value": "1011",
+        "provenance": "rule:invoice_number_format",
+        "raw_value": "INV-1011"
+      },
+      {
+        "evidence": [
+          {
+            "location": "page:1,line:9",
+            "snippet": "Total:     $3,000.00",
+            "source_id": "src-bf3d624f6dceec42"
+          }
+        ],
+        "field": "currency",
+        "normalized_value": "USD",
+        "provenance": "rule:dataset_usd_assumption",
+        "raw_value": null
+      }
+    ],
+    "notes": null,
+    "payment_terms": null,
+    "revision": null,
+    "source_id": "src-bf3d624f6dceec42",
+    "stated": {
+      "shipping": null,
+      "subtotal": null,
+      "tax": null,
+      "tax_rate": null,
+      "total": "3000.00"
+    },
+    "vendor_key": "summit manufacturing co.",
+    "vendor_name": "Summit Manufacturing Co."
+  },
+  "invoice_id": "inv-6054c75525444031948c40ca49fff94b",
+  "invoice_number": "INV-1011",
+  "latest_result": {
+    "decision": {
+      "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=False",
+      "final_decision": "approved",
+      "initial_recommendation": "approve",
+      "mode": "offline",
+      "model": "simulated",
+      "policy_version": "2026-11-01.1",
+      "provider": "offline",
+      "reasons": [
+        "R4_auto_approve"
+      ],
+      "revised_recommendation": null
+    },
+    "error_message": null,
+    "errors": [],
+    "evaluation_date": "2026-01-31",
+    "findings": [
+      {
+        "code": "currency_assumed_usd",
+        "evidence": [
+          {
+            "location": "page:1,line:9",
+            "snippet": "Total:     $3,000.00",
+            "source_id": "src-bf3d624f6dceec42"
+          }
+        ],
+        "expected": null,
+        "field": "currency",
+        "item": null,
+        "observed": "USD",
+        "resolved": false,
+        "severity": "info"
+      }
+    ],
+    "invoice_id": "inv-6054c75525444031948c40ca49fff94b",
+    "mode": "offline",
+    "prior_run_id": null,
+    "receipt": {
+      "amount": "3000.00",
+      "currency": "USD",
+      "paid_at": "2026-11-02T03:56:22.753928Z",
+      "receipt_id": "rcpt-353fb3165f97"
+    },
+    "run_id": "run-7716141262294a9cade08378af002eca",
+    "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+    "status": "paid_mock",
+    "timings_ms": {}
+  },
+  "latest_run_id": "run-7716141262294a9cade08378af002eca",
+  "line_items": [
+    {
+      "available": 15,
+      "evidence": [
+        {
+          "location": "page:1,line:7",
+          "snippet": "WidgetA                             6            $250.00     $1,500.00",
+          "source_id": "src-bf3d624f6dceec42"
+        }
+      ],
+      "item": "WidgetA",
+      "line_total": "1500.00",
+      "quantity": "6",
+      "requested_total": "6",
+      "unit_price": "250.00"
+    },
+    {
+      "available": 10,
+      "evidence": [
+        {
+          "location": "page:1,line:8",
+          "snippet": "WidgetB                             3            $500.00     $1,500.00",
+          "source_id": "src-bf3d624f6dceec42"
+        }
+      ],
+      "item": "WidgetB",
+      "line_total": "1500.00",
+      "quantity": "3",
+      "requested_total": "3",
+      "unit_price": "500.00"
+    }
+  ],
+  "mode": "offline",
+  "normalization_events": [
+    {
+      "evidence": [
+        {
+          "location": "page:1,line:2",
+          "snippet": "Invoice Number:   INV-1011",
+          "source_id": "src-bf3d624f6dceec42"
+        }
+      ],
+      "field": "invoice_number",
+      "normalized_value": "1011",
+      "provenance": "rule:invoice_number_format",
+      "raw_value": "INV-1011"
+    },
+    {
+      "evidence": [
+        {
+          "location": "page:1,line:9",
+          "snippet": "Total:     $3,000.00",
+          "source_id": "src-bf3d624f6dceec42"
+        }
+      ],
+      "field": "currency",
+      "normalized_value": "USD",
+      "provenance": "rule:dataset_usd_assumption",
+      "raw_value": null
+    }
+  ],
+  "outcome": "paid_mock",
+  "receipt": {
+    "amount": "3000.00",
+    "currency": "USD",
+    "paid_at": "2026-11-02T03:56:22.753928Z",
+    "receipt_id": "rcpt-353fb3165f97"
+  },
+  "runs": [
+    {
+      "error_code": null,
+      "error_message": null,
+      "evaluation_date": "2026-01-31",
+      "events": [
+        {
+          "created_at": "2026-11-02T03:56:22.734573Z",
+          "event": "received",
+          "payload": {
+            "mode": "offline",
+            "original_name": "invoice_1011.pdf",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "received"
+          },
+          "stage": "intake"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.749000Z",
+          "event": "extracted",
+          "payload": {
+            "codes": [
+              "currency_assumed_usd"
+            ],
+            "issues": [],
+            "mode": "offline",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "extracted",
+            "version": 1
+          },
+          "stage": "ingestion"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.750163Z",
+          "event": "validated",
+          "payload": {
+            "codes": [
+              "currency_assumed_usd"
+            ],
+            "mode": "offline",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "validated"
+          },
+          "stage": "validation"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.751070Z",
+          "event": "recommendation",
+          "payload": {
+            "codes": [],
+            "mode": "offline",
+            "recommendation": "approve",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "validated"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.751365Z",
+          "event": "critique",
+          "payload": {
+            "agrees": true,
+            "mode": "offline",
+            "revised_recommendation": null,
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "validated"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.752553Z",
+          "event": "decision",
+          "payload": {
+            "final_decision": "approved",
+            "mode": "offline",
+            "policy_version": "2026-11-01.1",
+            "rule_ids": [
+              "R4_auto_approve"
+            ],
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "approved"
+          },
+          "stage": "approval"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.753995Z",
+          "event": "payment_succeeded",
+          "payload": {
+            "amount": "3000.00",
+            "currency": "USD",
+            "receipt_id": "rcpt-353fb3165f97"
+          },
+          "stage": "payment"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.754336Z",
+          "event": "paid",
+          "payload": {
+            "amount": "3000.00",
+            "created": true,
+            "currency": "USD",
+            "mode": "offline",
+            "receipt_id": "rcpt-353fb3165f97",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "paid_mock"
+          },
+          "stage": "payment"
+        },
+        {
+          "created_at": "2026-11-02T03:56:22.754967Z",
+          "event": "finished",
+          "payload": {
+            "errors": [],
+            "mode": "offline",
+            "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+            "status": "paid_mock"
+          },
+          "stage": "service"
+        }
+      ],
+      "finished_at": "2026-11-02T03:56:22.754720Z",
+      "mode": "offline",
+      "model": "simulated",
+      "original_name": "invoice_1011.pdf",
+      "prior_run_id": null,
+      "provider": "offline",
+      "retry_of": null,
+      "run_id": "run-7716141262294a9cade08378af002eca",
+      "source_id": "src-bf3d624f6dceec42",
+      "started_at": "2026-11-02T03:56:22.734337Z",
+      "status": "paid_mock"
+    }
+  ],
+  "source": {
+    "format": "pdf",
+    "original_name": "invoice_1011.pdf",
+    "page_count": 1,
+    "size_bytes": 1479,
+    "source_id": "src-bf3d624f6dceec42"
+  },
+  "source_id": "src-bf3d624f6dceec42",
+  "vendor_name": "Summit Manufacturing Co.",
+  "versions": [
+    {
+      "created_at": "2026-11-02T03:56:22.746159Z",
+      "currency": "USD",
+      "lines": [
+        {
+          "evidence": [
+            {
+              "location": "page:1,line:7",
+              "snippet": "WidgetA                             6            $250.00     $1,500.00",
+              "source_id": "src-bf3d624f6dceec42"
+            }
+          ],
+          "item": "WidgetA",
+          "line_total": "1500.00",
+          "note": null,
+          "quantity": "6",
+          "unit_price": "250.00"
+        },
+        {
+          "evidence": [
+            {
+              "location": "page:1,line:8",
+              "snippet": "WidgetB                             3            $500.00     $1,500.00",
+              "source_id": "src-bf3d624f6dceec42"
+            }
+          ],
+          "item": "WidgetB",
+          "line_total": "1500.00",
+          "note": null,
+          "quantity": "3",
+          "unit_price": "500.00"
+        }
+      ],
+      "origin": "extracted",
+      "original_name": "invoice_1011.pdf",
+      "parent_version": null,
+      "receipt": {
+        "amount": "3000.00",
+        "currency": "USD",
+        "paid_at": "2026-11-02T03:56:22.753928Z",
+        "receipt_id": "rcpt-353fb3165f97"
+      },
+      "revision": null,
+      "source_id": "src-bf3d624f6dceec42",
+      "total": "3000.00",
+      "version": 1
+    }
+  ]
+}

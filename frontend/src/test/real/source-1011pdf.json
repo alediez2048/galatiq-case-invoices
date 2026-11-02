@@ -1,0 +1,49 @@
+{
+  "content_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
+  "format": "pdf",
+  "lines": [
+    {
+      "anchor": "page:1,line:1",
+      "text": "                                     INVOICE"
+    },
+    {
+      "anchor": "page:1,line:2",
+      "text": "    Invoice Number:   INV-1011"
+    },
+    {
+      "anchor": "page:1,line:3",
+      "text": "    Vendor:           Summit Manufacturing Co."
+    },
+    {
+      "anchor": "page:1,line:4",
+      "text": "    Date:             2026-01-20"
+    },
+    {
+      "anchor": "page:1,line:5",
+      "text": "    Due Date:         2026-02-20"
+    },
+    {
+      "anchor": "page:1,line:6",
+      "text": "    Item                               Qty         Unit Price     Amount"
+    },
+    {
+      "anchor": "page:1,line:7",
+      "text": "    WidgetA                             6            $250.00     $1,500.00"
+    },
+    {
+      "anchor": "page:1,line:8",
+      "text": "    WidgetB                             3            $500.00     $1,500.00"
+    },
+    {
+      "anchor": "page:1,line:9",
+      "text": "                                                      Total:     $3,000.00"
+    }
+  ],
+  "original_name": "invoice_1011.pdf",
+  "original_url": "/api/sources/src-bf3d624f6dceec42/original",
+  "page_count": 1,
+  "preview_limitation": "Text below is what the parser extracted from the PDF; layout, images and handwriting are not shown.",
+  "rows": null,
+  "size_bytes": 1479,
+  "source_id": "src-bf3d624f6dceec42"
+}

@@ -45,4 +45,10 @@ describe("check-bundle-origins", () => {
     expect(result.ok).toBe(false);
     expect(result.output).toContain("fixtures");
   });
+
+  it("allows only the exact React Router message links, not other paths on that host", () => {
+    const msg = 'const m="See https://reactrouter.com/en/main/routers/picking-a-router.";';
+    expect(check({ "assets/a.js": msg }).ok).toBe(true);
+    expect(check({ "assets/a.js": 'fetch("https://reactrouter.com/beacon")' }).ok).toBe(false);
+  });
 });

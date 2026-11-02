@@ -1,0 +1,196 @@
+{
+  "error_code": null,
+  "error_message": null,
+  "events": [
+    {
+      "created_at": "2026-11-02T03:56:22.820401Z",
+      "event": "received",
+      "payload": {
+        "mode": "offline",
+        "original_name": "invoice_1007.csv",
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "received"
+      },
+      "stage": "intake"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.825176Z",
+      "event": "extracted",
+      "payload": {
+        "codes": [
+          "currency_assumed_usd"
+        ],
+        "issues": [],
+        "mode": "offline",
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "extracted",
+        "version": 1
+      },
+      "stage": "ingestion"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.829282Z",
+      "event": "validated",
+      "payload": {
+        "codes": [
+          "currency_assumed_usd",
+          "total_mismatch",
+          "quantity_exceeds_stock",
+          "quantity_exceeds_stock"
+        ],
+        "mode": "offline",
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "validated"
+      },
+      "stage": "validation"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.830117Z",
+      "event": "recommendation",
+      "payload": {
+        "codes": [
+          "total_mismatch",
+          "quantity_exceeds_stock"
+        ],
+        "mode": "offline",
+        "recommendation": "reject",
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "validated"
+      },
+      "stage": "approval"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.830575Z",
+      "event": "critique",
+      "payload": {
+        "agrees": true,
+        "mode": "offline",
+        "revised_recommendation": null,
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "validated"
+      },
+      "stage": "approval"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.833724Z",
+      "event": "decision",
+      "payload": {
+        "final_decision": "rejected",
+        "mode": "offline",
+        "policy_version": "2026-11-01.1",
+        "rule_ids": [
+          "R1_blocker"
+        ],
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "rejected"
+      },
+      "stage": "approval"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.835315Z",
+      "event": "rejection_recorded",
+      "payload": {
+        "codes": [
+          "total_mismatch",
+          "quantity_exceeds_stock",
+          "quantity_exceeds_stock"
+        ]
+      },
+      "stage": "payment"
+    },
+    {
+      "created_at": "2026-11-02T03:56:22.836465Z",
+      "event": "finished",
+      "payload": {
+        "errors": [],
+        "mode": "offline",
+        "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+        "status": "rejected"
+      },
+      "stage": "service"
+    }
+  ],
+  "finished_at": "2026-11-02T03:56:22.836130Z",
+  "invoice_id": "inv-d84d67b33362415392088eebb581c18b",
+  "mode": "offline",
+  "prior_run_id": null,
+  "result": {
+    "decision": {
+      "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=True",
+      "final_decision": "rejected",
+      "initial_recommendation": "reject",
+      "mode": "offline",
+      "model": "simulated",
+      "policy_version": "2026-11-01.1",
+      "provider": "offline",
+      "reasons": [
+        "R1_blocker"
+      ],
+      "revised_recommendation": null
+    },
+    "error_message": null,
+    "errors": [],
+    "evaluation_date": "2026-01-31",
+    "findings": [
+      {
+        "code": "currency_assumed_usd",
+        "evidence": [],
+        "expected": null,
+        "field": "currency",
+        "item": null,
+        "observed": "USD",
+        "resolved": false,
+        "severity": "info"
+      },
+      {
+        "code": "total_mismatch",
+        "evidence": [],
+        "expected": "15635.00",
+        "field": "total",
+        "item": null,
+        "observed": "15525.00",
+        "resolved": false,
+        "severity": "blocker"
+      },
+      {
+        "code": "quantity_exceeds_stock",
+        "evidence": [],
+        "expected": "15",
+        "field": null,
+        "item": "WidgetA",
+        "observed": "20",
+        "resolved": false,
+        "severity": "blocker"
+      },
+      {
+        "code": "quantity_exceeds_stock",
+        "evidence": [],
+        "expected": "10",
+        "field": null,
+        "item": "WidgetB",
+        "observed": "15",
+        "resolved": false,
+        "severity": "blocker"
+      }
+    ],
+    "invoice_id": "inv-d84d67b33362415392088eebb581c18b",
+    "mode": "offline",
+    "prior_run_id": null,
+    "receipt": null,
+    "run_id": "run-1e043cdef6ca437fa75b878b1c3c986a",
+    "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
+    "status": "rejected",
+    "timings_ms": {}
+  },
+  "retry_of": null,
+  "run_id": "run-1e043cdef6ca437fa75b878b1c3c986a",
+  "source": {
+    "format": "csv",
+    "original_name": "invoice_1007.csv",
+    "source_id": "src-332b4c6464b59d5a"
+  },
+  "stage": "rejected",
+  "started_at": "2026-11-02T03:56:22.819631Z",
+  "status": "rejected",
+  "terminal": true
+}

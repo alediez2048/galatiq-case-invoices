@@ -89,14 +89,14 @@ function Outcome({ detail }: { detail: InvoiceDetail }) {
   );
 }
 
-function Detail({ detail, reload }: { detail: InvoiceDetail; reload: () => void }) {
+function Detail({ detail }: { detail: InvoiceDetail }) {
   const showReceipt = detail.receipt && !hasFinding(detail, "revision_after_payment");
   return (
     <EvidenceProvider>
       <DetailHeader detail={detail} />
       <StageStrip detail={detail} />
       <Outcome detail={detail} />
-      <StateNotices detail={detail} onChanged={reload} />
+      <StateNotices detail={detail} />
       <div className="detail-grid">
         {detail.source ? (
           <SourcePanel source={detail.source} />
@@ -157,7 +157,7 @@ export function InvoiceDetailView() {
         </div>
       )}
       {!invoice.data && invoice.loading && <p className="sub">Loading invoice history…</p>}
-      {invoice.data && <Detail detail={invoice.data} reload={invoice.reload} />}
+      {invoice.data && <Detail detail={invoice.data} />}
     </>
   );
 }

@@ -20,6 +20,7 @@ export interface Wire {
   Readiness: S["Readiness"];
   Sample: S["Sample"];
   RunAccepted: S["RunAccepted"];
+  RetryRequest: S["RetryRequest"];
   RunRequest: { sample: string; mode: ExecutionMode; evaluation_date?: string | null };
   RunView: S["RunView"];
   AuditEvent: S["AuditEventView"];
@@ -115,6 +116,8 @@ export interface Readiness {
   inventory_seeded: boolean;
   db_path: string;
   schema_version: number;
+  /** The configured XAI_MODEL when live settings are present (never the key). */
+  live_model: string | null;
 }
 
 export interface Sample {
@@ -149,9 +152,14 @@ export interface RunProgress {
   error_message: string | null;
   prior_run_id: string | null;
   retry_of: string | null;
+  /** Set when this run is the same document in the other mode (P3-08). */
+  mode_switch_of: string | null;
   events: StageEvent[];
   result: ProcessingResult | null;
 }
+
+/** `POST /api/runs/{id}/retry` actions (P3-08). */
+export type RetryAction = NonNullable<Wire["RetryRequest"]["action"]>;
 
 export interface RunCreated {
   run_id: string;

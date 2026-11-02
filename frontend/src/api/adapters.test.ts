@@ -8,6 +8,7 @@ import {
   toReadiness,
   toRunProgress,
   toSourceContent,
+  toStageEvents,
 } from "./adapters";
 import detail1001 from "../test/real/detail-1001.json";
 import detail1007 from "../test/real/detail-1007.json";
@@ -125,19 +126,47 @@ describe("adapters — shape rules", () => {
       live_settings_present: false,
       inventory_seeded: true,
       database_path: "x.db",
-      schema_version: 5,
+      schema_version: 6,
     });
     expect(r.live_available).toBe(false);
     expect(r.live_unavailable_reason).toBe("XAI_API_KEY is not set");
   });
 
   it("names Phase 3 model steps with the mockup copy", () => {
-    expect(eventMessage("model", "model_call", { agent: "ingestion", step: "extraction_repair", attempt: 2 })).toBe(
-      "Checking an extraction issue — attempt 2 of 2.",
-    );
     expect(eventMessage("model", "model_call", { agent: "approval", step: "critique", attempt: 1 })).toBe(
       "Checking the recommendation against policy.",
     );
     expect(eventMessage("x", "brand_new_event", {})).toBe("x: brand new event.");
+  });
+
+  it("counts extraction-assist tries from Phase 3 model_call events (repair = try 2)", () => {
+    // Phase 3 (agents/ingestion.py, reasoning/session.py): agent "ingestion", step
+    // "assist_extraction"; `attempt` is the transport retry within one try, and the single
+    // repair is a second assist_extraction call that starts again at attempt 1.
+    const ev = (event: string, payload: Record<string, unknown>) => ({
+      stage: event === "model_call" ? "model" : "ingestion",
+      event,
+      payload,
+      created_at: "2026-11-01T00:00:00Z",
+    });
+    const call = (attempt: number) => ev("model_call", { agent: "ingestion", step: "assist_extraction", attempt });
+    const messages = toStageEvents([
+      call(1),
+      call(2),
+      call(1),
+      ev("assist", { repaired: true, proposals: 2, accepted: 1, codes: [] }),
+    ]).map((e) => e.message);
+    expect(messages).toEqual([
+      "Checking an extraction issue — attempt 1 of 2.",
+      "Checking an extraction issue — attempt 1 of 2 (request retried).",
+      "Checking an extraction issue — attempt 2 of 2.",
+      "Extraction assist: 1 of 2 proposed fixes accepted after one repair.",
+    ]);
+    expect(
+      toStageEvents([ev("assist_failed", { error_code: "model_timeout", repaired: false })])[0]?.message,
+    ).toBe("Extraction assist failed (model_timeout). The original issues stay for review.");
+    expect(
+      toStageEvents([{ ...ev("model_failed", { error_code: "model_refused" }), stage: "approval" }])[0]?.message,
+    ).toBe("Model request failed (model_refused).");
   });
 });

@@ -1,17 +1,21 @@
-import { useEffect, useId } from "react";
+import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useRunProgress } from "../api/hooks";
 import type { RunProgress } from "../api/types";
 import { MODE_LABEL } from "../format";
 import { Icon, type IconName } from "../components/Icon";
+import { RetryButton } from "../components/RetryButton";
 import {
   activeMessage,
   completedEvents,
   paymentLine,
   progressStages,
   runFailure,
+  type RunFailure,
   type ProgressState,
 } from "../processing/progress";
+
+const OFFLINE_ACTION = "run offline as a separate simulation";
 
 const ICON: Record<ProgressState, IconName> = {
   complete: "check",
@@ -44,27 +48,21 @@ function Stages({ run }: { run: RunProgress }) {
 }
 
 /**
- * Recoverable failure: Retry and "Run offline as a separate simulation" are shown but
- * disabled until the retry endpoint exists.
- * TODO(P3-08): wire Retry to POST /api/runs/{id}/retry (useRetryRun) and the offline action
- * to a new offline submission of the same source, then enable both.
+ * Recoverable failure (P3-08): Retry reprocesses in the run's own mode as a new linked run;
+ * "Run offline as a separate simulation" is offered only where the server lists it (live
+ * model failures). Nothing is substituted automatically.
  */
-function RecoveryActions() {
-  const noteId = useId();
+function RecoveryActions({ run, failure }: { run: RunProgress; failure: RunFailure }) {
+  const offline = run.result
+    ? (run.result.next_actions ?? []).includes(OFFLINE_ACTION)
+    : run.mode === "live" && failure.kind === "provider";
   return (
     <div className="recovery">
       <div className="modal__actions">
-        <button type="button" className="button button--primary" disabled aria-describedby={noteId}>
-          Retry
-        </button>
-        <button type="button" className="button button--secondary" disabled aria-describedby={noteId}>
-          Run offline as a separate simulation
-        </button>
+        <RetryButton runId={run.run_id} />
+        {offline && <RetryButton runId={run.run_id} action="run_offline" />}
       </div>
-      <p className="sub" id={noteId}>
-        Retry is not available in this build yet; it arrives with the live-mode retry endpoint.
-        Nothing was substituted and no payment was attempted.
-      </p>
+      <p className="sub">Each action starts a new run linked to this one. Payment still happens at most once.</p>
     </div>
   );
 }
@@ -80,7 +78,7 @@ function Failure({ run }: { run: RunProgress }) {
       </p>
       {failure.detail && <p className="sub">{failure.detail}</p>}
       <p className="sub">Mode of this run: {MODE_LABEL[run.mode]}</p>
-      {failure.recoverable && <RecoveryActions />}
+      {failure.recoverable && <RecoveryActions run={run} failure={failure} />}
       <div className="modal__actions">
         {(failure.kind === "unreadable" || failure.kind === "ocr" || failure.kind === "oversized") && (
           <Link to="/add" className="button button--secondary">

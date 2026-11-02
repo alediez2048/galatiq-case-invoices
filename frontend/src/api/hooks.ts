@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, newIdempotencyKey, type RunInput } from "./client";
-import type { InvoiceListQuery, RunCreated, RunProgress } from "./types";
+import type { InvoiceListQuery, RetryAction, RunCreated, RunProgress } from "./types";
 
 export interface QueryState<T> {
   data: T | undefined;
@@ -79,21 +79,30 @@ export const useSamples = (enabled: boolean) =>
  * Explicit retry of a failed run. One idempotency key per mounted control, so a double
  * click or a resubmission after a lost response cannot create two runs.
  */
-export function useRetryRun(runId: string, onDone: (runId: string) => void) {
+export function useRetryRun(
+  runId: string,
+  onDone: (runId: string) => void,
+  action: RetryAction = "retry",
+) {
   const key = useRef(newIdempotencyKey());
+  const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const retry = useCallback(async () => {
+    if (inFlight.current) return; // synchronous guard: a double click posts once
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
-      const created = await api.retryRun(runId, key.current);
+      const created = await api.retryRun(runId, key.current, action);
       onDone(created.run_id);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Retry failed.");
       setBusy(false);
+    } finally {
+      inFlight.current = false;
     }
-  }, [runId, onDone]);
+  }, [runId, onDone, action]);
   return { retry, busy, error };
 }
 

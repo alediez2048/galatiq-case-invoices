@@ -18,7 +18,7 @@
     ],
     "revised_recommendation": null
   },
-  "decision_run_id": "run-c2cc5c8339514b1b8b27a454c77ec256",
+  "decision_run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
   "evaluation_date": "2026-01-31",
   "findings": [
     {
@@ -134,7 +134,7 @@
     "vendor_key": "widgets inc.",
     "vendor_name": "Widgets Inc."
   },
-  "invoice_id": "inv-fd9cdba70f51404199166d80bb107eaf",
+  "invoice_id": "inv-2c1d29a5bc0e4060b5f37ebcf4029243",
   "invoice_number": "INV-1001",
   "latest_result": {
     "decision": {
@@ -190,7 +190,7 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-fd9cdba70f51404199166d80bb107eaf",
+    "invoice_id": "inv-2c1d29a5bc0e4060b5f37ebcf4029243",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -199,16 +199,16 @@
     "receipt": {
       "amount": "5000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T05:15:13.280484Z",
-      "receipt_id": "rcpt-d71a9b152b79"
+      "paid_at": "2026-11-02T09:44:56.287313Z",
+      "receipt_id": "rcpt-47a2e6b45b60"
     },
     "recoverable": false,
-    "run_id": "run-c2cc5c8339514b1b8b27a454c77ec256",
+    "run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
     "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
     "status": "paid_mock",
     "timings_ms": {}
   },
-  "latest_run_id": "run-c2cc5c8339514b1b8b27a454c77ec256",
+  "latest_run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
   "line_items": [
     {
       "available": 15,
@@ -274,8 +274,8 @@
   "receipt": {
     "amount": "5000.00",
     "currency": "USD",
-    "paid_at": "2026-11-02T05:15:13.280484Z",
-    "receipt_id": "rcpt-d71a9b152b79"
+    "paid_at": "2026-11-02T09:44:56.287313Z",
+    "receipt_id": "rcpt-47a2e6b45b60"
   },
   "runs": [
     {
@@ -284,7 +284,7 @@
       "evaluation_date": "2026-01-31",
       "events": [
         {
-          "created_at": "2026-11-02T05:15:13.214880Z",
+          "created_at": "2026-11-02T09:44:56.251201Z",
           "event": "received",
           "payload": {
             "mode": "offline",
@@ -297,7 +297,7 @@
           "stage": "intake"
         },
         {
-          "created_at": "2026-11-02T05:15:13.238132Z",
+          "created_at": "2026-11-02T09:44:56.277141Z",
           "event": "extracted",
           "payload": {
             "codes": [
@@ -313,7 +313,7 @@
           "stage": "ingestion"
         },
         {
-          "created_at": "2026-11-02T05:15:13.254936Z",
+          "created_at": "2026-11-02T09:44:56.279459Z",
           "event": "validated",
           "payload": {
             "codes": [
@@ -327,7 +327,7 @@
           "stage": "validation"
         },
         {
-          "created_at": "2026-11-02T05:15:13.259523Z",
+          "created_at": "2026-11-02T09:44:56.281039Z",
           "event": "recommendation",
           "payload": {
             "codes": [],
@@ -340,7 +340,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.263980Z",
+          "created_at": "2026-11-02T09:44:56.282972Z",
           "event": "critique",
           "payload": {
             "agrees": true,
@@ -356,7 +356,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.270247Z",
+          "created_at": "2026-11-02T09:44:56.285201Z",
           "event": "decision",
           "payload": {
             "final_decision": "approved",
@@ -371,31 +371,31 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.282903Z",
+          "created_at": "2026-11-02T09:44:56.287369Z",
           "event": "payment_succeeded",
           "payload": {
             "amount": "5000.00",
             "currency": "USD",
-            "receipt_id": "rcpt-d71a9b152b79"
+            "receipt_id": "rcpt-47a2e6b45b60"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T05:15:13.283526Z",
+          "created_at": "2026-11-02T09:44:56.289299Z",
           "event": "paid",
           "payload": {
             "amount": "5000.00",
             "created": true,
             "currency": "USD",
             "mode": "offline",
-            "receipt_id": "rcpt-d71a9b152b79",
+            "receipt_id": "rcpt-47a2e6b45b60",
             "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
             "status": "paid_mock"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T05:15:13.288290Z",
+          "created_at": "2026-11-02T09:44:56.291026Z",
           "event": "finished",
           "payload": {
             "errors": [],
@@ -406,16 +406,16 @@
           "stage": "service"
         }
       ],
-      "finished_at": "2026-11-02T05:15:13.285628Z",
+      "finished_at": "2026-11-02T09:44:56.290769Z",
       "mode": "offline",
       "model": "simulated",
       "original_name": "invoice_1001.txt",
       "prior_run_id": null,
       "provider": "offline",
       "retry_of": null,
-      "run_id": "run-c2cc5c8339514b1b8b27a454c77ec256",
+      "run_id": "run-ea7b5d60db3546c78747e2ebbb36affb",
       "source_id": "src-7308ab3d7ff26ee3",
-      "started_at": "2026-11-02T05:15:13.211563Z",
+      "started_at": "2026-11-02T09:44:56.250745Z",
       "status": "paid_mock"
     }
   ],
@@ -430,7 +430,7 @@
   "vendor_name": "Widgets Inc.",
   "versions": [
     {
-      "created_at": "2026-11-02T05:15:13.225257Z",
+      "created_at": "2026-11-02T09:44:56.273217Z",
       "currency": "USD",
       "lines": [
         {
@@ -468,8 +468,8 @@
       "receipt": {
         "amount": "5000.00",
         "currency": "USD",
-        "paid_at": "2026-11-02T05:15:13.280484Z",
-        "receipt_id": "rcpt-d71a9b152b79"
+        "paid_at": "2026-11-02T09:44:56.287313Z",
+        "receipt_id": "rcpt-47a2e6b45b60"
       },
       "revision": null,
       "source_id": "src-7308ab3d7ff26ee3",

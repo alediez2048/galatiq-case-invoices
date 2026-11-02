@@ -16,6 +16,7 @@ import type {
   InvoiceListQuery,
   Overview,
   Readiness,
+  RetryAction,
   RunCreated,
   RunProgress,
   Sample,
@@ -172,16 +173,20 @@ export const api = {
   run: async (runId: string, signal?: AbortSignal): Promise<RunProgress> =>
     toRunProgress(await request<Wire["RunView"]>(`/runs/${enc(runId)}`, { signal })),
   /**
-   * P5-02 explicit retry of a recoverable failure; creates a linked run.
-   * TODO(P3-08): the backend route lands with Phase 3; the response shape is assumed.
+   * Explicit retry of a recoverable failure (P3-08); always creates a new linked run.
+   * `retry` reprocesses in the failed run's mode (`retry_of`); `run_offline` runs the same
+   * document offline as a separate, labeled simulation (`mode_switch_of`).
    */
-  retryRun: async (runId: string, idempotencyKey: string): Promise<RunCreated> =>
-    toRunCreated(
+  retryRun: async (runId: string, idempotencyKey: string, action: RetryAction = "retry"): Promise<RunCreated> => {
+    const json: Wire["RetryRequest"] = { action };
+    return toRunCreated(
       await request<Wire["RunAccepted"]>(`/runs/${enc(runId)}/retry`, {
         method: "POST",
         idempotencyKey,
+        json,
       }),
-    ),
+    );
+  },
 };
 
 /** Persisted result download (P5-03); a plain link, never transient UI state. */

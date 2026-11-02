@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Wire } from "../api/types";
 import detail1001 from "../test/real/detail-1001.json";
@@ -112,26 +112,88 @@ describe("Processing view (P5-07, screen 3)", () => {
     expect(calls.filter((c) => c.method !== "GET")).toHaveLength(0);
   });
 
-  it("live provider failure: explains, offers Retry and a separate offline run (disabled until P3-08), substitutes nothing", async () => {
-    const failed: Wire["RunView"] = {
-      ...realRun,
-      mode: "live",
-      status: "failed",
-      stage: "approval",
-      error_code: "model_unavailable",
-      error_message: "The model provider returned 503.",
-      events: realRun.events.slice(0, 3),
-      result: null,
-    };
-    const { calls, router } = renderApp("/runs/run-live", { "GET /api/runs/:id": () => failed });
+  const liveFailure: Wire["RunView"] = {
+    ...realRun,
+    run_id: "run-live",
+    mode: "live",
+    status: "failed",
+    stage: "approval",
+    error_code: "model_unavailable",
+    error_message: "The model provider returned 503.",
+    events: realRun.events.slice(0, 3),
+    result: null,
+  };
+
+  it("live provider failure: explains, offers enabled Retry and a separate offline run, substitutes nothing", async () => {
+    const { calls, router } = renderApp("/runs/run-live", { "GET /api/runs/:id": () => liveFailure });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Model request failed. Payment was not attempted.");
     expect(alert).toHaveTextContent("Mode of this run: Live model");
-    expect(within(alert).getByRole("button", { name: "Retry" })).toBeDisabled();
-    expect(within(alert).getByRole("button", { name: "Run offline as a separate simulation" })).toBeDisabled();
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeEnabled();
+    expect(within(alert).getByRole("button", { name: "Run offline as a separate simulation" })).toBeEnabled();
     expect(stages()).toEqual(["Extract details=complete", "Check inventory=complete", "Review=failed", "Pay=skipped"]);
     expect(router.state.location.pathname).toBe("/runs/run-live");
     expect(calls.filter((c) => c.method !== "GET")).toHaveLength(0);
+  });
+
+  it.each([
+    ["Retry", "retry", "run-retry-1"],
+    ["Run offline as a separate simulation", "run_offline", "run-offline-1"],
+  ])("%s posts one explicit retry (action %s) and follows the new linked run", async (name, action, newRun) => {
+    const bodies: unknown[] = [];
+    const { calls, router } = renderApp("/runs/run-live", {
+      "GET /api/runs/:id": (url: URL) =>
+        url.pathname.endsWith("/run-live") ? liveFailure : { ...realRun, run_id: newRun },
+      "POST /api/runs/:id/retry": (_url: URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return { run_id: newRun, status: "received", mode: action === "retry" ? "live" : "offline", idempotent_replay: false };
+      },
+      "GET /api/invoices/:id": () => detail1001,
+      "GET /api/sources/:id/content": () => source1001,
+    });
+    const alert = await screen.findByRole("alert");
+    const button = within(alert).getByRole("button", { name });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(router.state.location.pathname).not.toBe("/runs/run-live"));
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.url).toBe("/api/runs/run-live/retry");
+    expect(posts[0]?.headers["Idempotency-Key"]).toMatch(/[0-9a-f-]{36}/);
+    expect(bodies).toEqual([{ action }]);
+  });
+
+  it("a refused retry shows the server's reason and stays on the failed run", async () => {
+    const { router } = renderApp("/runs/run-live", {
+      "GET /api/runs/:id": () => liveFailure,
+      "POST /api/runs/:id/retry": () =>
+        new Response(
+          JSON.stringify({
+            code: "already_paid",
+            message: "Another run already paid this invoice. No additional payment.",
+            details: { reason: "already_paid", run_id: "run-live", receipt_id: "rcpt-1" },
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
+    });
+    const alert = await screen.findByRole("alert");
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Another run already paid this invoice. No additional payment.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-live");
+  });
+
+  it("a non-model failure that can only be retried offers no offline simulation", async () => {
+    const crashed: Wire["RunView"] = {
+      ...liveFailure,
+      mode: "offline",
+      error_code: "unexpected_error",
+      error_message: "Validation raised an unexpected error.",
+      result: { ...(realRun.result as NonNullable<Wire["RunView"]["result"]>), status: "failed", errors: ["unexpected_error"], recoverable: true, next_actions: ["retry"] },
+    };
+    renderApp("/runs/run-live", { "GET /api/runs/:id": () => crashed });
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeEnabled();
+    expect(within(alert).queryByRole("button", { name: "Run offline as a separate simulation" })).not.toBeInTheDocument();
   });
 
   it("a duplicate submission opens the existing invoice", async () => {

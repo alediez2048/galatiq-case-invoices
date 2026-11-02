@@ -3,7 +3,7 @@
   "error_message": null,
   "events": [
     {
-      "created_at": "2026-11-02T05:15:13.719976Z",
+      "created_at": "2026-11-02T09:44:56.484748Z",
       "event": "received",
       "payload": {
         "mode": "offline",
@@ -16,7 +16,7 @@
       "stage": "intake"
     },
     {
-      "created_at": "2026-11-02T05:15:13.760796Z",
+      "created_at": "2026-11-02T09:44:56.493110Z",
       "event": "extracted",
       "payload": {
         "codes": [
@@ -31,7 +31,7 @@
       "stage": "ingestion"
     },
     {
-      "created_at": "2026-11-02T05:15:13.766180Z",
+      "created_at": "2026-11-02T09:44:56.495381Z",
       "event": "validated",
       "payload": {
         "codes": [
@@ -47,7 +47,7 @@
       "stage": "validation"
     },
     {
-      "created_at": "2026-11-02T05:15:13.767170Z",
+      "created_at": "2026-11-02T09:44:56.496648Z",
       "event": "recommendation",
       "payload": {
         "codes": [
@@ -63,7 +63,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T05:15:13.771010Z",
+      "created_at": "2026-11-02T09:44:56.497299Z",
       "event": "critique",
       "payload": {
         "agrees": true,
@@ -79,7 +79,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T05:15:13.777318Z",
+      "created_at": "2026-11-02T09:44:56.498001Z",
       "event": "decision",
       "payload": {
         "final_decision": "rejected",
@@ -94,7 +94,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T05:15:13.779057Z",
+      "created_at": "2026-11-02T09:44:56.498384Z",
       "event": "rejection_recorded",
       "payload": {
         "codes": [
@@ -106,7 +106,7 @@
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T05:15:13.780131Z",
+      "created_at": "2026-11-02T09:44:56.498907Z",
       "event": "finished",
       "payload": {
         "errors": [],
@@ -117,9 +117,10 @@
       "stage": "service"
     }
   ],
-  "finished_at": "2026-11-02T05:15:13.779823Z",
-  "invoice_id": "inv-ad2377f8b5834aec8f9489979c281ca5",
+  "finished_at": "2026-11-02T09:44:56.498675Z",
+  "invoice_id": "inv-34a129b120c0453783406be3626783be",
   "mode": "offline",
+  "mode_switch_of": null,
   "prior_run_id": null,
   "result": {
     "decision": {
@@ -183,7 +184,7 @@
         "severity": "blocker"
       }
     ],
-    "invoice_id": "inv-ad2377f8b5834aec8f9489979c281ca5",
+    "invoice_id": "inv-34a129b120c0453783406be3626783be",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -191,20 +192,20 @@
     "prior_run_id": null,
     "receipt": null,
     "recoverable": false,
-    "run_id": "run-217432facbe84108b7ccf245066bbbb8",
+    "run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
     "source_hash": "332b4c6464b59d5a286549ae8c0cc69f0eaec8f15665324a32c2a91839e8f2fe",
     "status": "rejected",
     "timings_ms": {}
   },
   "retry_of": null,
-  "run_id": "run-217432facbe84108b7ccf245066bbbb8",
+  "run_id": "run-3187abf1bfdb487a89c21b6f356d51cb",
   "source": {
     "format": "csv",
     "original_name": "invoice_1007.csv",
     "source_id": "src-332b4c6464b59d5a"
   },
   "stage": "rejected",
-  "started_at": "2026-11-02T05:15:13.716093Z",
+  "started_at": "2026-11-02T09:44:56.484558Z",
   "status": "rejected",
   "terminal": true
 }

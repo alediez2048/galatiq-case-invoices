@@ -26,6 +26,7 @@ export function readiness(r: Readiness): Wire["Readiness"] {
     inventory_seeded: r.inventory_seeded,
     database_path: r.db_path,
     schema_version: r.schema_version,
+    live_model: r.live_model,
   };
 }
 

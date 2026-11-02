@@ -48,10 +48,11 @@ describe("App frame", () => {
   it("badge follows the mode chosen in Setup; live is refused when not configured", async () => {
     const user = userEvent.setup();
     renderApp("/setup", {
-      "GET /api/settings/readiness": () => wire.readiness({ ...readinessFixture, live_available: true, live_unavailable_reason: null }),
+      "GET /api/settings/readiness": () =>
+        wire.readiness({ ...readinessFixture, live_available: true, live_unavailable_reason: null, live_model: "grok-test" }),
     });
     const live = await screen.findByRole("radio", { name: /Live model/ });
-    await screen.findByText("Configured");
+    await screen.findByText("Configured (model grok-test)");
     await user.click(live);
     expect(screen.getByLabelText("Workspace mode: Live model")).toBeInTheDocument();
   });

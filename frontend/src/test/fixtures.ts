@@ -20,7 +20,8 @@ export const readinessFixture: Readiness = {
   live_settings_present: false,
   inventory_seeded: true,
   db_path: "fixture-inventory.db", // sentinel: the bundle check fails if fixtures leak into a build
-  schema_version: 5,
+  schema_version: 6,
+  live_model: null,
 };
 
 const summary = (s: Partial<InvoiceSummary> & Pick<InvoiceSummary, "invoice_id">): InvoiceSummary => ({

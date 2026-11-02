@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { useRetryRun } from "../api/hooks";
 import type { InvoiceDetail } from "../api/types";
 import { formatMoney, MODE_LABEL } from "../format";
 import { Icon } from "../components/Icon";
+import { RetryButton } from "../components/RetryButton";
 import { StatusBadge } from "../components/StatusBadge";
 import { ReceiptBlock } from "./ReceiptBlock";
 import {
@@ -37,28 +37,12 @@ function Notice({
   );
 }
 
-function RetryButton({ runId, onDone }: { runId: string; onDone: () => void }) {
-  const { retry, busy, error } = useRetryRun(runId, onDone);
-  return (
-    <>
-      <button type="button" className="button button--primary" onClick={retry} disabled={busy}>
-        {busy ? "Retrying…" : "Retry"}
-      </button>
-      {error && (
-        <p className="field-error" role="alert">
-          {error}
-        </p>
-      )}
-    </>
-  );
-}
-
 /**
  * The "Other essential states" from docs/mockup.md, derived from persisted data:
  * duplicate submission, version conflict, revision after payment, unreadable / OCR /
  * oversized input, missing fields, contradictory totals, provider failure, processing failure.
  */
-export function StateNotices({ detail, onChanged }: { detail: InvoiceDetail; onChanged: () => void }) {
+export function StateNotices({ detail }: { detail: InvoiceDetail }) {
   const notices: JSX.Element[] = [];
   const run = latestRun(detail);
 
@@ -148,16 +132,18 @@ export function StateNotices({ detail, onChanged }: { detail: InvoiceDetail; onC
         <div className="actions">
           {failure.kind === "provider" && (
             <>
-              {detail.allowed_actions.retry && failure.run && (
-                <RetryButton runId={failure.run.run_id} onDone={onChanged} />
+              {detail.allowed_actions.retry && failure.run && <RetryButton runId={failure.run.run_id} />}
+              {failure.run?.mode === "live" ? (
+                <RetryButton runId={failure.run.run_id} action="run_offline" />
+              ) : (
+                <Link to="/add?mode=offline" className="button button--secondary">
+                  Run offline as a separate simulation
+                </Link>
               )}
-              <Link to="/add?mode=offline" className="button button--secondary">
-                Run offline as a separate simulation
-              </Link>
             </>
           )}
           {failure.kind === "processing" && detail.allowed_actions.retry && failure.run && (
-            <RetryButton runId={failure.run.run_id} onDone={onChanged} />
+            <RetryButton runId={failure.run.run_id} />
           )}
           {(failure.kind === "unreadable" || failure.kind === "ocr" || failure.kind === "oversized") && (
             <Link to="/add" className="button button--secondary">

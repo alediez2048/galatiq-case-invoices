@@ -30,6 +30,7 @@ export function toReadiness(w: Wire["Readiness"]): Readiness {
     inventory_seeded: w.inventory_seeded,
     db_path: w.database_path,
     schema_version: w.schema_version,
+    live_model: w.live_model ?? null,
   };
 }
 
@@ -44,18 +45,32 @@ export function toRunCreated(w: Wire["RunAccepted"]): RunCreated {
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 
-/** True when a model step is the extraction-repair path (P3-05), not approval/critique. */
+/**
+ * True for a Phase 3 extraction-assist model call (agent "ingestion", step
+ * "assist_extraction"), not approval/critique.
+ */
 function isExtractionModelCall(p: Record<string, unknown>): boolean {
   const agent = str(p.agent) ?? "";
   const step = str(p.step) ?? "";
   return agent === "ingestion" || /extract|repair/i.test(step);
 }
 
+/** Context only the event sequence knows: which extraction-assist try a call belongs to. */
+export interface EventContext {
+  /** 1 for the first assist step, 2 for the single repair. */
+  assistTry?: number;
+}
+
 /**
  * Operator-facing sentence for one persisted audit event. Unknown events fall back to the
  * event name so nothing is hidden and nothing is invented.
  */
-export function eventMessage(stage: string, event: string, p: Record<string, unknown>): string {
+export function eventMessage(
+  stage: string,
+  event: string,
+  p: Record<string, unknown>,
+  ctx: EventContext = {},
+): string {
   const mode = str(p.mode);
   const simulated = mode === "offline" ? " (simulated)" : "";
   switch (event) {
@@ -89,25 +104,50 @@ export function eventMessage(stage: string, event: string, p: Record<string, unk
     case "model_call": {
       const attempt = num(p.attempt);
       if (isExtractionModelCall(p)) {
-        return `Checking an extraction issue — attempt ${attempt ?? 1} of 2.`;
+        // `attempt` is the transport retry inside one try; the try comes from the sequence.
+        const retried = attempt !== null && attempt > 1 ? " (request retried)" : "";
+        return `Checking an extraction issue — attempt ${ctx.assistTry ?? 1} of 2${retried}.`;
       }
       if (/critique/i.test(str(p.step) ?? "")) return "Checking the recommendation against policy.";
       return `Model request: ${str(p.step) ?? stage}${attempt && attempt > 1 ? ` (attempt ${attempt})` : ""}.`;
     }
+    case "assist": {
+      const accepted = num(p.accepted) ?? 0;
+      const proposals = num(p.proposals) ?? 0;
+      const repaired = p.repaired === true ? " after one repair" : "";
+      return `Extraction assist: ${accepted} of ${proposals} proposed fixes accepted${repaired}.`;
+    }
+    case "assist_failed":
+      return `Extraction assist failed${str(p.error_code) ? ` (${str(p.error_code)})` : ""}. The original issues stay for review.`;
+    case "model_failed":
+      return `Model request failed${str(p.error_code) ? ` (${str(p.error_code)})` : ""}.`;
     default:
       return `${stage}: ${event.replace(/_/g, " ")}.`;
   }
 }
 
 export function toStageEvents(events: Wire["AuditEvent"][]): StageEvent[] {
-  return events.map((e, i) => ({
+  let assistTry = 0;
+  return events.map((e, i) => {
+    const ctx: EventContext = {};
+    if (e.event === "model_call" && isExtractionModelCall(e.payload)) {
+      // A new try starts at transport attempt 1; attempt 2 retries the same try.
+      if (num(e.payload.attempt) !== 2 || assistTry === 0) assistTry += 1;
+      ctx.assistTry = assistTry;
+    }
+    return toStageEvent(e, i, ctx);
+  });
+}
+
+function toStageEvent(e: Wire["AuditEvent"], i: number, ctx: EventContext): StageEvent {
+  return {
     sequence: i + 1,
     stage: e.stage,
     event: e.event,
-    message: eventMessage(e.stage, e.event, e.payload),
+    message: eventMessage(e.stage, e.event, e.payload, ctx),
     at: e.created_at,
     payload: e.payload,
-  }));
+  };
 }
 
 export function toResult(w: Wire["RunView"]["result"]): ProcessingResult | null {
@@ -132,6 +172,7 @@ export function toRunProgress(w: Wire["RunView"]): RunProgress {
     error_message: w.error_message ?? null,
     prior_run_id: w.prior_run_id ?? null,
     retry_of: w.retry_of ?? null,
+    mode_switch_of: w.mode_switch_of ?? null,
     events: toStageEvents(w.events),
     result: toResult(w.result),
   };

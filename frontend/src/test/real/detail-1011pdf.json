@@ -18,7 +18,7 @@
     ],
     "revised_recommendation": null
   },
-  "decision_run_id": "run-ab72557b4635429bb079197204db0cb3",
+  "decision_run_id": "run-0ab2203e49fa4732af8e36d6f1d81c50",
   "evaluation_date": "2026-01-31",
   "findings": [
     {
@@ -118,7 +118,7 @@
     "vendor_key": "summit manufacturing co.",
     "vendor_name": "Summit Manufacturing Co."
   },
-  "invoice_id": "inv-dabcd0003ba34c6687f4464758433836",
+  "invoice_id": "inv-dfe58c17ddb94f59a5053c355dccc413",
   "invoice_number": "INV-1011",
   "latest_result": {
     "decision": {
@@ -158,7 +158,7 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-dabcd0003ba34c6687f4464758433836",
+    "invoice_id": "inv-dfe58c17ddb94f59a5053c355dccc413",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -167,16 +167,16 @@
     "receipt": {
       "amount": "3000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T05:15:13.500473Z",
-      "receipt_id": "rcpt-6d43d484d3d1"
+      "paid_at": "2026-11-02T09:44:56.401299Z",
+      "receipt_id": "rcpt-355f427445c7"
     },
     "recoverable": false,
-    "run_id": "run-ab72557b4635429bb079197204db0cb3",
+    "run_id": "run-0ab2203e49fa4732af8e36d6f1d81c50",
     "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
     "status": "paid_mock",
     "timings_ms": {}
   },
-  "latest_run_id": "run-ab72557b4635429bb079197204db0cb3",
+  "latest_run_id": "run-0ab2203e49fa4732af8e36d6f1d81c50",
   "line_items": [
     {
       "available": 15,
@@ -242,8 +242,8 @@
   "receipt": {
     "amount": "3000.00",
     "currency": "USD",
-    "paid_at": "2026-11-02T05:15:13.500473Z",
-    "receipt_id": "rcpt-6d43d484d3d1"
+    "paid_at": "2026-11-02T09:44:56.401299Z",
+    "receipt_id": "rcpt-355f427445c7"
   },
   "runs": [
     {
@@ -252,7 +252,7 @@
       "evaluation_date": "2026-01-31",
       "events": [
         {
-          "created_at": "2026-11-02T05:15:13.440815Z",
+          "created_at": "2026-11-02T09:44:56.379308Z",
           "event": "received",
           "payload": {
             "mode": "offline",
@@ -265,7 +265,7 @@
           "stage": "intake"
         },
         {
-          "created_at": "2026-11-02T05:15:13.480509Z",
+          "created_at": "2026-11-02T09:44:56.395638Z",
           "event": "extracted",
           "payload": {
             "codes": [
@@ -280,7 +280,7 @@
           "stage": "ingestion"
         },
         {
-          "created_at": "2026-11-02T05:15:13.483634Z",
+          "created_at": "2026-11-02T09:44:56.397167Z",
           "event": "validated",
           "payload": {
             "codes": [
@@ -293,7 +293,7 @@
           "stage": "validation"
         },
         {
-          "created_at": "2026-11-02T05:15:13.488828Z",
+          "created_at": "2026-11-02T09:44:56.397937Z",
           "event": "recommendation",
           "payload": {
             "codes": [],
@@ -306,7 +306,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.494321Z",
+          "created_at": "2026-11-02T09:44:56.400323Z",
           "event": "critique",
           "payload": {
             "agrees": true,
@@ -322,7 +322,7 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.496153Z",
+          "created_at": "2026-11-02T09:44:56.400797Z",
           "event": "decision",
           "payload": {
             "final_decision": "approved",
@@ -337,31 +337,31 @@
           "stage": "approval"
         },
         {
-          "created_at": "2026-11-02T05:15:13.500531Z",
+          "created_at": "2026-11-02T09:44:56.401338Z",
           "event": "payment_succeeded",
           "payload": {
             "amount": "3000.00",
             "currency": "USD",
-            "receipt_id": "rcpt-6d43d484d3d1"
+            "receipt_id": "rcpt-355f427445c7"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T05:15:13.502832Z",
+          "created_at": "2026-11-02T09:44:56.401731Z",
           "event": "paid",
           "payload": {
             "amount": "3000.00",
             "created": true,
             "currency": "USD",
             "mode": "offline",
-            "receipt_id": "rcpt-6d43d484d3d1",
+            "receipt_id": "rcpt-355f427445c7",
             "source_hash": "bf3d624f6dceec42f52ac7129c14fcb975f976dc3ccaba1f07abd4f18c511da6",
             "status": "paid_mock"
           },
           "stage": "payment"
         },
         {
-          "created_at": "2026-11-02T05:15:13.564723Z",
+          "created_at": "2026-11-02T09:44:56.402281Z",
           "event": "finished",
           "payload": {
             "errors": [],
@@ -372,16 +372,16 @@
           "stage": "service"
         }
       ],
-      "finished_at": "2026-11-02T05:15:13.549727Z",
+      "finished_at": "2026-11-02T09:44:56.402038Z",
       "mode": "offline",
       "model": "simulated",
       "original_name": "invoice_1011.pdf",
       "prior_run_id": null,
       "provider": "offline",
       "retry_of": null,
-      "run_id": "run-ab72557b4635429bb079197204db0cb3",
+      "run_id": "run-0ab2203e49fa4732af8e36d6f1d81c50",
       "source_id": "src-bf3d624f6dceec42",
-      "started_at": "2026-11-02T05:15:13.440545Z",
+      "started_at": "2026-11-02T09:44:56.379106Z",
       "status": "paid_mock"
     }
   ],
@@ -396,7 +396,7 @@
   "vendor_name": "Summit Manufacturing Co.",
   "versions": [
     {
-      "created_at": "2026-11-02T05:15:13.479624Z",
+      "created_at": "2026-11-02T09:44:56.392330Z",
       "currency": "USD",
       "lines": [
         {
@@ -434,8 +434,8 @@
       "receipt": {
         "amount": "3000.00",
         "currency": "USD",
-        "paid_at": "2026-11-02T05:15:13.500473Z",
-        "receipt_id": "rcpt-6d43d484d3d1"
+        "paid_at": "2026-11-02T09:44:56.401299Z",
+        "receipt_id": "rcpt-355f427445c7"
       },
       "revision": null,
       "source_id": "src-bf3d624f6dceec42",

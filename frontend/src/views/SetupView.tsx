@@ -79,7 +79,9 @@ export function SetupView() {
             <dt>Live model</dt>
             <dd>
               {data.live_available
-                ? "Configured"
+                ? data.live_model
+                  ? `Configured (model ${data.live_model})`
+                  : "Configured"
                 : data.live_settings_present
                   ? "Settings present but unavailable"
                   : "Not configured"}

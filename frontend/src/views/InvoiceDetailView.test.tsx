@@ -247,17 +247,19 @@ describe("Other essential states", () => {
 
   it("live provider unavailable: explicit retry or a separate offline run, no silent fallback", async () => {
     const user = userEvent.setup();
-    const { calls } = renderDetail(f.detailProvider, {
-      "POST /api/runs/:id/retry": () => ({ run_id: "run-retry-1" }),
+    const bodies: unknown[] = [];
+    const { calls, router } = renderDetail(f.detailProvider, {
+      "POST /api/runs/:id/retry": (_u: URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return { run_id: "run-retry-1", status: "received", mode: "live", idempotent_replay: false };
+      },
+      "GET /api/runs/:id": () => new Promise(() => {}),
     });
     await screen.findByRole("heading", { level: 1 });
     const n = notice("Processing failure");
     expect(n).toHaveTextContent("Model request failed. Payment was not attempted.");
     expect(n).toHaveTextContent("Mode of this run: Live model");
-    expect(within(n).getByRole("link", { name: "Run offline as a separate simulation" })).toHaveAttribute(
-      "href",
-      "/add?mode=offline",
-    );
+    expect(within(n).getByRole("button", { name: "Run offline as a separate simulation" })).toBeEnabled();
     expect(stage("Approved")).toHaveAttribute("data-state", "failed");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
     await user.click(within(n).getByRole("button", { name: "Retry" }));
@@ -265,6 +267,24 @@ describe("Other essential states", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]?.url).toBe("/api/runs/run-model_unavailable/retry");
     expect(posts[0]?.headers["Idempotency-Key"]).toMatch(/[0-9a-f-]{36}/);
+    expect(bodies).toEqual([{ action: "retry" }]);
+    expect(router.state.location.pathname).toBe("/runs/run-retry-1");
+  });
+
+  it("live provider unavailable: the offline simulation is a linked run of the same document", async () => {
+    const user = userEvent.setup();
+    const bodies: unknown[] = [];
+    const { router } = renderDetail(f.detailProvider, {
+      "POST /api/runs/:id/retry": (_u: URL, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return { run_id: "run-off-1", status: "received", mode: "offline", idempotent_replay: false };
+      },
+      "GET /api/runs/:id": () => new Promise(() => {}),
+    });
+    await screen.findByRole("heading", { level: 1 });
+    await user.click(within(notice("Processing failure")).getByRole("button", { name: "Run offline as a separate simulation" }));
+    expect(bodies).toEqual([{ action: "run_offline" }]);
+    expect(router.state.location.pathname).toBe("/runs/run-off-1");
   });
 
   it("processing failure: names the stage and offers a safe retry", async () => {

@@ -61,3 +61,13 @@ def truncated_pdf(dir: Path) -> Path:
     path = dir / "truncated.pdf"
     path.write_bytes(SOURCE_PDF.read_bytes()[:600])
     return path
+
+
+def two_page_pdf(dir: Path) -> Path:
+    writer = PdfWriter()
+    writer.add_page(PdfReader(SOURCE_PDF).pages[0])
+    writer.add_page(PdfReader(SOURCE_PDF.with_name("invoice_1013.pdf")).pages[0])
+    path = dir / "two_pages.pdf"
+    with path.open("wb") as f:
+        writer.write(f)
+    return path

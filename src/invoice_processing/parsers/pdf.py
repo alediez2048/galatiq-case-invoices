@@ -13,7 +13,7 @@ from invoice_processing.schemas import SourceDocument
 
 PARSER_VERSION = f"pdf-1/pdfplumber-{pdfplumber.__version__}"
 
-_CORRUPT = ExtractionError("pdf_corrupt", "This PDF is damaged and cannot be read.")
+_CORRUPT_MESSAGE = "This PDF is damaged and cannot be read."
 
 
 def _page_lines(text: str) -> list[str]:
@@ -36,13 +36,14 @@ def extract_pdf_text(data: bytes, limits: Limits) -> list[str]:
     except ExtractionError:
         raise
     except PdfminerException as e:
+        # pdfplumber wraps pdfminer failures; the original exception is args[0].
         if e.args and isinstance(e.args[0], PDFPasswordIncorrect):
             raise ExtractionError(
                 "pdf_encrypted", "This PDF is password-protected and cannot be read."
             ) from e
-        raise _CORRUPT from e
+        raise ExtractionError("pdf_corrupt", _CORRUPT_MESSAGE) from e
     except Exception as e:
-        raise _CORRUPT from e
+        raise ExtractionError("pdf_corrupt", _CORRUPT_MESSAGE) from e
     if not any(p.strip() for p in pages):
         raise ExtractionError(
             "pdf_needs_ocr", "This PDF needs OCR, which this prototype does not support."

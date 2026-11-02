@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from invoice_processing import seed, storage
+from invoice_processing import ledger, observability, seed, storage
 from invoice_processing.codes import ExecutionMode, RunStatus
 from invoice_processing.intake import read_source
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
@@ -121,38 +121,34 @@ def test_page_limit_overridable():
     assert e.value.code == "too_many_pages"
 
 
+def test_two_page_pdf_locations_and_join(tmp_path):
+    parsed = parse_document(*read_source(ff.two_page_pdf(tmp_path)), DEFAULT_LIMITS)
+    assert "\n\f\n" in parsed.extracted_text
+    locations = [e.location for ln in parsed.draft.lines for e in ln.evidence]
+    assert any(loc.startswith("page:2,line:") for loc in locations)
+
+
 def test_extracted_text_stored_but_never_logged(tmp_path):
     db = seeded_db(tmp_path)
     log = tmp_path / "events.jsonl"
-    import logging
-
-    logger = logging.getLogger("test_pdf_events")
-    logger.propagate = False
-    handler = logging.FileHandler(log)
-    logger.addHandler(handler)
-    try:
-        r = process_invoice(
-            "data/invoices/invoice_1011.pdf",
-            ExecutionMode.offline,
-            db,
-            date(2026, 1, 31),
-            events=logger,
-        )
-    finally:
-        logger.removeHandler(handler)
-        handler.close()
+    r = process_invoice(
+        "data/invoices/invoice_1011.pdf",
+        ExecutionMode.offline,
+        db,
+        date(2026, 1, 31),
+        events=observability.configure_events(log),
+    )
     c = connect(db)
     try:
         text = c.execute("SELECT extracted_text FROM sources").fetchone()[0]
-        assert "Summit Manufacturing Co." in text and "Unit Price" in text
-        payloads = [json.dumps(e, default=str) for e in _audit(c, r.run_id)]
+        payloads = [json.dumps(e, default=str) for e in ledger.list_audit_events(c, r.run_id)]
     finally:
         c.close()
-    for blob in [*payloads, log.read_text()]:
-        assert not ("Summit Manufacturing Co." in blob and "Unit Price" in blob)
-
-
-def _audit(conn, run_id):
-    from invoice_processing import ledger
-
-    return ledger.list_audit_events(conn, run_id)
+    assert "Summit Manufacturing Co." in text and "Unit Price" in text
+    logged = log.read_text()
+    assert logged.strip() and payloads
+    chunks = [text, *(ln.strip() for ln in text.splitlines() if "$" in ln or "Vendor" in ln)]
+    assert len(chunks) > 3
+    for blob in [*payloads, logged]:
+        for chunk in chunks:
+            assert chunk not in blob

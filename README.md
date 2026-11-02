@@ -10,12 +10,11 @@ A local command-line prototype takes one invoice file (TXT, JSON, CSV, XML or te
 
 ## Quick start
 
-<!-- TODO(P6-04): replace <repository-url> with the public GitHub URL once published (P6-06). -->
 
 Prerequisites: Python 3.12 and [uv](https://docs.astral.sh/uv/) (verified with uv 0.12.5 on macOS). No API key or network access is needed after installation.
 
 ```bash
-git clone <repository-url> && cd <repository-directory>
+git clone https://github.com/alediez2048/galatiq-case-invoices.git && cd galatiq-case-invoices
 uv sync --locked                                     # install exactly what uv.lock pins
 uv run python -m invoice_processing.seed --db inventory.db   # create and seed the inventory
 uv run python main.py --invoice_path=data/invoices/invoice_1001.txt
@@ -80,7 +79,7 @@ Both modes share the parsers, validation, gate and payment guard, so a mode neve
 
 ### Running live
 
-Live mode needs `XAI_API_KEY` and `XAI_MODEL` (no default model). Set them in the environment or copy `.env.example` to a git-ignored `.env` (real environment variables win; offline mode never loads `.env`). Optional: `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6 model steps per invoice).
+Live mode needs `XAI_API_KEY` and `XAI_MODEL` (no default model). Set them in the environment or copy `.env.example` to a git-ignored `.env` (real environment variables win; offline mode never loads `.env`). Optional: `XAI_TIMEOUT_SECONDS` (default 120; reasoning models with tool calls take tens of seconds per request) and `MODEL_CALL_BUDGET` (default 6 model steps per invoice).
 
 ```bash
 uv run python -m invoice_processing.readiness          # config only, no network; exit 0 ready, 2 not
@@ -96,7 +95,7 @@ uv run python main.py --mode live --invoice_path=data/invoices/invoice_1001.txt
 
 Developer details (retry refusal reasons, test coverage of the live path) are in [docs/development.md](docs/development.md#live-mode-configuration).
 
-<!-- TODO(P6-04): add live verification results (model id, SDK version, per-invoice status, calls, tokens, cost) from docs/verification/live-<date>.md once P3-10 runs. -->
+**Live verification (2026-11-02, `grok-4.7`, xai-sdk 1.21.0):** all 11 invoices in the live smoke set ended in their expected status: INV-1001 and INV-1012 paid, INV-1002, INV-1003 and INV-1013 rejected, the EUR invoice INV-1014 in review, the USD 10,000.01 invoice waiting for human approval, and all four prompt-injection fixtures rejected. Every decision recorded a critique, Grok used its read-only tools on every invoice, no run used more than 3 of its 6 model steps, and a deliberately invalid key failed as `model_auth_error` with no payment. The run used about 273k input / 6k output tokens. Full record: [docs/verification/live-2026-11-02.md](docs/verification/live-2026-11-02.md). An earlier run the same day timed out on 5 invoices at the old 30 s request limit (they failed safe, unpaid); the default is now 120 s.
 
 ## Architecture
 

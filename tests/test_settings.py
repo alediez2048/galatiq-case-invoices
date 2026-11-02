@@ -10,7 +10,7 @@ def test_loads_defaults():
     s = load_live_settings(GOOD)
     assert s.model == "grok-test" and s.api_key == SENTINEL
     assert (s.timeout_seconds, s.call_budget, s.tool_turn_cap, s.excerpt_chars) == (
-        30.0,
+        120.0,
         6,
         3,
         4000,

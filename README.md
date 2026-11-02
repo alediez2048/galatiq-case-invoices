@@ -80,7 +80,7 @@ Both modes share the parsers, validation, gate and payment guard, so a mode neve
 
 ### Running live
 
-Live mode needs `XAI_API_KEY` and `XAI_MODEL` (no default model). Set them in the environment or copy `.env.example` to a git-ignored `.env` (real environment variables win; offline mode never loads `.env`). Optional: `XAI_TIMEOUT_SECONDS` (default 30) and `MODEL_CALL_BUDGET` (default 6 model steps per invoice).
+Live mode needs `XAI_API_KEY` and `XAI_MODEL` (no default model). Set them in the environment or copy `.env.example` to a git-ignored `.env` (real environment variables win; offline mode never loads `.env`). Optional: `XAI_TIMEOUT_SECONDS` (default 120; reasoning models with tool calls take tens of seconds per request) and `MODEL_CALL_BUDGET` (default 6 model steps per invoice).
 
 ```bash
 uv run python -m invoice_processing.readiness          # config only, no network; exit 0 ready, 2 not

@@ -17,7 +17,7 @@ class ConfigurationError(ProviderUnavailable):
 class LiveSettings:
     api_key: str = field(repr=False)
     model: str
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = 120.0
     call_budget: int = 6
     tool_turn_cap: int = 3
     excerpt_chars: int = 4000
@@ -57,7 +57,7 @@ def load_live_settings(env: Mapping[str, str] | None = None) -> LiveSettings:
         raise ConfigurationError(
             "live mode needs " + " and ".join(missing) + " (set in the environment or .env)"
         )
-    timeout = 30.0
+    timeout = 120.0
     raw_timeout = (env.get("XAI_TIMEOUT_SECONDS") or "").strip()
     if raw_timeout:
         try:

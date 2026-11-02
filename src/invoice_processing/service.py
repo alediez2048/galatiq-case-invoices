@@ -55,6 +55,7 @@ def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingR
     fields = {
         "run_id": state["run_id"],
         "invoice_id": state.get("invoice_id"),
+        "version": state.get("version"),
         "status": state["status"],
         "mode": state["mode"],
         "findings": state.get("findings", []),

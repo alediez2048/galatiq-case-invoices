@@ -5,9 +5,9 @@ normalized invoices carry typed values. Money fields serialize as decimal string
 """
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from invoice_processing.codes import (
     CritiqueIssue,
@@ -15,7 +15,11 @@ from invoice_processing.codes import (
     FindingCode,
     GateOutcome,
     HumanReviewAction,
+    InvoiceStatus,
+    QueueGroup,
     Recommendation,
+    ReviewAction,
+    ReviewRefusal,
     RunStatus,
     Severity,
     SourceFormat,
@@ -25,6 +29,15 @@ from invoice_processing.money import DecimalStr
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+# A free-text local name recorded for audit; not authentication.
+ReviewerName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+ReviewReason = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+]
 
 
 class EvidenceRef(Contract):
@@ -132,6 +145,7 @@ class NormalizedInvoice(Contract):
     stated: StatedTotals = Field(default_factory=StatedTotals)
     computed: ComputedTotals | None = None
     normalization_events: list[NormalizationEvent] = Field(default_factory=list)
+    field_evidence: dict[str, list[EvidenceRef]] = Field(default_factory=dict)
 
 
 class ValidationFinding(Contract):
@@ -143,6 +157,16 @@ class ValidationFinding(Contract):
     observed: str | None = None
     evidence: list[EvidenceRef] = Field(default_factory=list)
     resolved: bool = False
+
+
+class HumanReview(Contract):
+    invoice_id: str
+    version: int
+    action: HumanReviewAction
+    reviewer: ReviewerName
+    reason: ReviewReason
+    policy_version: str
+    created_at: datetime | None = None
 
 
 class ApprovalDecision(Contract):
@@ -158,6 +182,7 @@ class ApprovalDecision(Contract):
     model: str | None = None
     prompt_version: str | None = None
     model_calls_used: int = 0
+    human_review: HumanReview | None = None
 
 
 class MockReceipt(Contract):
@@ -248,15 +273,6 @@ class GateResult(Contract):
     findings: list[ValidationFinding]  # only the findings the gate adds
 
 
-class HumanReview(Contract):
-    invoice_id: str
-    version: int
-    action: HumanReviewAction
-    reviewer: str
-    reason: str
-    policy_version: str
-
-
 class PaymentResult(Contract):
     payment_id: str
     receipt: MockReceipt
@@ -266,6 +282,7 @@ class PaymentResult(Contract):
 class ProcessingResult(Contract):
     run_id: str
     invoice_id: str | None = None
+    version: int | None = None
     status: RunStatus
     mode: ExecutionMode
     findings: list[ValidationFinding] = Field(default_factory=list)
@@ -287,3 +304,92 @@ class AggregatedItem(Contract):
     item: str
     quantity: DecimalStr
     line_indexes: list[int] = Field(default_factory=list)
+
+
+# --- Human review (Phase 4) ----------------------------------------------------------------
+
+CORRECTABLE_FIELD = (
+    r"^(vendor|invoice_number|invoice_date|due_date|currency"
+    r"|stated\.(subtotal|tax|shipping|total)"
+    r"|lines\[\d+\]\.(item|quantity|unit_price|line_total))$"
+)
+
+
+class FieldChange(Contract):
+    """One corrected field: its new value and where the source shows it."""
+
+    field: str = Field(pattern=CORRECTABLE_FIELD)
+    new_value: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    ]
+    evidence_location: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    ]
+
+
+class CorrectionRequest(Contract):
+    invoice_id: str
+    expected_version: int = Field(ge=1)
+    changes: list[FieldChange] = Field(min_length=1, max_length=10)
+    reason: ReviewReason
+    reviewer: ReviewerName
+
+    @model_validator(mode="after")
+    def _unique_fields(self) -> "CorrectionRequest":
+        fields = [c.field for c in self.changes]
+        if len(set(fields)) != len(fields):
+            raise ValueError("each field may be corrected at most once per request")
+        return self
+
+
+class Correction(Contract):
+    """One recorded field correction, from base_version to resulting_version."""
+
+    invoice_id: str
+    base_version: int
+    field: str
+    old_value: str | None
+    new_value: str
+    evidence_location: str
+    reviewer: ReviewerName
+    reason: ReviewReason
+    created_at: datetime
+    resulting_version: int
+
+
+class AllowedActions(Contract):
+    invoice_id: str
+    status: InvoiceStatus
+    current_version: int | None
+    allowed: list[ReviewAction]
+    refused: dict[ReviewAction, ReviewRefusal]
+
+
+class QueueItem(Contract):
+    invoice_id: str
+    vendor_name: str | None
+    invoice_number: str | None
+    total: DecimalStr | None
+    currency: str | None
+    status: InvoiceStatus
+    current_version: int | None
+    reason_codes: list[FindingCode]
+    actions: AllowedActions
+
+
+class ReviewQueue(Contract):
+    groups: dict[QueueGroup, list[QueueItem]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _every_group(self) -> "ReviewQueue":
+        # Every group is present, in QueueGroup order, even when empty.
+        self.groups = {g: self.groups.get(g, []) for g in QueueGroup}
+        return self
+
+
+class SupersedeLink(Contract):
+    """Links a corrected submission to the invoice it supersedes."""
+
+    invoice_id: str
+    reviewer: ReviewerName
+    reason: ReviewReason

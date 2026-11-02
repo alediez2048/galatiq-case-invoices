@@ -68,6 +68,40 @@ class HumanReviewAction(StrEnum):
     decline = "decline"
 
 
+class ReviewAction(StrEnum):
+    """A human action on an invoice version (Phase 4)."""
+
+    correct = "correct"
+    approve = "approve"
+    decline = "decline"
+    submit_corrected = "submit_corrected"
+
+
+class ReviewRefusal(StrEnum):
+    """Why a review action was refused. Stable identifiers for the UI and API."""
+
+    unknown_invoice = "unknown_invoice"
+    stale_version = "stale_version"
+    action_not_allowed = "action_not_allowed"
+    already_paid = "already_paid"
+    field_not_correctable = "field_not_correctable"
+    identity_correction_deferred = "identity_correction_deferred"
+    invalid_value = "invalid_value"
+    correction_not_in_source = "correction_not_in_source"
+    evidence_location_mismatch = "evidence_location_mismatch"
+    evidence_unavailable = "evidence_unavailable"
+    source_text_unavailable = "source_text_unavailable"
+    corrected_identity_mismatch = "corrected_identity_mismatch"
+
+
+class QueueGroup(StrEnum):
+    """The review queue's sections, in display order."""
+
+    correctable_extraction = "correctable_extraction"
+    awaiting_human_approval = "awaiting_human_approval"
+    unresolved_blocker = "unresolved_blocker"
+
+
 class InvoiceStatus(StrEnum):
     """Current business state of one invoice identity. A duplicate run never changes it."""
 
@@ -160,6 +194,7 @@ class FindingCode(StrEnum):
     model_proposal_unsupported = "model_proposal_unsupported"
     model_parser_disagreement = "model_parser_disagreement"
     risk_signal_embedded_instructions = "risk_signal_embedded_instructions"
+    human_declined = "human_declined"
 
 
 C = FindingCode
@@ -210,6 +245,7 @@ FINDING_DESCRIPTIONS: dict[FindingCode, str] = {
     C.model_proposal_unsupported: "A model-proposed value was not supported by the source.",
     C.model_parser_disagreement: "A model-proposed value differs from the parsed value.",
     C.risk_signal_embedded_instructions: "The document contains text addressed to an AI system.",
+    C.human_declined: "A human reviewer declined this version.",
 }
 
 _WARNINGS = {
@@ -255,3 +291,54 @@ DEFAULT_SEVERITY: dict[FindingCode, Severity] = {
     )
     for code in FindingCode
 }
+
+# The stage that records each code. A review run starts at validation: it carries the base
+# run's ingestion-stage findings forward and recomputes the rest (Decision 12). Every code
+# outside the validation and gate sets is ingestion-stage; tests pin both sets against the
+# modules that emit them.
+VALIDATION_CODES: frozenset[FindingCode] = frozenset(
+    {
+        C.missing_vendor,
+        C.missing_invoice_number,
+        C.missing_due_date,
+        C.missing_currency,
+        C.missing_total,
+        C.missing_line_items,
+        C.incomplete_line_item,
+        C.non_positive_quantity,
+        C.non_integer_quantity,
+        C.non_positive_total,
+        C.negative_unit_price,
+        C.negative_tax,
+        C.negative_shipping,
+        C.due_date_past,
+        C.line_total_mismatch,
+        C.subtotal_mismatch,
+        C.tax_mismatch,
+        C.total_mismatch,
+        C.rounding_tolerated,
+        C.arithmetic_unverifiable,
+        C.unknown_item,
+        C.zero_stock,
+        C.quantity_exceeds_stock,
+    }
+)
+GATE_CODES: frozenset[FindingCode] = frozenset(
+    {C.model_disagreement, C.non_usd_currency, C.human_declined}
+)
+INGESTION_CODES: frozenset[FindingCode] = frozenset(
+    set(FindingCode) - VALIDATION_CODES - GATE_CODES
+)
+# Review findings a correction can fix: an invoice in needs_review whose every review finding
+# is one of these goes to the correctable_extraction queue group (Decision 21).
+EXTRACTION_REVIEW_CODES: frozenset[FindingCode] = frozenset(
+    {
+        C.ambiguous_normalization,
+        C.unparseable_value,
+        C.ambiguous_date,
+        C.due_date_unresolved,
+        C.duplicate_field,
+        C.malformed_row,
+        C.model_parser_disagreement,
+    }
+)

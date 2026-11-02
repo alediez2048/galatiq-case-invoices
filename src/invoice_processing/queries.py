@@ -277,9 +277,13 @@ def build_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
     model_calls = conn.execute(
         "SELECT COUNT(*) FROM audit_events WHERE run_id = ? AND event = 'model_call'", (run_id,)
     ).fetchone()[0]
+    version = conn.execute(
+        "SELECT version FROM invoice_versions WHERE version_id = ?", (run["version_id"],)
+    ).fetchone()
     return ProcessingResult(
         run_id=run_id,
         invoice_id=run["invoice_id"],
+        version=None if version is None else version["version"],
         status=status,
         mode=ExecutionMode(run["mode"]),
         findings=[] if duplicate else _findings(conn, run_id),

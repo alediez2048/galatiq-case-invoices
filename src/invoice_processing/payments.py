@@ -60,6 +60,8 @@ def _repoint_failed_payer(
     Receipts are looked up by payments.run_id, so without this a later duplicate of the
     replay would show no receipt. A payer in any other status keeps the payment, and so does
     a failed payer replayed in the other mode (a mode switch never takes over a payment).
+    This is the only update the payments immutability trigger permits (run_id alone, from a
+    failed payer; storage Decision 2), so a non-failed payer must return before the UPDATE.
     """
     old_run_id = existing["run_id"]
     if existing["payer_status"] != RunStatus.failed.value or old_run_id == run_id:

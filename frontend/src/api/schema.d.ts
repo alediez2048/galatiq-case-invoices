@@ -223,6 +223,7 @@ export interface components {
             /** Critique Summary */
             critique_summary?: string | null;
             final_decision: components["schemas"]["GateOutcome"];
+            human_review?: components["schemas"]["HumanReview"] | null;
             initial_recommendation: components["schemas"]["Recommendation"];
             mode: components["schemas"]["ExecutionMode"];
             /** Model */
@@ -331,7 +332,7 @@ export interface components {
          * FindingCode
          * @enum {string}
          */
-        FindingCode: "missing_vendor" | "missing_invoice_number" | "missing_due_date" | "missing_currency" | "missing_total" | "missing_line_items" | "incomplete_line_item" | "non_positive_quantity" | "non_integer_quantity" | "non_positive_total" | "negative_unit_price" | "negative_tax" | "negative_shipping" | "due_date_past" | "line_total_mismatch" | "subtotal_mismatch" | "tax_mismatch" | "total_mismatch" | "rounding_tolerated" | "arithmetic_unverifiable" | "unknown_item" | "zero_stock" | "quantity_exceeds_stock" | "currency_assumed_usd" | "model_disagreement" | "non_usd_currency" | "unparsed_line" | "ambiguous_normalization" | "unparseable_value" | "risk_signal_urgency" | "due_date_unresolved" | "ambiguous_date" | "due_before_invoice_date" | "terms_inconsistent" | "unsupported_currency" | "currency_conflict" | "revision_after_payment" | "version_conflict" | "unrecognized_field" | "duplicate_field" | "malformed_row" | "inconsistent_row_header" | "model_proposal_unsupported" | "model_parser_disagreement" | "risk_signal_embedded_instructions";
+        FindingCode: "missing_vendor" | "missing_invoice_number" | "missing_due_date" | "missing_currency" | "missing_total" | "missing_line_items" | "incomplete_line_item" | "non_positive_quantity" | "non_integer_quantity" | "non_positive_total" | "negative_unit_price" | "negative_tax" | "negative_shipping" | "due_date_past" | "line_total_mismatch" | "subtotal_mismatch" | "tax_mismatch" | "total_mismatch" | "rounding_tolerated" | "arithmetic_unverifiable" | "unknown_item" | "zero_stock" | "quantity_exceeds_stock" | "currency_assumed_usd" | "model_disagreement" | "non_usd_currency" | "unparsed_line" | "ambiguous_normalization" | "unparseable_value" | "risk_signal_urgency" | "due_date_unresolved" | "ambiguous_date" | "due_before_invoice_date" | "terms_inconsistent" | "unsupported_currency" | "currency_conflict" | "revision_after_payment" | "version_conflict" | "unrecognized_field" | "duplicate_field" | "malformed_row" | "inconsistent_row_header" | "model_proposal_unsupported" | "model_parser_disagreement" | "risk_signal_embedded_instructions" | "human_declined";
         /**
          * GateOutcome
          * @description Result of the deterministic policy gate (P1-04).
@@ -348,6 +349,27 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** HumanReview */
+        HumanReview: {
+            action: components["schemas"]["HumanReviewAction"];
+            /** Created At */
+            created_at?: string | null;
+            /** Invoice Id */
+            invoice_id: string;
+            /** Policy Version */
+            policy_version: string;
+            /** Reason */
+            reason: string;
+            /** Reviewer */
+            reviewer: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * HumanReviewAction
+         * @enum {string}
+         */
+        HumanReviewAction: "approve" | "decline";
         /** HumanReviewView */
         HumanReviewView: {
             /** Action */
@@ -501,6 +523,10 @@ export interface components {
             currency?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Field Evidence */
+            field_evidence?: {
+                [key: string]: components["schemas"]["EvidenceRef"][];
+            };
             /** Invoice Date */
             invoice_date?: string | null;
             /** Invoice Number */
@@ -614,6 +640,8 @@ export interface components {
             timings_ms?: {
                 [key: string]: number;
             };
+            /** Version */
+            version?: number | null;
         };
         /** Readiness */
         Readiness: {

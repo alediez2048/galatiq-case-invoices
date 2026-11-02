@@ -105,15 +105,18 @@ def test_get_stock_is_parameterized(conn):
 
 
 def test_older_schema_version_is_refused(db_path):
+    # only the immediately previous version is migrated (tests/test_migration.py)
     c = storage.connect(db_path)
-    c.execute(f"PRAGMA user_version = {storage.SCHEMA_VERSION - 1}")
+    c.execute(f"PRAGMA user_version = {storage.SCHEMA_VERSION - 2}")
     with pytest.raises(storage.SchemaVersionError, match="older"):
         storage.init_schema(c)
 
 
 def _version_row(conn):
     conn.execute(
-        "INSERT INTO invoice_versions VALUES ('v1','i1',1,NULL,'extracted','s1','sh','{}',?)",
+        "INSERT INTO invoice_versions (version_id, invoice_id, version, parent_version, origin,"
+        " source_id, semantic_hash, payload_json, created_at)"
+        " VALUES ('v1','i1',1,NULL,'source','s1','sh','{}',?)",
         ("2026-01-31T00:00:00Z",),
     )
 
@@ -181,7 +184,7 @@ def test_atomic_opens_and_rolls_back_alone(conn):
 
 
 def test_phase_1_schema_version_3_is_refused(db_path):
-    assert storage.SCHEMA_VERSION == 6
+    assert storage.SCHEMA_VERSION == 7
     c = storage.connect(db_path)
     c.execute("PRAGMA user_version = 3")
     with pytest.raises(storage.SchemaVersionError):
@@ -203,8 +206,30 @@ def test_schema_v6_has_both_v5_branch_changes(conn):
 
 
 def test_schema_v5_database_from_either_branch_is_refused(db_path):
-    assert storage.SCHEMA_VERSION == 6
+    assert storage.SCHEMA_VERSION == 7
     c = storage.connect(db_path)
     c.execute("PRAGMA user_version = 5")
     with pytest.raises(storage.SchemaVersionError, match="older"):
         storage.init_schema(c)
+
+
+def test_schema_v7_review_columns(conn):
+    def cols(table):
+        return {r["name"]: r for r in conn.execute(f"PRAGMA table_info({table})")}
+
+    status = cols("invoice_versions")["version_status"]
+    assert (status["notnull"], status["dflt_value"]) == (1, "'current'")
+    trigger = cols("runs")["trigger"]
+    assert (trigger["notnull"], trigger["dflt_value"]) == (1, "'submission'")
+    assert "review_of" in cols("runs")
+    assert "run_id" in cols("corrections") and "run_id" in cols("human_reviews")
+
+
+def test_version_status_is_checked(conn):
+    _minimal_invoice_rows(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO invoice_versions (version_id, invoice_id, version, origin, source_id,"
+            " semantic_hash, payload_json, created_at, version_status)"
+            " VALUES ('v1','i1',1,'source','s1','sh','{}','now','paid')"
+        )

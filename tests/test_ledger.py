@@ -618,3 +618,228 @@ def test_1011_txt_and_pdf_share_semantic_hash(conn):
         return semantic_hash(normalize(draft, storage.inventory_items(conn))[0])
 
     assert digest("invoice_1011.txt") == digest("invoice_1011.pdf")
+
+
+# --- Phase 4: version ledger and review records -------------------------------------------
+
+
+def versions(conn, inv):
+    return [
+        tuple(r)
+        for r in conn.execute(
+            "SELECT version, parent_version, origin, version_status FROM invoice_versions "
+            "WHERE invoice_id = ? ORDER BY version",
+            (inv,),
+        )
+    ]
+
+
+def current_version(conn, inv):
+    row = conn.execute("SELECT current_version FROM invoices WHERE invoice_id = ?", (inv,))
+    return row.fetchone()[0]
+
+
+def test_record_version_origin_defaults_to_source(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    assert versions(conn, inv) == [(1, None, "source", "current")]
+
+
+def test_correction_versions_increment_and_link_parent(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    fixed = inv_1001().model_copy(update={"currency": "EUR"})
+    v2_id, v2 = ledger.record_correction_version(conn, inv, fixed, sid, base_version=1)
+    _, v3 = ledger.record_correction_version(conn, inv, inv_1001(), sid, base_version=2)
+    assert (v2, v3) == (2, 3)
+    assert versions(conn, inv) == [
+        (1, None, "source", "superseded"),
+        (2, 1, "correction", "superseded"),
+        (3, 2, "correction", "current"),
+    ]
+    assert current_version(conn, inv) == 3
+    assert ledger.get_version(conn, inv, 2).version_id == v2_id
+
+
+def test_correction_version_inserted_even_with_equal_semantic_hash(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    v1_id, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    # invoice_date is not in the semantic hash, so this correction hashes like version 1
+    dated = inv_1001().model_copy(update={"invoice_date": date(2026, 1, 2)})
+    assert semantic_hash(dated) == semantic_hash(inv_1001())
+    v2_id, v2 = ledger.record_correction_version(conn, inv, dated, sid, base_version=1)
+    assert v2 == 2 and v2_id != v1_id
+    assert ledger.get_version(conn, inv, 2).invoice.invoice_date == date(2026, 1, 2)
+    # a later plain upload of the same content still takes the first match
+    assert ledger.record_version(conn, inv, inv_1001(), sid) == (v1_id, 1)
+
+
+def test_record_version_hash_match_returns_first_payload_and_keeps_current(conn, sid):
+    other = ledger.record_source(conn, make_source(2))[0]
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    v1_id, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    ledger.record_version(conn, inv, inv_1001().model_copy(update={"currency": "EUR"}), sid)
+    assert current_version(conn, inv) == 2
+    again = inv_1001().model_copy(update={"source_id": other, "notes": "resent"})
+    assert ledger.record_version(conn, inv, again, other) == (v1_id, 1)
+    assert current_version(conn, inv) == 2  # a repeat of an older version does not move it
+    first = ledger.get_version(conn, inv, 1)
+    assert first.source_id == sid and first.invoice == inv_1001()
+    assert versions(conn, inv) == [(1, None, "source", "current"), (2, 1, "source", "current")]
+
+
+def test_record_version_supersede_marks_others(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    ledger.record_version(conn, inv, inv_1001().model_copy(update={"currency": "EUR"}), sid)
+    corrected = inv_1001().model_copy(update={"currency": "GBP"})
+    _, v3 = ledger.record_version(conn, inv, corrected, sid, supersede=True)
+    assert v3 == 3 and current_version(conn, inv) == 3
+    assert [v[3] for v in versions(conn, inv)] == ["superseded", "superseded", "current"]
+
+
+def test_record_version_supersede_on_hash_match_changes_nothing(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    v1 = ledger.record_version(conn, inv, inv_1001(), sid)
+    assert ledger.record_version(conn, inv, inv_1001(), sid, supersede=True) == v1
+    assert versions(conn, inv) == [(1, None, "source", "current")]
+
+
+def test_get_invoice_and_get_version(conn, sid):
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    v1_id, _ = ledger.record_version(conn, inv, inv_1001(), sid)
+    row = ledger.get_invoice(conn, inv)
+    assert row == ledger.InvoiceRow(inv, "widgets inc.", "INV-1001", InvoiceStatus.processing, 1)
+    version = ledger.get_version(conn, inv, 1)
+    assert (version.version_id, version.version, version.parent_version) == (v1_id, 1, None)
+    assert (version.origin, version.version_status, version.source_id) == (
+        "source",
+        "current",
+        sid,
+    )
+    with pytest.raises(KeyError):
+        ledger.get_invoice(conn, "inv-nope")
+    with pytest.raises(KeyError):
+        ledger.get_version(conn, inv, 2)
+
+
+def test_get_source_roundtrip(conn, sid):
+    assert ledger.get_source(conn, sid) == make_source()
+    with pytest.raises(KeyError):
+        ledger.get_source(conn, "src-nope")
+
+
+def test_start_run_records_trigger_and_review_of(conn, sid):
+    base = start_run(conn, ExecutionMode.offline, sid, EVAL)
+    review = start_run(conn, ExecutionMode.offline, sid, EVAL, trigger="correction", review_of=base)
+    rows = conn.execute("SELECT run_id, trigger, review_of FROM runs ORDER BY rowid").fetchall()
+    assert [tuple(r) for r in rows] == [(base, "submission", None), (review, "correction", base)]
+
+
+def test_latest_outcome_run_and_get_decision(conn, sid, two_versions):
+    from invoice_processing.codes import GateOutcome, Recommendation
+    from invoice_processing.schemas import ApprovalDecision
+
+    inv, v1, v2 = two_versions
+    assert ledger.latest_outcome_run(conn, v1) is None
+    finished_run(conn, sid, inv, v1, RunStatus.rejected)
+    later = finished_run(conn, sid, inv, v1, RunStatus.needs_review)
+    finished_run(conn, sid, inv, v1, RunStatus.failed)
+    finished_run(conn, sid, inv, v2, RunStatus.rejected)
+    run = ledger.latest_outcome_run(conn, v1)
+    assert run == ledger.RunRow(
+        later, RunStatus.needs_review, ExecutionMode.offline, EVAL, "submission", None
+    )
+    assert ledger.get_decision(conn, later) is None
+    decision = ApprovalDecision(
+        initial_recommendation=Recommendation.review,
+        final_decision=GateOutcome.needs_review,
+        policy_version="p1",
+        mode=ExecutionMode.offline,
+    )
+    ledger.record_decision(conn, later, v1, decision)
+    assert ledger.get_decision(conn, later) == decision
+
+
+def test_record_correction_and_human_review(conn, sid, rid):
+    from datetime import UTC, datetime
+
+    from invoice_processing.codes import HumanReviewAction
+    from invoice_processing.schemas import Correction, HumanReview
+
+    inv = upsert_invoice(conn, "widgets inc.", "INV-1001", "h")
+    ledger.record_version(conn, inv, inv_1001(), sid)
+    ledger.record_correction_version(conn, inv, inv_1001(), sid, base_version=1)
+    at = datetime(2026, 1, 31, 12, tzinfo=UTC)
+    correction = Correction(
+        invoice_id=inv,
+        base_version=1,
+        field="stated.total",
+        old_value=None,
+        new_value="5000.00",
+        evidence_location="line:9",
+        reviewer="Ana",
+        reason="Total was blank",
+        created_at=at,
+        resulting_version=2,
+    )
+    cid = ledger.record_correction(conn, correction, rid)
+    row = conn.execute("SELECT * FROM corrections WHERE correction_id = ?", (cid,)).fetchone()
+    assert (row["from_version"], row["to_version"], row["run_id"], row["old_value"]) == (
+        1,
+        2,
+        rid,
+        None,
+    )
+    assert datetime.fromisoformat(row["created_at"]) == at
+    review = HumanReview(
+        invoice_id=inv,
+        version=2,
+        action=HumanReviewAction.decline,
+        reviewer="Ana",
+        reason="Vendor unknown",
+        policy_version="p1",
+    )
+    hid = ledger.record_human_review(conn, review, rid)
+    row = conn.execute("SELECT * FROM human_reviews WHERE review_id = ?", (hid,)).fetchone()
+    assert (row["version"], row["action"], row["run_id"]) == (2, "decline", rid)
+    assert row["created_at"]  # filled in when the review carries none
+    assert ledger.get_human_review(conn, inv, 2, "p1").action is HumanReviewAction.decline
+
+
+def test_carried_findings_only_ingestion_codes_and_excludes_fields(conn, rid):
+    from invoice_processing.codes import FindingCode, Severity
+    from invoice_processing.schemas import ValidationFinding
+
+    def f(code, field=None):
+        return ValidationFinding(code=code, severity=Severity.review, field=field)
+
+    ledger.record_findings(
+        conn,
+        rid,
+        None,
+        [
+            f(FindingCode.ambiguous_date, "due_date"),  # ingestion
+            f(FindingCode.unparseable_value, "stated.total"),  # ingestion, corrected below
+            f(FindingCode.risk_signal_urgency),  # ingestion, no field
+            f(FindingCode.total_mismatch, "stated.total"),  # validation
+            f(FindingCode.zero_stock),  # validation
+            f(FindingCode.non_usd_currency, "currency"),  # gate
+            f(FindingCode.model_disagreement),  # gate
+        ],
+    )
+    carried = ledger.carried_findings(conn, rid)
+    assert [x.code for x in carried] == [
+        FindingCode.ambiguous_date,
+        FindingCode.unparseable_value,
+        FindingCode.risk_signal_urgency,
+    ]
+    kept = ledger.carried_findings(conn, rid, exclude_fields=frozenset({"stated.total"}))
+    assert [x.code for x in kept] == [FindingCode.ambiguous_date, FindingCode.risk_signal_urgency]
+
+
+def test_audit_actor_recorded(conn, rid):
+    append_audit_event(conn, rid, "review", "correction_recorded", {}, actor="Ana")
+    append_audit_event(conn, rid, "x", "y", {})
+    rows = conn.execute("SELECT actor FROM audit_events ORDER BY event_id").fetchall()
+    assert [r[0] for r in rows] == ["Ana", None]

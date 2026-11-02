@@ -16,6 +16,7 @@ from typing import Any, Literal
 from invoice_processing import storage, transitions
 from invoice_processing.codes import (
     BUSINESS_OUTCOMES,
+    INGESTION_CODES,
     TERMINAL_RUN_STATUSES,
     ExecutionMode,
     InvoiceStatus,
@@ -25,6 +26,7 @@ from invoice_processing.codes import (
 from invoice_processing.money import MINOR_UNITS, canonical_amount
 from invoice_processing.schemas import (
     ApprovalDecision,
+    Correction,
     HumanReview,
     MockReceipt,
     NormalizedInvoice,
@@ -144,51 +146,116 @@ def semantic_hash(invoice: NormalizedInvoice) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+def _insert_version(
+    conn: sqlite3.Connection,
+    invoice_id: str,
+    invoice: NormalizedInvoice,
+    source_id: str,
+    origin: str,
+    digest: str,
+    parent_version: int | None,
+    supersede: Literal["none", "base", "others"],
+) -> tuple[str, int]:
+    """Insert version max + 1 and move current_version to it (never off a paid version)."""
+    latest = conn.execute(
+        "SELECT COALESCE(MAX(version), 0) FROM invoice_versions WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()[0]
+    version = latest + 1
+    version_id = _new_id("ver")
+    now = utcnow()
+    conn.execute(
+        "INSERT INTO invoice_versions (version_id, invoice_id, version, parent_version, "
+        "origin, source_id, semantic_hash, payload_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            version_id,
+            invoice_id,
+            version,
+            parent_version,
+            origin,
+            source_id,
+            digest,
+            invoice.model_dump_json(),
+            now,
+        ),
+    )
+    if supersede == "base":
+        conn.execute(
+            "UPDATE invoice_versions SET version_status = 'superseded' "
+            "WHERE invoice_id = ? AND version = ? AND version_status = 'current'",
+            (invoice_id, parent_version),
+        )
+    elif supersede == "others":
+        conn.execute(
+            "UPDATE invoice_versions SET version_status = 'superseded' "
+            "WHERE invoice_id = ? AND version != ? AND version_status = 'current'",
+            (invoice_id, version),
+        )
+    conn.execute(
+        "UPDATE invoices SET current_version = ?, updated_at = ? "
+        "WHERE invoice_id = ? AND status != ?",
+        (version, now, invoice_id, InvoiceStatus.paid_mock.value),
+    )
+    return version_id, version
+
+
 def record_version(
     conn: sqlite3.Connection,
     invoice_id: str,
     invoice: NormalizedInvoice,
     source_id: str,
-    origin: str = "extracted",
+    origin: str = "source",
+    supersede: bool = False,
 ) -> tuple[str, int]:
+    """The version of this content: an existing version with the same semantic hash is
+    returned as is (first payload and source kept, current_version not moved, Decision 6);
+    otherwise a new version becomes current. `supersede=True` (a corrected submission)
+    also marks every other current version of the invoice superseded."""
     digest = semantic_hash(invoice)
     with storage.atomic(conn):
         row = conn.execute(
             "SELECT version_id, version FROM invoice_versions "
-            "WHERE invoice_id = ? AND semantic_hash = ?",
+            "WHERE invoice_id = ? AND semantic_hash = ? ORDER BY version LIMIT 1",
             (invoice_id, digest),
         ).fetchone()
         if row is not None:
             return row["version_id"], row["version"]
         latest = conn.execute(
-            "SELECT COALESCE(MAX(version), 0) FROM invoice_versions WHERE invoice_id = ?",
-            (invoice_id,),
+            "SELECT MAX(version) FROM invoice_versions WHERE invoice_id = ?", (invoice_id,)
         ).fetchone()[0]
-        version = latest + 1
-        version_id = _new_id("ver")
-        now = utcnow()
-        conn.execute(
-            "INSERT INTO invoice_versions (version_id, invoice_id, version, parent_version, "
-            "origin, source_id, semantic_hash, payload_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                version_id,
-                invoice_id,
-                version,
-                latest or None,
-                origin,
-                source_id,
-                digest,
-                invoice.model_dump_json(),
-                now,
-            ),
+        return _insert_version(
+            conn,
+            invoice_id,
+            invoice,
+            source_id,
+            origin,
+            digest,
+            latest,
+            "others" if supersede else "none",
         )
-        conn.execute(
-            "UPDATE invoices SET current_version = ?, updated_at = ? "
-            "WHERE invoice_id = ? AND status != ?",
-            (version, now, invoice_id, InvoiceStatus.paid_mock.value),
+
+
+def record_correction_version(
+    conn: sqlite3.Connection,
+    invoice_id: str,
+    invoice: NormalizedInvoice,
+    source_id: str,
+    base_version: int,
+) -> tuple[str, int]:
+    """Always a new version (even when its semantic hash matches another, Decision 7), with
+    origin 'correction' and parent base_version; the base is superseded."""
+    with storage.atomic(conn):
+        return _insert_version(
+            conn,
+            invoice_id,
+            invoice,
+            source_id,
+            "correction",
+            semantic_hash(invoice),
+            base_version,
+            "base",
         )
-        return version_id, version
 
 
 def start_run(
@@ -198,12 +265,15 @@ def start_run(
     evaluation_date: date,
     retry_of: str | None = None,
     mode_switch_of: str | None = None,
+    trigger: str = "submission",
+    review_of: str | None = None,
 ) -> str:
     run_id = _new_id("run")
     with storage.atomic(conn):
         conn.execute(
             "INSERT INTO runs (run_id, source_id, mode, status, stage, retry_of, "
-            "mode_switch_of, evaluation_date, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "mode_switch_of, evaluation_date, started_at, trigger, review_of) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 source_id,
@@ -214,6 +284,8 @@ def start_run(
                 mode_switch_of,
                 evaluation_date.isoformat(),
                 utcnow(),
+                trigger,
+                review_of,
             ),
         )
     return run_id
@@ -250,6 +322,108 @@ def payment_by_another_run(conn: sqlite3.Connection, run_id: str) -> str | None:
         (run["invoice_id"], run["version"], RunStatus.failed.value, run_id),
     ).fetchone()
     return None if row is None else row["receipt_id"]
+
+
+@dataclass(frozen=True)
+class InvoiceRow:
+    invoice_id: str
+    vendor_key: str
+    invoice_number_key: str
+    status: InvoiceStatus
+    current_version: int | None
+
+
+@dataclass(frozen=True)
+class VersionRow:
+    version_id: str
+    version: int
+    parent_version: int | None
+    origin: str
+    version_status: str
+    source_id: str
+    invoice: NormalizedInvoice
+
+
+@dataclass(frozen=True)
+class RunRow:
+    run_id: str
+    status: RunStatus
+    mode: ExecutionMode
+    evaluation_date: date | None
+    trigger: str
+    review_of: str | None
+
+
+def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceRow:
+    row = conn.execute(
+        "SELECT invoice_id, vendor_key, invoice_number_key, status, current_version "
+        "FROM invoices WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown invoice: {invoice_id}")
+    return InvoiceRow(
+        row["invoice_id"],
+        row["vendor_key"],
+        row["invoice_number_key"],
+        InvoiceStatus(row["status"]),
+        row["current_version"],
+    )
+
+
+def get_version(conn: sqlite3.Connection, invoice_id: str, version: int) -> VersionRow:
+    row = conn.execute(
+        "SELECT version_id, version, parent_version, origin, version_status, source_id, "
+        "payload_json FROM invoice_versions WHERE invoice_id = ? AND version = ?",
+        (invoice_id, version),
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown version {version} of invoice {invoice_id}")
+    return VersionRow(
+        row["version_id"],
+        row["version"],
+        row["parent_version"],
+        row["origin"],
+        row["version_status"],
+        row["source_id"],
+        NormalizedInvoice.model_validate_json(row["payload_json"]),
+    )
+
+
+def get_source(conn: sqlite3.Connection, source_id: str) -> SourceDocument:
+    row = conn.execute(
+        "SELECT source_id, content_hash, original_name, format, size_bytes, parser_version, "
+        "extracted_text FROM sources WHERE source_id = ?",
+        (source_id,),
+    ).fetchone()
+    if row is None:
+        raise KeyError(f"unknown source: {source_id}")
+    return SourceDocument(**dict(row))
+
+
+def latest_outcome_run(conn: sqlite3.Connection, version_id: str) -> RunRow | None:
+    """The latest run on this version that reached a business outcome (any trigger)."""
+    row = conn.execute(
+        "SELECT run_id, status, mode, evaluation_date, trigger, review_of FROM runs "
+        f"WHERE version_id = ? AND status IN ({_OUTCOME_SLOTS}) "
+        "ORDER BY started_at DESC, rowid DESC LIMIT 1",
+        (version_id, *_OUTCOME_VALUES),
+    ).fetchone()
+    if row is None:
+        return None
+    return RunRow(
+        row["run_id"],
+        RunStatus(row["status"]),
+        ExecutionMode(row["mode"]),
+        date.fromisoformat(row["evaluation_date"]) if row["evaluation_date"] else None,
+        row["trigger"],
+        row["review_of"],
+    )
+
+
+def get_decision(conn: sqlite3.Connection, run_id: str) -> ApprovalDecision | None:
+    row = conn.execute("SELECT payload_json FROM decisions WHERE run_id = ?", (run_id,)).fetchone()
+    return None if row is None else ApprovalDecision.model_validate_json(row["payload_json"])
 
 
 @dataclass(frozen=True)
@@ -392,6 +566,65 @@ def get_human_review(
     return None if row is None else HumanReview(**dict(row))
 
 
+def _iso(at: datetime) -> str:
+    return at.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def record_correction(conn: sqlite3.Connection, correction: Correction, run_id: str) -> int:
+    with storage.atomic(conn):
+        cur = conn.execute(
+            "INSERT INTO corrections (invoice_id, from_version, to_version, field, old_value, "
+            "new_value, evidence_location, reviewer, reason, created_at, run_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                correction.invoice_id,
+                correction.base_version,
+                correction.resulting_version,
+                correction.field,
+                correction.old_value,
+                correction.new_value,
+                correction.evidence_location,
+                correction.reviewer,
+                correction.reason,
+                _iso(correction.created_at),
+                run_id,
+            ),
+        )
+        return cur.lastrowid
+
+
+def record_human_review(conn: sqlite3.Connection, review: HumanReview, run_id: str) -> int:
+    created_at = utcnow() if review.created_at is None else _iso(review.created_at)
+    with storage.atomic(conn):
+        cur = conn.execute(
+            "INSERT INTO human_reviews (invoice_id, version, action, reviewer, reason, "
+            "policy_version, created_at, run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                review.invoice_id,
+                review.version,
+                review.action.value,
+                review.reviewer,
+                review.reason,
+                review.policy_version,
+                created_at,
+                run_id,
+            ),
+        )
+        return cur.lastrowid
+
+
+def carried_findings(
+    conn: sqlite3.Connection, run_id: str, exclude_fields: frozenset[str] = frozenset()
+) -> list[ValidationFinding]:
+    """The run's recorded ingestion-stage findings, minus those naming an excluded field: what
+    a review run starting at validation carries forward (Decision 12)."""
+    rows = conn.execute(
+        "SELECT payload_json FROM findings WHERE run_id = ? ORDER BY finding_id", (run_id,)
+    ).fetchall()
+    findings = [ValidationFinding.model_validate_json(r["payload_json"]) for r in rows]
+    return [f for f in findings if f.code in INGESTION_CODES and f.field not in exclude_fields]
+
+
 def redact(value: Any) -> Any:
     """Recursively drop credential-like keys from dicts (including dicts inside lists)."""
     if isinstance(value, dict):
@@ -409,13 +642,15 @@ def append_audit_event(
     payload: dict[str, Any],
     invoice_id: str | None = None,
     version_id: str | None = None,
+    actor: str | None = None,
 ) -> None:
+    """`actor` is the reviewer name of a human action (free text, not authentication)."""
     body = json.dumps(redact(payload), sort_keys=True, default=str)
     with storage.atomic(conn):
         conn.execute(
-            "INSERT INTO audit_events (run_id, invoice_id, version_id, stage, event, "
-            "payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (run_id, invoice_id, version_id, stage, event, body, utcnow()),
+            "INSERT INTO audit_events (run_id, invoice_id, version_id, stage, event, actor, "
+            "payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (run_id, invoice_id, version_id, stage, event, actor, body, utcnow()),
         )
 
 

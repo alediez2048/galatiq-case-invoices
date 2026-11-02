@@ -429,7 +429,7 @@ def test_retry_of_live_run_with_failing_settings_raises(db, monkeypatch, tmp_pat
 
 
 def test_schema_v4_database_is_refused(tmp_path):
-    assert storage.SCHEMA_VERSION == 6
+    assert storage.SCHEMA_VERSION == 7
     path = tmp_path / "v4.db"
     c = connect(path)
     c.execute("PRAGMA user_version = 4")

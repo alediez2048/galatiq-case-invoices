@@ -25,6 +25,16 @@
           "final_decision": {
             "$ref": "#/components/schemas/GateOutcome"
           },
+          "human_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "initial_recommendation": {
             "$ref": "#/components/schemas/Recommendation"
           },
@@ -395,7 +405,8 @@
           "inconsistent_row_header",
           "model_proposal_unsupported",
           "model_parser_disagreement",
-          "risk_signal_embedded_instructions"
+          "risk_signal_embedded_instructions",
+          "human_declined"
         ],
         "title": "FindingCode",
         "type": "string"
@@ -437,6 +448,68 @@
         ],
         "title": "Health",
         "type": "object"
+      },
+      "HumanReview": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/HumanReviewAction"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "string"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invoice_id",
+          "version",
+          "action",
+          "reviewer",
+          "reason",
+          "policy_version"
+        ],
+        "title": "HumanReview",
+        "type": "object"
+      },
+      "HumanReviewAction": {
+        "enum": [
+          "approve",
+          "decline"
+        ],
+        "title": "HumanReviewAction",
+        "type": "string"
       },
       "HumanReviewView": {
         "additionalProperties": false,
@@ -1070,6 +1143,16 @@
             ],
             "title": "Due Date"
           },
+          "field_evidence": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceRef"
+              },
+              "type": "array"
+            },
+            "title": "Field Evidence",
+            "type": "object"
+          },
           "invoice_date": {
             "anyOf": [
               {
@@ -1410,6 +1493,17 @@
             },
             "title": "Timings Ms",
             "type": "object"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
           }
         },
         "required": [

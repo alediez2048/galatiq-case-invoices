@@ -46,6 +46,6 @@ _Correction 2026-11-01: the table first listed only the stock findings. The file
 
 ## Acceptance criteria
 
-- [ ] All 20 cases pass from a clean clone.
-- [ ] The coverage test fails when a new file is added to `data/invoices/` without a case.
-- [ ] Suite runs in under 60 seconds.
+- [x] All 20 cases pass from a clean clone.
+- [x] The coverage test fails when a new file is added to `data/invoices/` without a case.
+- [x] Suite runs in under 60 seconds.

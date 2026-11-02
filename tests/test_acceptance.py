@@ -163,12 +163,6 @@ def test_fixture_outcome(name, outcomes):
         assert o.payment_rows() == 0
 
 
-def test_no_identity_paid_twice_across_corpus(outcomes):
-    paid = [o for o in outcomes.values() if o.result.status is RunStatus.paid_mock]
-    assert len(paid) == sum(1 for c in CASES.values() if c[0] == "paid_mock")
-    assert all(len(o.payment_calls) == 1 for o in paid)
-
-
 def only(findings, code):
     return [(f.item, f.expected, f.observed) for f in findings if f.code == code]
 
@@ -231,8 +225,11 @@ def test_invoice_1012(name, outcomes):
 @pytest.mark.parametrize("name", ["invoice_1013.json", "invoice_1013.pdf"])
 def test_invoice_1013(name, outcomes):
     o = outcomes[name]
-    got = {(i, obs) for i, _, obs in only(o.findings, "quantity_exceeds_stock")}
-    assert {("WidgetA", "22"), ("WidgetB", "18"), ("GadgetX", "9")} <= got
+    assert sorted(only(o.findings, "quantity_exceeds_stock")) == [
+        ("GadgetX", "5", "9"),
+        ("WidgetA", "15", "22"),
+        ("WidgetB", "10", "18"),
+    ]
     assert only(o.findings, "total_mismatch") == [(None, "22512.80", "22562.80")]
 
 
@@ -247,7 +244,7 @@ def test_invoice_1016(outcomes):
 
 
 def test_shared_ledger_never_pays_an_identity_twice(tmp_path, monkeypatch):
-    """All files through one database: alternate formats and revisions add no second payment."""
+    """All files, in table order, through one database: later formats and revisions add no payment."""
     db = tmp_path / "shared.db"
     c = connect(db)
     storage.init_schema(c)
@@ -261,15 +258,40 @@ def test_shared_ledger_never_pays_an_identity_twice(tmp_path, monkeypatch):
         return real(*args, **kwargs)
 
     monkeypatch.setattr(payments, "mock_payment", counting)
-    for name in sorted(CASES):
-        process_invoice(CORPUS / name, ExecutionMode.offline, db, EVAL)
-    assert len(calls) == len(set(calls))
+    res = {n: process_invoice(CORPUS / n, ExecutionMode.offline, db, EVAL) for n in CASES}
+
+    paid = {n for n, r in res.items() if r.status is RunStatus.paid_mock}
+    assert paid == {
+        "invoice_1001.txt",
+        "invoice_1004.json",
+        "invoice_1006.csv",
+        "invoice_1010.txt",
+        "invoice_1011.txt",
+        "invoice_1012.txt",
+        "invoice_1015.csv",
+    }
+    assert len(calls) == len(set(calls)) == len(paid)
+
+    for twin, original in [
+        ("invoice_1011.pdf", "invoice_1011.txt"),
+        ("invoice_1012.pdf", "invoice_1012.txt"),
+    ]:
+        assert res[twin].status is RunStatus.duplicate
+        assert res[twin].prior_run_id == res[original].run_id
+        assert res[twin].receipt.receipt_id == res[original].receipt.receipt_id
+
+    assert res["invoice_1013.json"].status is RunStatus.rejected
+    assert res["invoice_1013.pdf"].status is RunStatus.duplicate
+    assert res["invoice_1013.pdf"].prior_run_id == res["invoice_1013.json"].run_id
+    assert res["invoice_1013.pdf"].receipt is None
+
+    revised = res["invoice_1004_revised.json"]
+    assert revised.status is RunStatus.needs_review
+    assert revised.receipt is None
+    assert [f.code.value for f in revised.findings if f.code.value == "revision_after_payment"]
+
     c = connect(db)
     try:
-        per_invoice = c.execute(
-            "SELECT invoice_id, COUNT(*) FROM payments GROUP BY invoice_id"
-        ).fetchall()
+        assert c.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == len(calls)
     finally:
         c.close()
-    assert all(n == 1 for _, n in per_invoice)
-    assert len(per_invoice) == len(calls)

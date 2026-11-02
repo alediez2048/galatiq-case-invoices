@@ -122,7 +122,7 @@ Exit criteria:
 
 - [x] All 20 supplied files accounted for with asserted outcomes, including expected failures. (tests/test_acceptance.py::test_every_fixture_has_a_case, tests/test_acceptance.py::test_fixture_outcome)
 - [x] INV-1013 aggregates WidgetA=22, WidgetB=18, GadgetX=9 and reports the USD 50.00 discrepancy. (tests/test_acceptance.py::test_invoice_1013)
-- [x] INV-1004/1004-revised, 1011 TXT/PDF, 1012 TXT/PDF, 1013 JSON/PDF yield at most one payment per identity. (tests/test_acceptance.py::test_no_identity_paid_twice_across_corpus, tests/test_acceptance.py::test_fixture_outcome)
+- [x] INV-1004/1004-revised, 1011 TXT/PDF, 1012 TXT/PDF, 1013 JSON/PDF yield at most one payment per identity. (tests/test_acceptance.py::test_shared_ledger_never_pays_an_identity_twice, tests/test_service.py alternate-format and revision tests)
 - [x] INV-1014 stays EUR and is not paid. (tests/test_acceptance.py::test_invoice_1014)
 
 Covers: A01, A02, A03, P01, P02, P03, P04, P05, P09 (input limits), P10.

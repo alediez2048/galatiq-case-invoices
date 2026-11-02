@@ -19,3 +19,7 @@ dist/
 # Frontend (explicit; also covered by the generic patterns above)
 frontend/node_modules/
 frontend/dist/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

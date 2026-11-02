@@ -101,7 +101,12 @@ function Progress({ run }: { run: RunProgress }) {
   return (
     <>
       <Stages run={run} />
-      <p className="progress-active" aria-live="polite">
+      {/* Completion is announced exactly once: this region is always mounted and its text
+          changes a single time. Failure is announced by the role="alert" notice below. */}
+      <p className="visually-hidden" role="status" data-testid="run-announcer">
+        {run.terminal && run.status !== "failed" ? "Processing finished." : ""}
+      </p>
+      <p className="progress-active" aria-live={run.terminal ? "off" : "polite"}>
         {active ?? (run.status === "failed" ? "Processing stopped." : "Processing finished.")}
       </p>
       {done.length > 0 && (

@@ -176,5 +176,23 @@ These are proposed product adaptations, not claims about Galatiq's site:
 - [ ] Apply styles through maintainable application components and supported theme settings where available.
 - [ ] Decide unresolved gradient usage, heading breakpoints, and component states explicitly.
 - [ ] Verify dashboard, invoice details, and narrow-screen layouts visually.
-- [ ] Check keyboard access, contrast, reduced motion, and status clarity.
+- [x] Check keyboard access, contrast, reduced motion, and status clarity (P5-10; see below).
 - [ ] Keep displayed metrics and payment/model labels faithful to actual behavior.
+
+## Contrast results (P5-10)
+
+WCAG 2.x relative-luminance ratios, AA requires 4.5:1 for normal text (3:1 for large text and UI outlines).
+
+| Pairing | Ratio | Result |
+| --- | --- | --- |
+| Accent `#009A6C` text on black `#000000` | 5.84:1 | Pass |
+| Accent `#009A6C` on raised surface `#0C0C0C` | 5.44:1 | Pass |
+| White text on `#009A6C` (old primary button fill) | 3.60:1 | **Fail** |
+| White text on `#087D5B` (new primary button fill, `--color-accent-strong`) | 5.13:1 | Pass |
+| White text on `#066A4C` (new primary hover, `--color-accent-hover`) | 6.62:1 | Pass |
+| Focus ring `#62DAB4` on black | 12.21:1 | Pass |
+| Muted text (white at 60%) on black | 7.37:1 | Pass |
+| Success / warning / danger notice text on their fills | 11.37 / 11.26 / 11.44:1 | Pass |
+| Dark grey `#575757` on black | 2.91:1 | Decorative only (brand separator, sidebar caption, both hidden from assistive tech); not used for information |
+
+Change: the accent `#009A6C` stays the brand green for text, dots and borders, but the primary button fill now uses the darker `--color-accent-strong` (`#087D5B`) with `--color-accent-hover` darkened to `#066A4C`, because white-on-accent was below AA. Checked by `frontend/src/styles/a11y.test.ts` and a rendered-page check in the Playwright suite.

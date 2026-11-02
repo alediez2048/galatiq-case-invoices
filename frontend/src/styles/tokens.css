@@ -26,7 +26,9 @@
   /* Adaptations from the approved mockup */
   --color-surface-raised: #0c0c0c;
   --color-control-border: #303030;
-  --color-accent-hover: #087d5b;
+  /* Primary-button fill: white text on #009a6c is only 3.6:1 (fails WCAG AA); #087d5b is 5.13:1. */
+  --color-accent-strong: #087d5b;
+  --color-accent-hover: #066a4c;
   --color-focus: #62dab4;
   --color-warning-text: #d6c9a3;
   --color-warning-border: #514936;

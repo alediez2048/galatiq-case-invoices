@@ -1431,6 +1431,17 @@
             "title": "Inventory Seeded",
             "type": "boolean"
           },
+          "live_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Model"
+          },
           "live_settings_present": {
             "title": "Live Settings Present",
             "type": "boolean"
@@ -1466,6 +1477,23 @@
         ],
         "title": "Recommendation",
         "type": "string"
+      },
+      "RetryRequest": {
+        "additionalProperties": false,
+        "description": "Optional JSON body of ``POST /api/runs/{run_id}/retry``.\n\n``retry`` reprocesses in the failed run's own mode, linked by ``retry_of``.\n``run_offline`` runs the same document offline as a separate, labeled simulation\n(``mode_switch_of``); only for live model failures, where the offline path can help.",
+        "properties": {
+          "action": {
+            "default": "retry",
+            "enum": [
+              "retry",
+              "run_offline"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "title": "RetryRequest",
+        "type": "object"
       },
       "RunAccepted": {
         "additionalProperties": false,
@@ -1732,6 +1760,17 @@
           },
           "mode": {
             "$ref": "#/components/schemas/ExecutionMode"
+          },
+          "mode_switch_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Switch Of"
           },
           "prior_run_id": {
             "anyOf": [
@@ -2787,6 +2826,111 @@
         "summary": "Get Run"
       }
     },
+    "/api/runs/{run_id}/retry": {
+      "post": {
+        "description": "Explicitly retry a recoverable failed run (P3-08). Creates a new linked run; never\nresumes the failed one. Refusals use the RetryRefused reason as the error code.",
+        "operationId": "create_retry_api_runs__run_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RetryRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Retry"
+      }
+    },
     "/api/samples": {
       "get": {
         "operationId": "list_samples_api_samples_get",
@@ -2811,7 +2955,7 @@
     },
     "/api/settings/readiness": {
       "get": {
-        "operationId": "readiness_api_settings_readiness_get",
+        "operationId": "get_readiness_api_settings_readiness_get",
         "responses": {
           "200": {
             "content": {
@@ -2824,7 +2968,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Readiness"
+        "summary": "Get Readiness"
       }
     },
     "/api/sources/{source_id}/content": {

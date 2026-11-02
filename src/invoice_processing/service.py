@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
@@ -144,6 +145,7 @@ def retry_run(
     events: logging.Logger | None = None,
     provider: ReasoningProvider | None = None,
     limits: Limits = DEFAULT_LIMITS,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
     """Process `path` again as a new run linked to the failed `run_id` (`retry_of`), in the
     original run's mode. The ledger keeps no source bytes, so the caller re-supplies the
@@ -164,6 +166,7 @@ def retry_run(
         limits,
         provider,
         retry_of=original.run_id,
+        on_run_started=on_run_started,
     )
 
 
@@ -175,9 +178,21 @@ def process_invoice(
     events: logging.Logger | None = None,
     limits: Limits = DEFAULT_LIMITS,
     provider: ReasoningProvider | None = None,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
+    """`on_run_started(run_id)` is called once the run row exists, before any work runs."""
     source, raw = intake.read_source(path, limits)  # IntakeError propagates; no run is created
-    return _process(source, raw, mode, db_path, evaluation_date, events, limits, provider)
+    return _process(
+        source,
+        raw,
+        mode,
+        db_path,
+        evaluation_date,
+        events,
+        limits,
+        provider,
+        on_run_started=on_run_started,
+    )
 
 
 def _process(
@@ -190,6 +205,7 @@ def _process(
     limits: Limits,
     provider: ReasoningProvider | None,
     retry_of: str | None = None,
+    on_run_started: Callable[[str], None] | None = None,
 ) -> ProcessingResult:
     if events is None:
         events = observability.configure_events(None)
@@ -211,6 +227,8 @@ def _process(
             retry_of=retry_of,
             mode_switch_of=mode_switch_of,
         )
+        if on_run_started is not None:
+            on_run_started(run_id)
         deps = Deps(conn=conn, provider=provider, events=events, limits=limits)
         state = InvoiceState(
             run_id=run_id,

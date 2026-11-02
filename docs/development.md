@@ -92,7 +92,9 @@ uv run python -m invoice_processing.api            # http://127.0.0.1:8000, docs
 uv run python -m invoice_processing.api --db demo.db --port 8001
 ```
 
-Binds to `127.0.0.1` only; any other host needs `--allow-public-bind` (there is no authentication). The database is created, migrated to the current schema and seeded on startup (never reset). If `frontend/dist` exists it is served at `/`. Uploads are stored under `uploads/<sha256>/` (gitignored); processing runs in one background worker under a process-wide lock, and clients poll `GET /api/runs/{run_id}`.
+Binds to `127.0.0.1` only; any other host needs `--allow-public-bind` (there is no authentication). The database is created and seeded on startup (never reset); a database from an older schema version (anything below 6) is refused, so point `--db` at a new path. If `frontend/dist` exists it is served at `/`. Uploads are stored under `uploads/<sha256>/` (gitignored); processing runs in one background worker under a process-wide lock, and clients poll `GET /api/runs/{run_id}`.
+
+`POST /api/runs/{run_id}/retry` retries a recoverable failed run as a new linked run (`service.retry_run`; body `{"action": "retry"}`, the default, keeps the run's mode) or, for a live model failure, `{"action": "run_offline"}` runs the same document offline as a separate simulation (`mode_switch_of`). It accepts an `Idempotency-Key` header and re-reads the original file (bundled sample or stored upload, located by hash). Refusals use the `RetryRefused` reason as the error code: `unknown_run` 404; `not_failed`, `not_recoverable`, `source_mismatch`, `already_paid` (with `details.receipt_id`) 409; plus `source_unavailable` 409 when the original file is gone and `provider_unavailable` 409 when live settings are missing. `GET /api/settings/readiness` reports live availability from configuration only (`readiness.live_status`, no SDK import or network) and the configured `live_model`.
 
 Export the OpenAPI schema for the typed frontend client: `uv run python scripts/export_openapi.py` (writes `frontend/src/api/openapi.json`).
 

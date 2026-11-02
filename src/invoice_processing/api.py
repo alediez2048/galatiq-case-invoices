@@ -16,15 +16,14 @@ import logging
 import sqlite3
 import sys
 import threading
-import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -35,13 +34,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from invoice_processing import idempotency, intake, queries, samples, uploads
-from invoice_processing.codes import ExecutionMode, InvoiceStatus, RunStatus
+from invoice_processing import idempotency, intake, queries, readiness, samples, service, uploads
+from invoice_processing.codes import ExecutionMode, InvoiceStatus, ModelErrorCode, RunStatus
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
 from invoice_processing.observability import LOGGER_NAME, configure_events
 from invoice_processing.reasoning import ProviderUnavailable, get_provider
 from invoice_processing.seed import SEED_ITEMS, seed_inventory
-from invoice_processing.service import process_invoice
+from invoice_processing.service import RetryRefused, process_invoice, retry_run
 from invoice_processing.storage import (
     SCHEMA_VERSION,
     SchemaVersionError,
@@ -53,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VITE_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RUNS_ENDPOINT = "POST /api/runs"
+RETRY_ENDPOINT = "POST /api/runs/{run_id}/retry"
 RUN_START_TIMEOUT_S = 120.0
 
 # One lock for everything that mutates state through the service: processing today, review
@@ -82,6 +82,13 @@ _STATUS_BY_CODE = {
     "not_found": 404,
     "file_too_large": 413,
     "busy": 503,
+    "source_unavailable": 409,
+    # RetryRefused reasons (service.retry_run), returned as the error code itself
+    "unknown_run": 404,
+    "not_failed": 409,
+    "not_recoverable": 409,
+    "source_mismatch": 409,
+    "already_paid": 409,
 }
 
 
@@ -106,6 +113,15 @@ class ErrorBody(BaseModel):
     code: str
     message: str
     details: Any = None
+
+
+_RETRY_MESSAGES = {
+    "unknown_run": "There is no run with this id.",
+    "not_failed": "Only a failed run can be retried.",
+    "not_recoverable": "This failure would happen again; retrying will not fix it.",
+    "source_mismatch": "The stored file no longer matches the run's original document.",
+    "already_paid": "Another run already paid this invoice. No additional payment.",
+}
 
 
 def _error_response(status: int, code: str, message: str, details: Any = None) -> JSONResponse:
@@ -143,6 +159,13 @@ def _install_error_handlers(app: FastAPI) -> None:
     async def _provider(_: Request, exc: ProviderUnavailable) -> JSONResponse:
         return _error_response(409, "provider_unavailable", str(exc))
 
+    @app.exception_handler(RetryRefused)
+    async def _retry_refused(_: Request, exc: RetryRefused) -> JSONResponse:
+        details = {"reason": exc.reason, "run_id": exc.run_id, "receipt_id": exc.receipt_id}
+        return _error_response(
+            _STATUS_BY_CODE.get(exc.reason, 409), exc.reason, _RETRY_MESSAGES[exc.reason], details
+        )
+
     @app.exception_handler(SchemaVersionError)
     async def _schema(_: Request, exc: SchemaVersionError) -> JSONResponse:
         return _error_response(500, "database_unusable", str(exc))
@@ -175,6 +198,7 @@ class Readiness(ApiModel):
     inventory_seeded: bool
     database_path: str
     schema_version: int
+    live_model: str | None = None  # the configured XAI_MODEL when live settings are present
 
 
 class RunRequest(ApiModel):
@@ -183,6 +207,17 @@ class RunRequest(ApiModel):
     sample: str
     mode: ExecutionMode
     evaluation_date: date | None = None
+
+
+class RetryRequest(ApiModel):
+    """Optional JSON body of ``POST /api/runs/{run_id}/retry``.
+
+    ``retry`` reprocesses in the failed run's own mode, linked by ``retry_of``.
+    ``run_offline`` runs the same document offline as a separate, labeled simulation
+    (``mode_switch_of``); only for live model failures, where the offline path can help.
+    """
+
+    action: Literal["retry", "run_offline"] = "retry"
 
 
 class RunAccepted(ApiModel):
@@ -224,49 +259,68 @@ _RUN_BODY_DOC = {
 # ---------------------------------------------------------------------------- worker
 
 
-class _RunIdCapture(logging.Handler):
-    """Learns the run id from the first workflow event and forwards events to the JSONL log."""
-
-    def __init__(self, started: Future[str]) -> None:
-        super().__init__(logging.INFO)
-        self._started = started
-
-    def emit(self, record: logging.LogRecord) -> None:
-        run_id = (getattr(record, "event_data", None) or {}).get("run_id")
-        if run_id and not self._started.done():
-            self._started.set_result(run_id)
-        target = logging.getLogger(LOGGER_NAME)
-        if target.handlers:
-            target.handle(record)
+RunJob = Callable[[Callable[[str], None]], object]
 
 
 class RunWorker:
-    """One background thread; every job runs under PROCESSING_LOCK with its own connection."""
+    """One background thread; every job runs under PROCESSING_LOCK with its own connection.
+
+    The service reports the run id through its ``on_run_started`` hook as soon as the run
+    row exists, so the HTTP response never depends on the event log."""
 
     def __init__(self, settings: ApiSettings) -> None:
         self._settings = settings
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="invoice-worker")
 
+    def _events(self) -> logging.Logger:
+        return logging.getLogger(LOGGER_NAME)
+
     def submit(self, path: Path, mode: ExecutionMode, evaluation_date: date) -> str:
         """Queue one processing job and return its run id once the run row exists."""
+        return self.run(
+            lambda started: process_invoice(
+                path,
+                mode,
+                self._settings.db_path,
+                evaluation_date,
+                events=self._events(),
+                limits=self._settings.limits,
+                on_run_started=started,
+            )
+        )
+
+    def submit_retry(self, run_id: str, path: Path, evaluation_date: date) -> str:
+        """Queue ``service.retry_run``; a RetryRefused or ProviderUnavailable is raised here."""
+        return self.run(
+            lambda started: retry_run(
+                run_id,
+                path,
+                self._settings.db_path,
+                evaluation_date,
+                events=self._events(),
+                limits=self._settings.limits,
+                on_run_started=started,
+            )
+        )
+
+    def run(self, job_fn: RunJob) -> str:
+        """Run ``job_fn(on_run_started)`` on the worker and return the run id it reports.
+
+        The wait covers only the queue: another job holding PROCESSING_LOCK. Past
+        ``run_start_timeout_s`` the queued job is cancelled and the caller gets 503 busy."""
         started: Future[str] = Future()
         cancelled = threading.Event()
-        events = logging.Logger(f"invoice_processing.api.{uuid.uuid4().hex}", logging.INFO)
-        events.addHandler(_RunIdCapture(started))
+
+        def report(run_id: str) -> None:
+            if not started.done():
+                started.set_result(run_id)
 
         def job() -> None:
             with PROCESSING_LOCK:
                 if cancelled.is_set():
                     return
                 try:
-                    process_invoice(
-                        path,
-                        mode,
-                        self._settings.db_path,
-                        evaluation_date,
-                        events=events,
-                        limits=self._settings.limits,
-                    )
+                    job_fn(report)
                 except Exception as exc:
                     if not started.done():
                         started.set_exception(exc)
@@ -315,13 +369,9 @@ def _settings(request: Request) -> ApiSettings:
     return request.app.state.settings
 
 
-def _live_status() -> ModeAvailability:
-    # TODO(P3-01): use the live-mode readiness check from invoice_processing.readiness.
-    try:
-        get_provider(ExecutionMode.live)
-    except ProviderUnavailable as exc:
-        return ModeAvailability(available=False, reason=str(exc))
-    return ModeAvailability(available=True)
+def _live_status() -> readiness.LiveStatus:
+    # Configuration only (Phase 3 readiness, without --ping): no SDK import, no socket.
+    return readiness.live_status()
 
 
 router = APIRouter(prefix="/api")
@@ -333,13 +383,17 @@ def health() -> Health:
 
 
 @router.get("/settings/readiness", response_model=Readiness)
-def readiness(request: Request) -> Readiness:
+def get_readiness(request: Request) -> Readiness:
     live = _live_status()
     with _db(request) as conn:
         stock = {r["item"] for r in conn.execute("SELECT item FROM inventory")}
     return Readiness(
-        modes={"offline": ModeAvailability(available=True), "live": live},
+        modes={
+            "offline": ModeAvailability(available=True),
+            "live": ModeAvailability(available=live.available, reason=live.reason),
+        },
         live_settings_present=live.available,
+        live_model=live.model,
         inventory_seeded=set(SEED_ITEMS) <= stock,
         database_path=str(_settings(request).db_path),
         schema_version=SCHEMA_VERSION,
@@ -512,7 +566,83 @@ async def create_run(
     )
 
 
-# TODO(P3-08): POST /api/runs/{run_id}/retry wraps the explicit retry of recoverable failures.
+_OFFLINE_FIXABLE = frozenset(c.value for c in ModelErrorCode)
+
+
+def _retry_source(request: Request, run_id: str) -> tuple[Path, ExecutionMode, date]:
+    """The original file, mode and evaluation date of ``run_id``, or an error."""
+    with _db(request) as conn:
+        row = conn.execute(
+            "SELECT source_id, mode, evaluation_date FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            raise RetryRefused("unknown_run", run_id)
+        record = queries.get_source_record(conn, row["source_id"])
+    path = _locate_original(_settings(request), record)
+    if path is None:
+        raise ApiError(
+            "source_unavailable",
+            "The original file is no longer available, so this run cannot be reprocessed.",
+            {"source_id": record.source_id},
+        )
+    when = (
+        date.fromisoformat(row["evaluation_date"])
+        if row["evaluation_date"]
+        else _settings(request).evaluation_date or date.today()
+    )
+    return path, ExecutionMode(row["mode"]), when
+
+
+def _start_retry(request: Request, run_id: str, action: str, key: str | None) -> RunAccepted:
+    endpoint = f"{RETRY_ENDPOINT}:{run_id}:{action}"
+    path, mode, when = _retry_source(request, run_id)
+    settings = _settings(request)
+    with _idempotency_lock:
+        if key:
+            with _db(request) as conn:
+                stored = idempotency.lookup(conn, key, endpoint)
+                if stored is not None:
+                    return _accepted(conn, json.loads(stored)["run_id"], replay=True)
+        worker: RunWorker = request.app.state.worker
+        if action == "retry":
+            new_run = worker.submit_retry(run_id, path, when)
+        else:
+            # Same refusals as a retry (unknown, not failed, wrong file, already paid), and
+            # only a live model failure: offline cannot fix a deterministic or offline error.
+            original = service.check_retry(run_id, path, settings.db_path, settings.limits)
+            if original.mode is not ExecutionMode.live or original.error_code not in (
+                _OFFLINE_FIXABLE
+            ):
+                raise RetryRefused("not_recoverable", run_id)
+            new_run = worker.submit(path, ExecutionMode.offline, when)
+        with _db(request) as conn:
+            accepted = _accepted(conn, new_run, replay=False)
+            if key:
+                idempotency.remember(conn, key, endpoint, accepted.model_dump_json())
+        return accepted
+
+
+@router.post(
+    "/runs/{run_id}/retry",
+    status_code=202,
+    response_model=RunAccepted,
+    responses={
+        404: {"model": ErrorBody},
+        409: {"model": ErrorBody},
+        422: {"model": ErrorBody},
+        503: {"model": ErrorBody},
+    },
+)
+def create_retry(
+    run_id: str,
+    request: Request,
+    body: RetryRequest | None = None,
+    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None,
+) -> RunAccepted:
+    """Explicitly retry a recoverable failed run (P3-08). Creates a new linked run; never
+    resumes the failed one. Refusals use the RetryRefused reason as the error code."""
+    action = (body or RetryRequest()).action
+    return _start_retry(request, run_id, action, idempotency_key)
 
 
 @router.get("/runs/{run_id}", response_model=queries.RunView)

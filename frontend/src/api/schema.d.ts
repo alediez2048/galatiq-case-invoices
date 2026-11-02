@@ -123,6 +123,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Retry
+         * @description Explicitly retry a recoverable failed run (P3-08). Creates a new linked run; never
+         *     resumes the failed one. Refusals use the RetryRefused reason as the error code.
+         */
+        post: operations["create_retry_api_runs__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/samples": {
         parameters: {
             query?: never;
@@ -147,8 +168,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Readiness */
-        get: operations["readiness_api_settings_readiness_get"];
+        /** Get Readiness */
+        get: operations["get_readiness_api_settings_readiness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -600,6 +621,8 @@ export interface components {
             database_path: string;
             /** Inventory Seeded */
             inventory_seeded: boolean;
+            /** Live Model */
+            live_model?: string | null;
             /** Live Settings Present */
             live_settings_present: boolean;
             /** Modes */
@@ -615,6 +638,22 @@ export interface components {
          * @enum {string}
          */
         Recommendation: "approve" | "reject" | "review";
+        /**
+         * RetryRequest
+         * @description Optional JSON body of ``POST /api/runs/{run_id}/retry``.
+         *
+         *     ``retry`` reprocesses in the failed run's own mode, linked by ``retry_of``.
+         *     ``run_offline`` runs the same document offline as a separate, labeled simulation
+         *     (``mode_switch_of``); only for live model failures, where the offline path can help.
+         */
+        RetryRequest: {
+            /**
+             * Action
+             * @default retry
+             * @enum {string}
+             */
+            action: "retry" | "run_offline";
+        };
         /** RunAccepted */
         RunAccepted: {
             /**
@@ -688,6 +727,8 @@ export interface components {
             /** Invoice Id */
             invoice_id?: string | null;
             mode: components["schemas"]["ExecutionMode"];
+            /** Mode Switch Of */
+            mode_switch_of?: string | null;
             /** Prior Run Id */
             prior_run_id?: string | null;
             result?: components["schemas"]["ProcessingResult"] | null;
@@ -1108,6 +1149,70 @@ export interface operations {
             };
         };
     };
+    create_retry_api_runs__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "idempotency-key"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RetryRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_samples_api_samples_get: {
         parameters: {
             query?: never;
@@ -1128,7 +1233,7 @@ export interface operations {
             };
         };
     };
-    readiness_api_settings_readiness_get: {
+    get_readiness_api_settings_readiness_get: {
         parameters: {
             query?: never;
             header?: never;

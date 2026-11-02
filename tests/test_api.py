@@ -80,6 +80,7 @@ def test_readiness_without_live_key_exposes_only_availability(client, settings, 
         "inventory_seeded",
         "database_path",
         "schema_version",
+        "live_model",
     }
 
 
@@ -643,3 +644,265 @@ def test_built_frontend_is_served_with_client_side_route_fallback(settings, tmp_
         missing_api = c.get("/api/nope")
         assert missing_api.status_code == 404 and missing_api.json()["code"] == "not_found"
         assert c.get("/api/health").json() == {"status": "ok"}
+
+
+# ------------------------------------------------------------------ P3-08 retry over HTTP
+
+SENTINEL = "sk-SENTINEL-api-retry"
+
+
+def _rec(decision="approve"):
+    return {"recommendation": decision, "reasons": [], "cited_codes": [], "summary": "ok"}
+
+
+def _crit():
+    return {
+        "agrees": True,
+        "omissions": [],
+        "high_value": False,
+        "revised_recommendation": None,
+        "summary": "critique agrees",
+        "issues": [],
+    }
+
+
+@pytest.fixture
+def live(monkeypatch):
+    """Live settings with a sentinel key; each xAI client the provider builds takes the
+    next script from `scripts`. No network: the fake never opens a channel."""
+    import grpc
+
+    from invoice_processing.reasoning import xai
+    from tests.fakes.xai_client import FakeXaiClient, Parsed, Raise
+
+    scripts: list[list] = []
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    monkeypatch.setattr(xai, "real_client_factory", lambda s: FakeXaiClient(scripts.pop(0)))
+    down = Raise(grpc.StatusCode.UNAVAILABLE)
+
+    class Live:
+        def failing(self):
+            scripts.append([down, down])
+
+        def working(self):
+            scripts.append([Parsed(_rec()), Parsed(_crit())])
+
+    return Live()
+
+
+def _failed_live_run(client, live, sample="invoice_1001.txt") -> dict:
+    live.failing()
+    r = submit(client, sample, mode="live")
+    assert r.status_code == 202, r.text
+    done = wait_done(client, r.json()["run_id"])
+    assert done["status"] == "failed", done
+    assert done["result"]["recoverable"] is True, (done["error_code"], done["error_message"])
+    return done
+
+
+def retry(client, run_id, key=None, **body):
+    headers = {"Idempotency-Key": key} if key else {}
+    return client.post(f"/api/runs/{run_id}/retry", json=body or None, headers=headers)
+
+
+def _paid_count(client) -> int:
+    return sum(t["paid_count"] for t in client.get("/api/overview").json()["paid_totals"])
+
+
+def _run_ids(settings) -> list[str]:
+    conn = storage.connect(settings.db_path)
+    try:
+        return [r["run_id"] for r in conn.execute("SELECT run_id FROM runs ORDER BY started_at")]
+    finally:
+        conn.close()
+
+
+def test_retry_creates_a_linked_run_in_the_original_mode_and_pays_once(client, live):
+    failed = _failed_live_run(client, live)
+    live.working()
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["run_id"] != failed["run_id"] and body["mode"] == "live"
+    done = wait_done(client, body["run_id"])
+    assert done["status"] == "paid_mock" and done["retry_of"] == failed["run_id"]
+    assert done["mode_switch_of"] is None
+    assert _paid_count(client) == 1
+    assert SENTINEL not in r.text + str(done)
+
+
+def test_retry_offline_runs_a_labeled_separate_simulation(client, live, settings):
+    failed = _failed_live_run(client, live)
+    r = retry(client, failed["run_id"], action="run_offline")
+    assert r.status_code == 202, r.text
+    assert r.json()["mode"] == "offline"
+    done = wait_done(client, r.json()["run_id"])
+    assert done["mode"] == "offline" and done["status"] == "paid_mock"
+    assert done["mode_switch_of"] == failed["run_id"] and done["retry_of"] is None
+
+
+def test_retry_is_idempotent_per_key(client, live, settings):
+    failed = _failed_live_run(client, live)
+    live.working()
+    first = retry(client, failed["run_id"], key="retry-key-1")
+    wait_done(client, first.json()["run_id"])
+    again = retry(client, failed["run_id"], key="retry-key-1")
+    assert again.status_code == 202
+    assert again.json()["run_id"] == first.json()["run_id"]
+    assert again.json()["idempotent_replay"] is True
+    assert len(_run_ids(settings)) == 2
+
+
+def test_retry_refused_unknown_run(client):
+    r = retry(client, "run-nope")
+    assert r.status_code == 404
+    assert r.json()["code"] == "unknown_run"
+    assert r.json()["details"]["reason"] == "unknown_run"
+
+
+def test_retry_refused_not_failed(client, settings):
+    (paid,) = process(client, "invoice_1001.txt")
+    r = retry(client, paid["run_id"])
+    assert r.status_code == 409
+    assert r.json()["code"] == "not_failed" and r.json()["details"]["reason"] == "not_failed"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_refused_not_recoverable(client, settings):
+    r = multipart(client, "bad.txt", b"Invoice Number: INV-9\nVendor: Caf\xe9 Ltd\n")
+    assert r.status_code == 202, r.text
+    failed = wait_done(client, r.json()["run_id"])
+    assert failed["error_code"] == "txt_decode_error"
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 409 and r.json()["code"] == "not_recoverable"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_refused_source_mismatch(client, live, settings, monkeypatch):
+    failed = _failed_live_run(client, live)
+    # The API locates the original by hash, so a mismatch needs the file to change under it.
+    monkeypatch.setattr(api, "_locate_original", lambda s, rec: SAMPLES / "invoice_1002.txt")
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 409 and r.json()["code"] == "source_mismatch"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_refused_already_paid(client, live, settings):
+    failed = _failed_live_run(client, live)
+    paid = wait_done(client, retry(client, failed["run_id"], action="run_offline").json()["run_id"])
+    assert paid["status"] == "paid_mock"
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 409
+    body = r.json()
+    assert body["code"] == "already_paid"
+    assert body["details"]["receipt_id"] == paid["result"]["receipt"]["receipt_id"]
+    assert len(_run_ids(settings)) == 2
+    assert _paid_count(client) == 1
+
+
+def test_retry_offline_refused_for_a_failure_an_offline_run_cannot_fix(client, settings):
+    r = multipart(client, "bad.txt", b"Invoice Number: INV-9\nVendor: Caf\xe9 Ltd\n")
+    failed = wait_done(client, r.json()["run_id"])
+    r = retry(client, failed["run_id"], action="run_offline")
+    assert r.status_code == 409 and r.json()["code"] == "not_recoverable"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_live_without_settings_is_provider_unavailable_and_creates_no_run(
+    client, live, settings, monkeypatch
+):
+    failed = _failed_live_run(client, live)
+    monkeypatch.delenv("XAI_API_KEY")
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 409 and r.json()["code"] == "provider_unavailable"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_without_the_original_file_is_refused(client, live, settings, monkeypatch):
+    failed = _failed_live_run(client, live)
+    monkeypatch.setattr(api, "_locate_original", lambda s, rec: None)
+    r = retry(client, failed["run_id"])
+    assert r.status_code == 409 and r.json()["code"] == "source_unavailable"
+    assert len(_run_ids(settings)) == 1
+
+
+def test_retry_rejects_an_unknown_action(client, live):
+    failed = _failed_live_run(client, live)
+    assert retry(client, failed["run_id"], action="pay_anyway").status_code == 422
+
+
+def test_readiness_uses_phase_3_settings_and_exposes_the_model(client, monkeypatch):
+    import invoice_processing.reasoning as reasoning
+
+    def no_provider(*a, **k):
+        raise AssertionError("readiness must not build a provider")
+
+    monkeypatch.setattr(reasoning, "get_provider", no_provider)
+    monkeypatch.setattr(api, "get_provider", no_provider)
+    body = client.get("/api/settings/readiness").json()
+    assert body["modes"]["live"]["available"] is False and body["live_model"] is None
+    assert "XAI_API_KEY" in body["modes"]["live"]["reason"]
+    monkeypatch.setenv("XAI_API_KEY", SENTINEL)
+    monkeypatch.setenv("XAI_MODEL", "grok-test")
+    r = client.get("/api/settings/readiness")
+    body = r.json()
+    assert body["modes"]["live"] == {"available": True, "reason": None}
+    assert body["live_settings_present"] is True and body["live_model"] == "grok-test"
+    assert SENTINEL not in r.text
+
+
+def test_run_id_comes_from_the_service_hook_not_the_event_log(client, monkeypatch):
+    from invoice_processing import observability
+
+    # Even with event logging silenced the API still learns the run id at once.
+    monkeypatch.setattr(observability, "log_event", lambda *a, **k: None)
+    r = submit(client, "invoice_1001.txt")
+    assert r.status_code == 202, r.text
+    assert wait_done(client, r.json()["run_id"])["status"] == "paid_mock"
+
+
+def test_rebuilt_result_recovery_matches_the_service():
+    from invoice_processing import queries, service
+
+    assert queries._RECOVERY_ACTIONS == service.RECOVERY_ACTIONS
+    retryable = {c for c in service.RETRYABLE_ERROR_CODES if queries.next_actions_for(c)}
+    assert retryable == set(service.RETRYABLE_ERROR_CODES)
+    assert queries.next_actions_for("txt_decode_error") == []
+    assert queries.next_actions_for(None) == []
+
+
+def test_live_failure_result_over_http_matches_the_service_result(client, live):
+    failed = _failed_live_run(client, live)
+    assert failed["result"]["next_actions"] == ["retry", "run offline as a separate simulation"]
+    assert failed["result"]["model_calls_used"] == 2  # one step, its transport retry charged
+
+
+def test_detail_allows_retry_only_for_a_recoverable_latest_failure(client, live):
+    failed = _failed_live_run(client, live)
+    assert failed["invoice_id"], "1001 is extracted before the model fails"
+    detail = client.get(f"/api/invoices/{failed['invoice_id']}").json()
+    assert detail["allowed_actions"] == ["retry"]
+    live.working()
+    wait_done(client, retry(client, failed["run_id"]).json()["run_id"])
+    detail = client.get(f"/api/invoices/{failed['invoice_id']}").json()
+    assert detail["allowed_actions"] == []
+
+
+def test_service_on_run_started_hook_reports_the_run_once_before_work(tmp_path):
+    from invoice_processing import ledger as ledger_mod
+
+    db = tmp_path / "hook.db"
+    seen: list[tuple[str, str]] = []
+
+    def hook(run_id: str) -> None:
+        conn = storage.connect(db)
+        try:
+            seen.append((run_id, ledger_mod.get_run_status(conn, run_id).value))
+        finally:
+            conn.close()
+
+    result = process_invoice(
+        SAMPLES / "invoice_1001.txt", ExecutionMode.offline, db, EVAL, on_run_started=hook
+    )
+    assert seen == [(result.run_id, "received")]

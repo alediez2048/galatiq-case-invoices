@@ -22,6 +22,7 @@ from invoice_processing.codes import (
     TERMINAL_RUN_STATUSES,
     ExecutionMode,
     InvoiceStatus,
+    ModelErrorCode,
     RunStatus,
     SourceFormat,
 )
@@ -246,6 +247,20 @@ def _run_row(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row:
     return row
 
 
+# Mirrors service._result / service.RETRYABLE_ERROR_CODES (asserted equal in tests): a model
+# failure can be retried or run offline; a crash or unexpected error only retried.
+_RECOVERY_ACTIONS = ["retry", "run offline as a separate simulation"]
+_MODEL_ERROR_CODES = frozenset(c.value for c in ModelErrorCode)
+
+
+def next_actions_for(error_code: str | None) -> list[str]:
+    if error_code in _MODEL_ERROR_CODES:
+        return list(_RECOVERY_ACTIONS)
+    if error_code in ("unexpected_error", "interrupted"):
+        return ["retry"]
+    return []
+
+
 def build_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
     """The ProcessingResult of a finished run, rebuilt from persisted rows.
 
@@ -258,6 +273,10 @@ def build_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
         "SELECT content_hash FROM sources WHERE source_id = ?", (run["source_id"],)
     ).fetchone()
     receipt_run = run["prior_run_id"] if duplicate and run["prior_run_id"] else run_id
+    next_actions = next_actions_for(run["error_code"]) if status is RunStatus.failed else []
+    model_calls = conn.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE run_id = ? AND event = 'model_call'", (run_id,)
+    ).fetchone()[0]
     return ProcessingResult(
         run_id=run_id,
         invoice_id=run["invoice_id"],
@@ -271,6 +290,9 @@ def build_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
         error_message=run["error_message"],
         source_hash=source["content_hash"] if source else None,
         evaluation_date=run["evaluation_date"],
+        model_calls_used=model_calls,
+        recoverable=bool(next_actions),
+        next_actions=next_actions,
     )
 
 
@@ -301,6 +323,8 @@ class RunView(ApiModel):
     error_message: str | None = None
     prior_run_id: str | None = None  # set on a duplicate run: the run that holds the outcome
     retry_of: str | None = None  # set on an explicit retry (P3-08): the failed run it retries
+    # set when the same bytes ran in the other mode (P3-08): the latest such run
+    mode_switch_of: str | None = None
     events: list[AuditEventView]
     result: ProcessingResult | None = None
 
@@ -335,6 +359,7 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunView:
         error_message=run["error_message"],
         prior_run_id=run["prior_run_id"],
         retry_of=run["retry_of"],
+        mode_switch_of=run["mode_switch_of"],
         events=_events(conn, run_id),
         result=build_result(conn, run_id) if terminal else None,
     )
@@ -437,7 +462,9 @@ class InvoiceDetail(ApiModel):
     corrections: list[CorrectionView]
     human_reviews: list[HumanReviewView]
     runs: list[RunSummary]
-    allowed_actions: list[str]  # TODO(P5-04): populated by the review service once it exists
+    # "retry" when the latest run is a recoverable failure (P3-08); review actions are
+    # TODO(P5-04), populated by the review service once it exists.
+    allowed_actions: list[str]
 
 
 def _rows(conn: sqlite3.Connection, sql: str, *args: Any) -> list[sqlite3.Row]:
@@ -492,6 +519,15 @@ def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceDetail:
         for ln in invoice.lines:
             lines.append(_stock_line(ln, requested, stock))
 
+    terminal = latest is not None and _is_terminal(latest)
+    latest_result = build_result(conn, latest["run_id"]) if terminal else None
+    allowed = (
+        ["retry"]
+        if latest_result is not None
+        and latest_result.status is RunStatus.failed
+        and "retry" in latest_result.next_actions
+        else []
+    )
     return InvoiceDetail(
         invoice_id=invoice_id,
         outcome=InvoiceStatus(inv["status"]),
@@ -504,11 +540,7 @@ def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceDetail:
         source_id=None if version_row is None else version_row["source_id"],
         source=None if version_row is None else _source_summary(conn, version_row["source_id"]),
         evaluation_date=None if latest is None else latest["evaluation_date"],
-        latest_result=(
-            build_result(conn, latest["run_id"])
-            if latest is not None and _is_terminal(latest)
-            else None
-        ),
+        latest_result=latest_result,
         invoice=invoice,
         normalization_events=[] if invoice is None else invoice.normalization_events,
         findings=[] if decision_run is None else _findings(conn, decision_run["run_id"]),
@@ -535,7 +567,7 @@ def get_invoice(conn: sqlite3.Connection, invoice_id: str) -> InvoiceDetail:
         runs=[
             _run_summary(conn, r) for r in sorted(runs, key=lambda r: (r["started_at"], r["rowid"]))
         ],
-        allowed_actions=[],
+        allowed_actions=allowed,
     )
 
 

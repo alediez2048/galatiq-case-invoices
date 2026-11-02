@@ -4,6 +4,8 @@ import argparse
 import os
 import sys
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 from invoice_processing import settings as settings_module
 from invoice_processing.settings import ConfigurationError, load_live_settings
@@ -47,6 +49,24 @@ def main(argv: list[str] | None = None) -> int:
         print(line)
         return 0 if line.startswith("ping: ok") else 2
     return 0
+
+
+@dataclass(frozen=True)
+class LiveStatus:
+    """Configuration-only live readiness: never imports the SDK or opens a socket."""
+
+    available: bool
+    model: str | None = None
+    reason: str | None = None
+
+
+def live_status(env: Mapping[str, str] | None = None) -> LiveStatus:
+    """What the API and UI show for live mode. The key itself is never returned."""
+    try:
+        settings = load_live_settings(env)
+    except ConfigurationError as exc:
+        return LiveStatus(available=False, reason=str(exc))
+    return LiveStatus(available=True, model=settings.model)
 
 
 if __name__ == "__main__":

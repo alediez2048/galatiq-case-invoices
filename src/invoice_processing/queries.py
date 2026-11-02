@@ -251,6 +251,10 @@ def _run_row(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row:
 # Mirrors service._result / service.RETRYABLE_ERROR_CODES (asserted equal in tests): a model
 # failure can be retried or run offline; a crash or unexpected error only retried.
 _RECOVERY_ACTIONS = ["retry", "run offline as a separate simulation"]
+# Runs created by a review action (Phase 4) on an existing version: retried without a file.
+REVIEW_RUN_TRIGGERS = frozenset({"correction", "human_review"})
+# Never offered the offline simulation: it would be a plain submission, losing the review.
+NO_OFFLINE_TRIGGERS = REVIEW_RUN_TRIGGERS | {"corrected_submission"}
 _MODEL_ERROR_CODES = frozenset(c.value for c in ModelErrorCode)
 
 
@@ -275,6 +279,10 @@ def build_result(conn: sqlite3.Connection, run_id: str) -> ProcessingResult:
     ).fetchone()
     receipt_run = run["prior_run_id"] if duplicate and run["prior_run_id"] else run_id
     next_actions = next_actions_for(run["error_code"]) if status is RunStatus.failed else []
+    if run["trigger"] in NO_OFFLINE_TRIGGERS:
+        # A review run is retried on its own version; re-running the document offline would
+        # discard the correction or human review (the API refuses it), so it is not offered.
+        next_actions = [a for a in next_actions if a != _RECOVERY_ACTIONS[1]]
     model_calls = conn.execute(
         "SELECT COUNT(*) FROM audit_events WHERE run_id = ? AND event = 'model_call'", (run_id,)
     ).fetchone()[0]

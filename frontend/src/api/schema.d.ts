@@ -75,6 +75,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invoices/{invoice_id}/corrected-submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Corrected Submission
+         * @description Submit a corrected invoice from the vendor (``review.submit_corrected_invoice``): the
+         *     file is processed as a new version that supersedes the earlier ones. The upload is checked
+         *     like ``POST /api/runs``. ``expected_version`` is the version the reviewer saw. A file with
+         *     another vendor or invoice number fails its run with ``corrected_identity_mismatch``.
+         */
+        post: operations["create_corrected_submission_api_invoices__invoice_id__corrected_submission_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invoices/{invoice_id}/corrections": {
         parameters: {
             query?: never;
@@ -142,6 +165,27 @@ export interface paths {
         };
         /** Overview */
         get: operations["overview_api_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description Invoices waiting on a person, in three groups (``review.list_queue``); each item
+         *     carries its AllowedActions.
+         */
+        get: operations["review_queue_api_review_queue_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -747,6 +791,31 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /**
+         * QueueGroup
+         * @description The review queue's sections, in display order.
+         * @enum {string}
+         */
+        QueueGroup: "correctable_extraction" | "awaiting_human_approval" | "unresolved_blocker";
+        /** QueueItem */
+        QueueItem: {
+            actions: components["schemas"]["AllowedActions"];
+            /** Currency */
+            currency: string | null;
+            /** Current Version */
+            current_version: number | null;
+            /** Invoice Id */
+            invoice_id: string;
+            /** Invoice Number */
+            invoice_number: string | null;
+            /** Reason Codes */
+            reason_codes: components["schemas"]["FindingCode"][];
+            status: components["schemas"]["InvoiceStatus"];
+            /** Total */
+            total: string | null;
+            /** Vendor Name */
+            vendor_name: string | null;
+        };
         /** Readiness */
         Readiness: {
             /** Database Path */
@@ -804,6 +873,13 @@ export interface components {
             reason: string;
             /** Reviewer */
             reviewer: string;
+        };
+        /** ReviewQueue */
+        ReviewQueue: {
+            /** Groups */
+            groups?: {
+                [key: string]: components["schemas"]["QueueItem"][];
+            };
         };
         /**
          * ReviewRefusal
@@ -1240,6 +1316,98 @@ export interface operations {
             };
         };
     };
+    create_corrected_submission_api_invoices__invoice_id__corrected_submission_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: date */
+                    evaluation_date?: string;
+                    expected_version: number;
+                    /** Format: binary */
+                    file: string;
+                    /** @enum {string} */
+                    mode?: "offline" | "live";
+                    reason: string;
+                    reviewer: string;
+                };
+            };
+        };
+        responses: {
+            /** @description No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Unknown invoice (`unknown_invoice`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `busy`: another invoice is processing. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     create_correction_api_invoices__invoice_id__corrections_post: {
         parameters: {
             query?: never;
@@ -1433,6 +1601,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Overview"];
+                };
+            };
+        };
+    };
+    review_queue_api_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
                 };
             };
         };

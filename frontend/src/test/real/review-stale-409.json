@@ -7,7 +7,7 @@
         "submit_corrected"
       ],
       "current_version": 2,
-      "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
+      "invoice_id": "inv-6cc085c3d4aa4b9a9b4228d92e01a12f",
       "refused": {
         "approve": "action_not_allowed",
         "decline": "action_not_allowed"
@@ -18,7 +18,7 @@
       "allowed_actions": [],
       "corrections": [
         {
-          "created_at": "2026-11-02T15:59:51.384841Z",
+          "created_at": "2026-11-02T16:13:10.151265Z",
           "evidence_location": "line:9",
           "field": "lines[0].line_total",
           "from_version": 1,
@@ -47,7 +47,7 @@
         ],
         "revised_recommendation": null
       },
-      "decision_run_id": "run-7106d01321674f928c31565f7a8f8524",
+      "decision_run_id": "run-5d98a8cd57dd4f02a459cc1e0d77d9a1",
       "evaluation_date": "2026-01-31",
       "findings": [
         {
@@ -200,7 +200,7 @@
         "vendor_key": "ocr test co",
         "vendor_name": "OCR Test Co"
       },
-      "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
+      "invoice_id": "inv-6cc085c3d4aa4b9a9b4228d92e01a12f",
       "invoice_number": "OCR-3002",
       "latest_result": {
         "decision": {
@@ -251,7 +251,7 @@
             "severity": "blocker"
           }
         ],
-        "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
+        "invoice_id": "inv-6cc085c3d4aa4b9a9b4228d92e01a12f",
         "mode": "offline",
         "model_calls_budget": null,
         "model_calls_used": 0,
@@ -259,13 +259,13 @@
         "prior_run_id": null,
         "receipt": null,
         "recoverable": false,
-        "run_id": "run-7106d01321674f928c31565f7a8f8524",
+        "run_id": "run-5d98a8cd57dd4f02a459cc1e0d77d9a1",
         "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
         "status": "rejected",
         "timings_ms": {},
         "version": 2
       },
-      "latest_run_id": "run-7106d01321674f928c31565f7a8f8524",
+      "latest_run_id": "run-5d98a8cd57dd4f02a459cc1e0d77d9a1",
       "line_items": [
         {
           "available": 15,
@@ -333,7 +333,7 @@
           "submit_corrected"
         ],
         "current_version": 2,
-        "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
+        "invoice_id": "inv-6cc085c3d4aa4b9a9b4228d92e01a12f",
         "refused": {
           "approve": "action_not_allowed",
           "decline": "action_not_allowed"
@@ -347,7 +347,7 @@
           "evaluation_date": "2026-01-31",
           "events": [
             {
-              "created_at": "2026-11-02T15:59:51.324136Z",
+              "created_at": "2026-11-02T16:13:10.092506Z",
               "event": "received",
               "payload": {
                 "mode": "offline",
@@ -360,7 +360,7 @@
               "stage": "intake"
             },
             {
-              "created_at": "2026-11-02T15:59:51.334293Z",
+              "created_at": "2026-11-02T16:13:10.103386Z",
               "event": "extracted",
               "payload": {
                 "codes": [
@@ -376,7 +376,7 @@
               "stage": "ingestion"
             },
             {
-              "created_at": "2026-11-02T15:59:51.336850Z",
+              "created_at": "2026-11-02T16:13:10.108343Z",
               "event": "validated",
               "payload": {
                 "codes": [
@@ -390,7 +390,7 @@
               "stage": "validation"
             },
             {
-              "created_at": "2026-11-02T15:59:51.337733Z",
+              "created_at": "2026-11-02T16:13:10.113393Z",
               "event": "recommendation",
               "payload": {
                 "codes": [
@@ -405,7 +405,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.337915Z",
+              "created_at": "2026-11-02T16:13:10.113584Z",
               "event": "critique",
               "payload": {
                 "agrees": true,
@@ -421,7 +421,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.339268Z",
+              "created_at": "2026-11-02T16:13:10.114023Z",
               "event": "decision",
               "payload": {
                 "final_decision": "needs_review",
@@ -436,7 +436,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.340502Z",
+              "created_at": "2026-11-02T16:13:10.114556Z",
               "event": "waiting",
               "payload": {
                 "mode": "offline",
@@ -446,7 +446,7 @@
               "stage": "outcome"
             },
             {
-              "created_at": "2026-11-02T15:59:51.347951Z",
+              "created_at": "2026-11-02T16:13:10.115049Z",
               "event": "finished",
               "payload": {
                 "errors": [],
@@ -457,16 +457,16 @@
               "stage": "service"
             }
           ],
-          "finished_at": "2026-11-02T15:59:51.347184Z",
+          "finished_at": "2026-11-02T16:13:10.114827Z",
           "mode": "offline",
           "model": "simulated",
           "original_name": "ocr_ambiguous.txt",
           "prior_run_id": null,
           "provider": "offline",
           "retry_of": null,
-          "run_id": "run-325c8d40de1c45d5a95fd90394c04aec",
+          "run_id": "run-b96eb1d97ed946c38e16e0819c21ffbd",
           "source_id": "src-0cdbe80877c618be",
-          "started_at": "2026-11-02T15:59:51.323939Z",
+          "started_at": "2026-11-02T16:13:10.092354Z",
           "status": "needs_review",
           "trigger": "submission"
         },
@@ -476,16 +476,16 @@
           "evaluation_date": "2026-01-31",
           "events": [
             {
-              "created_at": "2026-11-02T15:59:51.384943Z",
+              "created_at": "2026-11-02T16:13:10.151385Z",
               "event": "review_run_created",
               "payload": {
-                "review_of": "run-325c8d40de1c45d5a95fd90394c04aec",
+                "review_of": "run-b96eb1d97ed946c38e16e0819c21ffbd",
                 "trigger": "correction"
               },
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:59:51.384971Z",
+              "created_at": "2026-11-02T16:13:10.151416Z",
               "event": "correction_applied",
               "payload": {
                 "base_version": 1,
@@ -497,11 +497,11 @@
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:59:51.385008Z",
+              "created_at": "2026-11-02T16:13:10.151456Z",
               "event": "approvals_invalidated",
               "payload": {
                 "decision_run_ids": [
-                  "run-325c8d40de1c45d5a95fd90394c04aec"
+                  "run-b96eb1d97ed946c38e16e0819c21ffbd"
                 ],
                 "human_review_ids": [],
                 "superseded_version": 1
@@ -509,7 +509,7 @@
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:59:51.391655Z",
+              "created_at": "2026-11-02T16:13:10.158002Z",
               "event": "validated",
               "payload": {
                 "codes": [
@@ -523,7 +523,7 @@
               "stage": "validation"
             },
             {
-              "created_at": "2026-11-02T15:59:51.392197Z",
+              "created_at": "2026-11-02T16:13:10.158528Z",
               "event": "recommendation",
               "payload": {
                 "codes": [
@@ -538,7 +538,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.392342Z",
+              "created_at": "2026-11-02T16:13:10.158671Z",
               "event": "critique",
               "payload": {
                 "agrees": true,
@@ -554,7 +554,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.396791Z",
+              "created_at": "2026-11-02T16:13:10.163414Z",
               "event": "decision",
               "payload": {
                 "final_decision": "rejected",
@@ -569,7 +569,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:59:51.402675Z",
+              "created_at": "2026-11-02T16:13:10.169198Z",
               "event": "rejection_recorded",
               "payload": {
                 "codes": [
@@ -579,7 +579,7 @@
               "stage": "payment"
             },
             {
-              "created_at": "2026-11-02T15:59:51.413507Z",
+              "created_at": "2026-11-02T16:13:10.170088Z",
               "event": "finished",
               "payload": {
                 "errors": [],
@@ -590,16 +590,16 @@
               "stage": "service"
             }
           ],
-          "finished_at": "2026-11-02T15:59:51.410422Z",
+          "finished_at": "2026-11-02T16:13:10.169806Z",
           "mode": "offline",
           "model": "simulated",
           "original_name": "ocr_ambiguous.txt",
           "prior_run_id": null,
           "provider": "offline",
           "retry_of": null,
-          "run_id": "run-7106d01321674f928c31565f7a8f8524",
+          "run_id": "run-5d98a8cd57dd4f02a459cc1e0d77d9a1",
           "source_id": "src-0cdbe80877c618be",
-          "started_at": "2026-11-02T15:59:51.384801Z",
+          "started_at": "2026-11-02T16:13:10.151169Z",
           "status": "rejected",
           "trigger": "correction"
         }
@@ -615,7 +615,7 @@
       "vendor_name": "OCR Test Co",
       "versions": [
         {
-          "created_at": "2026-11-02T15:59:51.331575Z",
+          "created_at": "2026-11-02T16:13:10.099824Z",
           "currency": "USD",
           "lines": [
             {
@@ -643,7 +643,7 @@
           "version": 1
         },
         {
-          "created_at": "2026-11-02T15:59:51.384688Z",
+          "created_at": "2026-11-02T16:13:10.151055Z",
           "currency": "USD",
           "lines": [
             {

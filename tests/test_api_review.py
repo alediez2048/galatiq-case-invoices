@@ -522,3 +522,169 @@ def test_interrupted_approve_is_retried_without_a_file_and_never_offline(
     assert done["status"] == "paid_mock" and done["trigger"] == "human_review"
     assert done["retry_of"] == run_id
     assert counts(settings)["payments"] == 1
+
+
+# ------------------------------------------------------------------ review queue
+
+
+def test_review_queue_groups_with_allowed_actions(client, settings):
+    mistake = process(REVIEW / "extraction_mistake.txt", settings.db_path)
+    high = waiting(settings)
+    eur = process(INVOICES / "invoice_1014.xml", settings.db_path)
+    process(INVOICES / "invoice_1001.txt", settings.db_path)  # paid: not queued
+    groups = client.get("/api/review-queue").json()["groups"]
+    ids = {g: [i["invoice_id"] for i in items] for g, items in groups.items()}
+    assert ids == {
+        "correctable_extraction": [mistake.invoice_id],
+        "awaiting_human_approval": [high],
+        "unresolved_blocker": [eur.invoice_id],
+    }
+    (item,) = groups["awaiting_human_approval"]
+    assert item["total"] == "10000.01" and item["current_version"] == 1
+    assert set(item["actions"]["allowed"]) == {"approve", "decline", "correct"}
+    assert item["actions"] == client.get(f"/api/invoices/{high}").json()["review_actions"]
+    finished(client, decide(client, high, "approve"))
+    after = client.get("/api/review-queue").json()["groups"]
+    assert after["awaiting_human_approval"] == []
+
+
+def test_empty_review_queue(client):
+    groups = client.get("/api/review-queue").json()["groups"]
+    assert groups == {
+        "correctable_extraction": [],
+        "awaiting_human_approval": [],
+        "unresolved_blocker": [],
+    }
+
+
+# ------------------------------------------------------------------ corrected submission
+
+CORRECTED_1013 = REVIEW / "inv_1013_corrected.json"
+
+
+def submit_corrected(client, invoice_id, path=CORRECTED_1013, key="cs-1", **fields):
+    data = {"expected_version": "1", "reason": "Vendor reissued", "reviewer": "Ana", **fields}
+    data = {k: v for k, v in data.items() if v is not None}
+    files = {"file": (path.name, path.read_bytes(), "application/octet-stream")}
+    headers = {"Idempotency-Key": key} if key else {}
+    return client.post(
+        f"/api/invoices/{invoice_id}/corrected-submission", data=data, files=files, headers=headers
+    )
+
+
+def rejected_1013(settings) -> str:
+    r1 = process(INVOICES / "invoice_1013.json", settings.db_path)
+    assert r1.status == "rejected"
+    return r1.invoice_id
+
+
+def test_corrected_submission_supersedes_and_returns_the_run(client, settings):
+    invoice_id = rejected_1013(settings)
+    r = submit_corrected(client, invoice_id)
+    result = finished(client, r)
+    assert result["invoice_id"] == invoice_id and result["version"] == 2
+    assert result["status"] == "awaiting_human_approval"
+    run = client.get(f"/api/runs/{result['run_id']}").json()
+    assert run["trigger"] == "corrected_submission"
+    detail = client.get(f"/api/invoices/{invoice_id}").json()
+    assert detail["current_version"] == 2 and detail["outcome"] == "awaiting_human_approval"
+    assert len(detail["versions"]) == 2
+    # The uploaded file is stored like any upload, so the run can be retried from it.
+    assert any(settings.uploads_dir.rglob(CORRECTED_1013.name))
+
+
+def test_corrected_submission_replays_a_repeated_key(client, settings):
+    invoice_id = rejected_1013(settings)
+    first = finished(client, submit_corrected(client, invoice_id, key="same"))
+    after = counts(settings)
+    again = submit_corrected(client, invoice_id, key="same")
+    assert again.status_code == 202
+    assert again.json()["run_id"] == first["run_id"] and again.json()["idempotent_replay"]
+    assert counts(settings) == after
+    other = submit_corrected(client, invoice_id, key="same", reason="Different")
+    assert other.status_code == 422 and other.json()["code"] == "idempotency_key_reused"
+
+
+def test_corrected_submission_with_another_identity_fails_its_run(client, settings):
+    invoice_id = rejected_1013(settings)
+    result = finished(client, submit_corrected(client, invoice_id, REVIEW / "source_error.json"))
+    assert result["status"] == "failed" and result["errors"] == ["corrected_identity_mismatch"]
+    assert "run offline as a separate simulation" not in result["next_actions"]
+    detail = client.get(f"/api/invoices/{invoice_id}").json()
+    assert detail["current_version"] == 1 and detail["outcome"] == "rejected"
+
+
+def test_corrected_submission_with_a_stale_version_is_409(client, settings):
+    invoice_id = rejected_1013(settings)
+    before = counts(settings)
+    r = submit_corrected(client, invoice_id, expected_version="2")
+    assert r.status_code == 409 and r.json()["code"] == "stale_version"
+    assert r.json()["details"]["current"]["current_version"] == 1
+    assert r.json()["details"]["invoice"]["invoice_id"] == invoice_id
+    assert counts(settings) == before
+
+
+@pytest.mark.parametrize(
+    "case,status,code",
+    [
+        ("paid", 409, "already_paid"),
+        ("waiting", 409, "action_not_allowed"),
+        ("unknown", 404, "unknown_invoice"),
+    ],
+)
+def test_corrected_submission_refusals(client, settings, case, status, code):
+    if case == "paid":
+        invoice_id = process(INVOICES / "invoice_1001.txt", settings.db_path).invoice_id
+    elif case == "waiting":
+        invoice_id = waiting(settings)
+    else:
+        invoice_id = "inv-nope"
+    before = counts(settings)
+    r = submit_corrected(client, invoice_id)
+    assert r.status_code == status, r.text
+    assert r.json()["code"] == code
+    assert counts(settings) == before
+
+
+@pytest.mark.parametrize("missing", ["reason", "reviewer", "expected_version"])
+def test_corrected_submission_fields_are_required(client, settings, missing):
+    invoice_id = rejected_1013(settings)
+    before = counts(settings)
+    r = submit_corrected(client, invoice_id, **{missing: None})
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
+    assert counts(settings) == before
+
+
+def test_corrected_submission_uses_the_upload_checks(client, settings, tmp_path):
+    invoice_id = rejected_1013(settings)
+    before = counts(settings)
+    bad = tmp_path / "corrected.exe"
+    bad.write_bytes(b"MZ")
+    r = submit_corrected(client, invoice_id, bad)
+    assert r.status_code == 422 and r.json()["code"] == "unsupported_format", r.text
+    settings.limits = type(settings.limits)(**{**settings.limits.__dict__, "max_bytes": 10})
+    big = submit_corrected(client, invoice_id, key="cs-big")
+    assert big.status_code == 413 and big.json()["code"] == "file_too_large"
+    r = client.post(
+        f"/api/invoices/{invoice_id}/corrected-submission",
+        data={"expected_version": "1", "reason": "r", "reviewer": "Ana"},
+        headers={"Idempotency-Key": "cs-nofile"},
+    )
+    assert r.status_code == 422
+    assert counts(settings) == before
+
+
+def test_corrected_submission_requires_an_idempotency_key(client, settings):
+    invoice_id = rejected_1013(settings)
+    r = submit_corrected(client, invoice_id, key=None)
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
+
+
+# ------------------------------------------------------------------ next_actions of review runs
+
+
+def test_failed_review_run_results_never_offer_the_offline_run(client, settings, live):
+    _, failed = failed_correction(client, settings, live)
+    assert failed["next_actions"] == ["retry"]
+    detail = client.get(f"/api/invoices/{failed['invoice_id']}").json()
+    assert detail["latest_result"]["next_actions"] == ["retry"]

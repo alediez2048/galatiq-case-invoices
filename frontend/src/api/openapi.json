@@ -1643,6 +1643,106 @@
         "title": "ProcessingResult",
         "type": "object"
       },
+      "QueueGroup": {
+        "description": "The review queue's sections, in display order.",
+        "enum": [
+          "correctable_extraction",
+          "awaiting_human_approval",
+          "unresolved_blocker"
+        ],
+        "title": "QueueGroup",
+        "type": "string"
+      },
+      "QueueItem": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "$ref": "#/components/schemas/AllowedActions"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "string"
+          },
+          "invoice_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Number"
+          },
+          "reason_codes": {
+            "items": {
+              "$ref": "#/components/schemas/FindingCode"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvoiceStatus"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          }
+        },
+        "required": [
+          "invoice_id",
+          "vendor_name",
+          "invoice_number",
+          "total",
+          "currency",
+          "status",
+          "current_version",
+          "reason_codes",
+          "actions"
+        ],
+        "title": "QueueItem",
+        "type": "object"
+      },
       "Readiness": {
         "additionalProperties": false,
         "properties": {
@@ -1757,6 +1857,26 @@
           "reviewer"
         ],
         "title": "ReviewDecisionBody",
+        "type": "object"
+      },
+      "ReviewQueue": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/QueueItem"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/QueueGroup"
+            },
+            "title": "Groups",
+            "type": "object"
+          }
+        },
+        "title": "ReviewQueue",
         "type": "object"
       },
       "ReviewRefusal": {
@@ -2992,6 +3112,154 @@
         "summary": "Approve Invoice"
       }
     },
+    "/api/invoices/{invoice_id}/corrected-submission": {
+      "post": {
+        "description": "Submit a corrected invoice from the vendor (``review.submit_corrected_invoice``): the\nfile is processed as a new version that supersedes the earlier ones. The upload is checked\nlike ``POST /api/runs``. ``expected_version`` is the version the reviewer saw. A file with\nanother vendor or invoice number fails its run with ``corrected_identity_mismatch``.",
+        "operationId": "create_corrected_submission_api_invoices__invoice_id__corrected_submission_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "evaluation_date": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expected_version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "offline",
+                      "live"
+                    ],
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reviewer": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "expected_version",
+                  "reason",
+                  "reviewer"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true)."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown invoice (`unknown_invoice`)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail)."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`busy`: another invoice is processing."
+          }
+        },
+        "summary": "Create Corrected Submission"
+      }
+    },
     "/api/invoices/{invoice_id}/corrections": {
       "post": {
         "description": "Correct extracted fields with source evidence (``review.submit_correction``): a new\nversion is recorded and revalidated by a new run, whose id is returned at once.",
@@ -3249,6 +3517,25 @@
           }
         },
         "summary": "Overview"
+      }
+    },
+    "/api/review-queue": {
+      "get": {
+        "description": "Invoices waiting on a person, in three groups (``review.list_queue``); each item\ncarries its AllowedActions.",
+        "operationId": "review_queue_api_review_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Review Queue"
       }
     },
     "/api/runs": {

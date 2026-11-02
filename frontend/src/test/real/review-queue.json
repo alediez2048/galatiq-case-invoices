@@ -1,0 +1,31 @@
+{
+  "groups": {
+    "awaiting_human_approval": [
+      {
+        "actions": {
+          "allowed": [
+            "correct",
+            "approve",
+            "decline"
+          ],
+          "current_version": 1,
+          "invoice_id": "inv-e7014ce935da43bebd09d945665dafb1",
+          "refused": {
+            "submit_corrected": "action_not_allowed"
+          },
+          "status": "awaiting_human_approval"
+        },
+        "currency": "USD",
+        "current_version": 1,
+        "invoice_id": "inv-e7014ce935da43bebd09d945665dafb1",
+        "invoice_number": "TH-10000-01",
+        "reason_codes": [],
+        "status": "awaiting_human_approval",
+        "total": "10000.01",
+        "vendor_name": "Threshold Test Supply"
+      }
+    ],
+    "correctable_extraction": [],
+    "unresolved_blocker": []
+  }
+}

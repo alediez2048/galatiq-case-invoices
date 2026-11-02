@@ -3,8 +3,8 @@
 Processes a few bundled samples offline on a throwaway database and writes the responses the
 UI consumes to frontend/src/test/real/*.json, so adapter and view tests run against what the
 backend actually returns. Also records review-action bodies (P5-04): a correction's and an
-approval's 202, the approval run once paid, the 409 for a stale version and a 422 refusal.
-Never touches inventory.db.
+approval's 202, the approval run once paid, the review queue, the 409 for a stale version
+and a 422 refusal. Never touches inventory.db.
 
 Usage: uv run python scripts/export_ui_fixtures.py
 """
@@ -60,7 +60,7 @@ def main() -> None:
                 for kind, body in (("run", run), ("detail", detail), ("source", source)):
                     _write(f"{kind}-{key}", body)
             _review_bodies(client)
-    print(f"wrote {len(SAMPLES) * 3 + 5} fixtures to {OUT.relative_to(ROOT)}")
+    print(f"wrote {len(SAMPLES) * 3 + 6} fixtures to {OUT.relative_to(ROOT)}")
 
 
 def _write(name: str, body: dict) -> None:
@@ -104,6 +104,7 @@ def _review_bodies(client: TestClient) -> None:
         "fixture-refused",
     )
     high = _upload(client, HIGH_VALUE, "application/json")
+    _write("review-queue", client.get("/api/review-queue").json())
     approve = client.post(
         f"/api/invoices/{high}/approve",
         json={"expected_version": 1, "reason": "Verified with the vendor", "reviewer": "Ana"},

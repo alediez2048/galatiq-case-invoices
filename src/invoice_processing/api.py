@@ -48,6 +48,7 @@ from invoice_processing.codes import (
     ExecutionMode,
     InvoiceStatus,
     ModelErrorCode,
+    ReviewAction,
     ReviewRefusal,
     RunStatus,
 )
@@ -59,6 +60,7 @@ from invoice_processing.schemas import (
     FieldChange,
     ProcessingResult,
     ReviewerName,
+    ReviewQueue,
     ReviewReason,
 )
 from invoice_processing.seed import SEED_ITEMS, seed_inventory
@@ -78,7 +80,8 @@ RETRY_ENDPOINT = "POST /api/runs/{run_id}/retry"
 CORRECTIONS_ENDPOINT = "POST /api/invoices/{invoice_id}/corrections"
 APPROVE_ENDPOINT = "POST /api/invoices/{invoice_id}/approve"
 DECLINE_ENDPOINT = "POST /api/invoices/{invoice_id}/decline"
-REVIEW_TRIGGERS = frozenset({"correction", "human_review"})
+CORRECTED_ENDPOINT = "POST /api/invoices/{invoice_id}/corrected-submission"
+REVIEW_TRIGGERS = queries.REVIEW_RUN_TRIGGERS
 RUN_START_TIMEOUT_S = 120.0
 
 # One lock for everything that mutates state through the service: processing runs and review
@@ -268,6 +271,40 @@ class ReviewDecisionBody(ApiModel):
     expected_version: int = Field(ge=1)
     reason: ReviewReason
     reviewer: ReviewerName
+
+
+class CorrectedSubmissionFields(ApiModel):
+    """Form fields of ``POST /api/invoices/{invoice_id}/corrected-submission`` (with
+    ``file``). ``mode`` defaults to the invoice's latest run's mode."""
+
+    expected_version: int = Field(ge=1)
+    reason: ReviewReason
+    reviewer: ReviewerName
+    mode: ExecutionMode | None = None
+    evaluation_date: date | None = None
+
+
+_CORRECTED_BODY_DOC = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "required": ["file", "expected_version", "reason", "reviewer"],
+                    "properties": {
+                        "file": {"type": "string", "format": "binary"},
+                        "expected_version": {"type": "integer", "minimum": 1},
+                        "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+                        "reviewer": {"type": "string", "minLength": 1, "maxLength": 100},
+                        "mode": {"type": "string", "enum": [m.value for m in ExecutionMode]},
+                        "evaluation_date": {"type": "string", "format": "date"},
+                    },
+                }
+            }
+        },
+    }
+}
 
 
 class RunAccepted(ApiModel):
@@ -507,6 +544,39 @@ def _parse_date(raw: Any) -> date | None:
 _idempotency_lock = threading.Lock()
 
 
+def _store_checked(settings: ApiSettings, upload: uploads.ParsedUpload) -> Path:
+    """Store a parsed upload by hash and read it once with the intake limits (IntakeError
+    for a bad file, which removes the stored copy again)."""
+    if upload.temp_path is None or upload.sha256 is None:
+        raise _bad("A file is required.", "file")
+    stored = uploads.store_upload(
+        upload.temp_path, upload.sha256, upload.filename, settings.uploads_dir
+    )
+    try:
+        intake.read_source(stored, settings.limits)
+    except intake.IntakeError:
+        stored.unlink(missing_ok=True)
+        try:
+            stored.parent.rmdir()
+        except OSError:
+            pass
+        raise
+    return stored
+
+
+async def _read_upload(request: Request) -> uploads.ParsedUpload:
+    """The multipart body of an upload, size-limited like POST /api/runs."""
+    settings = _settings(request)
+    try:
+        return await uploads.read_multipart(
+            request, settings.uploads_dir / ".tmp", settings.limits.max_bytes
+        )
+    except uploads.UploadTooLarge as exc:
+        raise ApiError("file_too_large", str(exc)) from None
+    except uploads.BadUpload as exc:
+        raise _bad(str(exc), "file") from None
+
+
 def _start_run(
     request: Request,
     *,
@@ -517,31 +587,16 @@ def _start_run(
     upload: uploads.ParsedUpload | None = None,
 ) -> RunAccepted:
     settings = _settings(request)
-    stored_path: Path | None = None
     try:
         get_provider(mode)  # live-mode readiness error surfaces here, before any run exists
         if upload is not None:
-            if upload.temp_path is None or upload.sha256 is None:
-                raise _bad("A file is required.", "file")
-            stored_path = uploads.store_upload(
-                upload.temp_path, upload.sha256, upload.filename, settings.uploads_dir
-            )
-            path = stored_path
+            path = _store_checked(settings, upload)
         else:
             resolved = samples.resolve_sample(settings.samples_dir, sample or "")
             if resolved is None:
                 raise _bad("sample must be the file name of a bundled sample.", "sample")
             path = resolved
-        try:
             intake.read_source(path, settings.limits)
-        except intake.IntakeError:
-            if stored_path is not None:
-                stored_path.unlink(missing_ok=True)
-                try:
-                    stored_path.parent.rmdir()
-                except OSError:
-                    pass
-            raise
         when = evaluation_date or settings.evaluation_date or date.today()
         with _idempotency_lock:
             replay = _replay(request, key)
@@ -578,15 +633,7 @@ async def create_run(
         return replay
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("multipart/form-data"):
-        settings = _settings(request)
-        try:
-            upload = await uploads.read_multipart(
-                request, settings.uploads_dir / ".tmp", settings.limits.max_bytes
-            )
-        except uploads.UploadTooLarge as exc:
-            raise ApiError("file_too_large", str(exc)) from None
-        except uploads.BadUpload as exc:
-            raise _bad(str(exc), "file") from None
+        upload = await _read_upload(request)
         try:
             mode = _parse_mode(upload.fields.get("mode"))
             when = _parse_date(upload.fields.get("evaluation_date"))
@@ -648,27 +695,29 @@ def _retry_source(request: Request, run_id: str) -> tuple[Path, ExecutionMode, d
     return path, ExecutionMode(row["mode"]), when
 
 
-def _is_review_run(request: Request, run_id: str) -> bool:
+def _run_trigger(request: Request, run_id: str) -> str | None:
     with _db(request) as conn:
         row = conn.execute("SELECT trigger FROM runs WHERE run_id = ?", (run_id,)).fetchone()
-    return row is not None and row["trigger"] in REVIEW_TRIGGERS
+    return None if row is None else row["trigger"]
 
 
 def _start_retry(request: Request, run_id: str, action: str, key: str | None) -> RunAccepted:
     endpoint = f"{RETRY_ENDPOINT}:{run_id}:{action}"
     settings = _settings(request)
     path: Path | None
-    if _is_review_run(request, run_id):
+    trigger = _run_trigger(request, run_id)
+    if trigger in queries.NO_OFFLINE_TRIGGERS and action != "retry":
+        # A run started by a review action is retried in its own mode; a separate offline
+        # run of the document would be a plain submission, discarding the review.
+        raise ApiError(
+            "not_recoverable",
+            "A failed review run is retried in its own mode; running the document offline "
+            "would discard the review action.",
+            {"reason": "not_recoverable", "run_id": run_id, "receipt_id": None},
+        )
+    if trigger in REVIEW_TRIGGERS:
         # A correction or human-review run is retried on its own version from validation
-        # (Decision 18): no file, and never offline, since re-extracting the source would
-        # discard the correction or the human review.
-        if action != "retry":
-            raise ApiError(
-                "not_recoverable",
-                "A failed review run is retried in its own mode; running the document offline "
-                "would discard the correction or human review.",
-                {"reason": "not_recoverable", "run_id": run_id, "receipt_id": None},
-            )
+        # (Decision 18): no file.
         path, when = None, settings.evaluation_date or date.today()  # the run keeps its own
     else:
         path, _mode, when = _retry_source(request, run_id)
@@ -778,7 +827,7 @@ def invoice_result(invoice_id: str, request: Request) -> Response:
 
 # ---------------------------------------------------------------------------- review actions
 #
-# Every review action (corrections, approve, decline; corrected submissions next) goes through
+# Every review action (corrections, approve, decline, corrected submissions) goes through
 # `_review_action`, which follows POST /api/runs: the action runs on the worker under
 # PROCESSING_LOCK and the response (202 RunAccepted) is sent as soon as its run is committed,
 # via the service's `on_run_started` hook; the client follows GET /api/runs/{run_id}.
@@ -787,7 +836,6 @@ def invoice_result(invoice_id: str, request: Request) -> Response:
 #   stale_version, action_not_allowed, already_paid -> 409, details {current, invoice}
 #   unknown_invoice -> 404; any other refusal -> 422, details {current}
 # Only accepted actions are stored: a refusal writes nothing, so a resend re-checks.
-# TODO(P5-04 stage 3): GET /api/review-queue, corrected-submission.
 
 _REVIEW_CONFLICTS = frozenset(
     {ReviewRefusal.stale_version, ReviewRefusal.action_not_allowed, ReviewRefusal.already_paid}
@@ -983,6 +1031,85 @@ router.add_api_route(
     description="Decline `expected_version` (``review.decline``): the human-review run "
     "rejects it at the gate; no payment.",
 )
+
+
+@router.post(
+    "/invoices/{invoice_id}/corrected-submission",
+    status_code=202,
+    response_model=RunAccepted,
+    responses={**_REVIEW_RESPONSES, 413: {"model": ErrorBody}},
+    openapi_extra=_CORRECTED_BODY_DOC,
+)
+async def create_corrected_submission(
+    invoice_id: str, request: Request, idempotency_key: IdempotencyKey
+) -> Response:
+    """Submit a corrected invoice from the vendor (``review.submit_corrected_invoice``): the
+    file is processed as a new version that supersedes the earlier ones. The upload is checked
+    like ``POST /api/runs``. ``expected_version`` is the version the reviewer saw. A file with
+    another vendor or invoice number fails its run with ``corrected_identity_mismatch``."""
+    upload = await _read_upload(request)
+    try:
+        try:
+            fields = CorrectedSubmissionFields.model_validate(
+                {k: v for k, v in upload.fields.items() if v != ""}
+            )
+        except ValidationError as exc:
+            raise _validation_error(exc) from None
+        return await run_in_threadpool(
+            _corrected_submission, request, invoice_id, fields, upload, idempotency_key
+        )
+    finally:
+        uploads.discard(upload.temp_path)
+
+
+def _corrected_submission(
+    request: Request,
+    invoice_id: str,
+    fields: CorrectedSubmissionFields,
+    upload: uploads.ParsedUpload,
+    key: str,
+) -> Response:
+    settings = _settings(request)
+    path = _store_checked(settings, upload)
+    when = fields.evaluation_date or settings.evaluation_date or date.today()
+    db_path = settings.db_path
+
+    def act(started: Callable[[str], None]) -> ProcessingResult:
+        # The service has no expected version: the API binds the action to the one shown.
+        current = review.allowed_actions(invoice_id, db_path=db_path)
+        if current.current_version != fields.expected_version:
+            paid = current.refused.get(ReviewAction.submit_corrected) is ReviewRefusal.already_paid
+            code = ReviewRefusal.already_paid if paid else ReviewRefusal.stale_version
+            raise review.ReviewRefused(code, review.MESSAGES[code], current)
+        return review.submit_corrected_invoice(
+            invoice_id,
+            path,
+            fields.reason,
+            fields.reviewer,
+            db_path=db_path,
+            evaluation_date=when,
+            mode=fields.mode,
+            events=_events_logger(),
+            limits=settings.limits,
+            on_run_started=started,
+        )
+
+    payload = {**fields.model_dump(mode="json"), "sha256": upload.sha256}
+    return _review_action(
+        request,
+        endpoint=CORRECTED_ENDPOINT,
+        invoice_id=invoice_id,
+        key=key,
+        payload=payload,
+        act=act,
+    )
+
+
+@router.get("/review-queue", response_model=ReviewQueue)
+def review_queue(request: Request) -> ReviewQueue:
+    """Invoices waiting on a person, in three groups (``review.list_queue``); each item
+    carries its AllowedActions."""
+    return review.list_queue(db_path=_settings(request).db_path)
 
 
 def _locate_original(settings: ApiSettings, record: queries.SourceRecord) -> Path | None:

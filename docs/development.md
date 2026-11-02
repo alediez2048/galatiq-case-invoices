@@ -54,6 +54,17 @@ A Phase 1 `inventory.db` (schema version 3) is refused: delete it and re-seed, b
 
 `--fresh` only creates a new database: it exits with code 2 and leaves the file untouched if the path already exists. Use it for repeatable demo databases.
 
+## Run the API
+
+```bash
+uv run python -m invoice_processing.api            # http://127.0.0.1:8000, docs at /docs
+uv run python -m invoice_processing.api --db demo.db --port 8001
+```
+
+Binds to `127.0.0.1` only; any other host needs `--allow-public-bind` (there is no authentication). The database is created, migrated to the current schema and seeded on startup (never reset). If `frontend/dist` exists it is served at `/`. Uploads are stored under `uploads/<sha256>/` (gitignored); processing runs in one background worker under a process-wide lock, and clients poll `GET /api/runs/{run_id}`.
+
+Export the OpenAPI schema for the typed frontend client: `uv run python scripts/export_openapi.py` (writes `frontend/src/api/openapi.json`).
+
 ## Lint and format
 
 ```bash

@@ -5,14 +5,22 @@ description = "Galatiq case: multi-agent invoice processing prototype"
 requires-python = ">=3.12"
 dependencies = [
     "defusedxml>=0.7,<0.8",
+    "fastapi>=0.115,<1",
     "langgraph>=1.2,<2",
     "langsmith>=0.14,<1",
     "pdfplumber>=0.11,<0.12",
     "pydantic>=2.9",
+    "python-multipart>=0.0.9,<1",
+    "uvicorn>=0.30,<1",
 ]
 
 [dependency-groups]
-dev = ["pypdf>=6,<7", "pytest>=8", "ruff>=0.8"]
+dev = [
+    "httpx>=0.27,<1",
+    "pypdf>=6,<7",
+    "pytest>=8",
+    "ruff>=0.8",
+]
 
 [build-system]
 requires = ["hatchling"]

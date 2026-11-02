@@ -1,6 +1,6 @@
 # P2-10 — Duplicates, alternate formats, and revisions
 
-Phase: 2 · Status: todo · Depends on: P2-04, P2-07, P2-08, P2-09, P1-02 · Requirements: P05
+Phase: 2 · Status: done · Depends on: P2-04, P2-07, P2-08, P2-09, P1-02 · Requirements: P05
 
 ## Context
 

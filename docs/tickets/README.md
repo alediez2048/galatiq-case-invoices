@@ -52,17 +52,17 @@ Goal: every supplied fixture produces its expected outcome in offline mode. Exit
 
 | Ticket | Title | Depends on | Status |
 | --- | --- | --- | --- |
-| [P2-01](P2-01-input-limits-and-unsupported-documents.md) (pending) | Input limits and unsupported documents | P1-01 | todo |
-| [P2-02](P2-02-txt-labeled-layouts.md) (pending) | TXT extraction: labeled layouts, label typos, email bodies | P1-01 | todo |
-| [P2-03](P2-03-txt-table-layouts.md) (pending) | TXT extraction: column tables and footer totals | P2-02 | todo |
-| [P2-04](P2-04-json-parser.md) (pending) | JSON parser | P1-01 | todo |
-| [P2-05](P2-05-csv-parsers.md) (pending) | CSV parsers (field/value and row-table layouts) | P1-01 | todo |
-| [P2-06](P2-06-xml-parser.md) (pending) | Hardened XML parser | P1-01 | todo |
-| [P2-07](P2-07-pdf-text-extraction.md) (pending) | PDF text extraction | P2-01, P2-03 | todo |
-| [P2-08](P2-08-normalization-rules.md) (pending) | Evidence-backed normalization: items, OCR artifacts, identity | P2-02, P2-03 | todo |
-| [P2-09](P2-09-dates-currency-and-terms.md) (pending) | Dates, currency, and payment terms | P2-08 | todo |
-| [P2-10](P2-10-duplicates-formats-and-revisions.md) (pending) | Duplicates, alternate formats, and revisions | P1-02, P2-04, P2-07, P2-08, P2-09 | todo |
-| [P2-11](P2-11-fixture-acceptance-suite.md) (pending) | Fixture acceptance suite | P2-01 – P2-10 | todo |
+| [P2-01](P2-01-input-limits-and-unsupported-documents.md) (complete) | Input limits and unsupported documents | P1-01 | done |
+| [P2-02](P2-02-txt-labeled-layouts.md) (complete) | TXT extraction: labeled layouts, label typos, email bodies | P1-01 | done |
+| [P2-03](P2-03-txt-table-layouts.md) (complete) | TXT extraction: column tables and footer totals | P2-02 | done |
+| [P2-04](P2-04-json-parser.md) (complete) | JSON parser | P1-01 | done |
+| [P2-05](P2-05-csv-parsers.md) (complete) | CSV parsers (field/value and row-table layouts) | P1-01 | done |
+| [P2-06](P2-06-xml-parser.md) (complete) | Hardened XML parser | P1-01 | done |
+| [P2-07](P2-07-pdf-text-extraction.md) (complete) | PDF text extraction | P2-01, P2-03 | done |
+| [P2-08](P2-08-normalization-rules.md) (complete) | Evidence-backed normalization: items, OCR artifacts, identity | P2-02, P2-03 | done |
+| [P2-09](P2-09-dates-currency-and-terms.md) (complete) | Dates, currency, and payment terms | P2-08 | done |
+| [P2-10](P2-10-duplicates-formats-and-revisions.md) (complete) | Duplicates, alternate formats, and revisions | P1-02, P2-04, P2-07, P2-08, P2-09 | done |
+| [P2-11](P2-11-fixture-acceptance-suite.md) (complete) | Fixture acceptance suite | P2-01 – P2-10 | done |
 
 Suggested order: P2-01, P2-02, P2-04, P2-05, P2-06 in parallel → P2-03 → P2-07 and P2-08 → P2-09 → P2-10 → P2-11.
 
@@ -176,13 +176,14 @@ Deferred findings from the Phase 1 reviews, each assigned to the ticket that sho
 
 | Target | Item |
 | --- | --- |
-| P2-01 | `intake.read_source` does not wrap `OSError` (permission errors, races). |
-| P2-02 | A repeated label (second `Vendor:`) silently overwrites the first; raise an extraction issue. |
-| P2-08 | Unparseable header values cite all draft evidence instead of their own line; `parse_amount` accepts misplaced commas (`1,2,3`). |
-| P2-10 | A revised version under an already-paid identity returns the old receipt as `paid_mock` (see the note in the P2-10 ticket); `record_version` reuses the first source's payload on a hash match; repeat of an older version doesn't move `current_version`; add `find_prior_outcome` tests for `retry_of`, latest-of-several, ignoring `duplicate`; `mark_interrupted_runs` must leave terminal runs alone (test). |
-| P2-11 | Repo-db e2e test compares mtime only; e2e setup runs don't assert first-run status; `None` total and combined high-value + disagreement gate cases. |
-| Phase 2 deps | Declare `langsmith>=0.14,<1` in `pyproject.toml` (imported directly by `service.py`, currently only transitive via langgraph). |
+| ~~P2-01~~ | ~~`intake.read_source` does not wrap `OSError`.~~ Done (intake.py wraps `OSError`). |
+| ~~P2-02~~ | ~~Repeated label silently overwrites.~~ Done (`tests/test_parser_text.py::test_repeated_label_is_duplicate_field_first_wins`). |
+| ~~P2-08~~ | ~~Header values cite all draft evidence; `parse_amount` accepts misplaced commas.~~ Done (per-field evidence in normalize.py; `tests/test_normalize.py::test_parse_amount_rejects_misplaced_commas`). |
+| ~~P2-10~~ | ~~Revision under a paid identity; `find_prior_outcome` and `mark_interrupted_runs` tests.~~ Done (`revision_after_payment`, `tests/test_ledger.py`). Not done, moved to P4-01 (versioning): `record_version` returns the first source's payload on a semantic-hash match, and a repeat of an older version does not move `current_version`; neither can cause a second payment. |
+| ~~P2-11~~ | ~~Repo-db e2e SHA-256; first-run status asserts; `None` total and combined high-value + disagreement gate cases.~~ Done (Task 12). |
+| ~~Phase 2 deps~~ | ~~Declare `langsmith>=0.14,<1` in `pyproject.toml`.~~ Done. |
 | P3-01 / P3-07 | Disable or hide LangSmith tracing inputs in live mode too (raw invoice bytes); redaction misses some camelCase names (`clientSecret`, `sessionToken`) — close before any API key exists; network guard leaves `socket.connect_ex`/`getaddrinfo` unpatched; reasoning protocol attrs as `ClassVar`, exact-threshold critique test; approval-node revision path untested. |
+| P4-01 | `record_version` reuses the first source's payload on a semantic-hash match; a repeat of an older version does not move `current_version` (moved from P2-10; no double-payment risk). |
 | P4-04 | Gate's human-review match ignores `invoice_id` (ledger query filters by it and `pay` rechecks — make it explicit); approval-node human-review path untested. |
 | P5 | `mark_interrupted_runs(utcnow())` would fail a concurrent process's live run — add a grace window before FastAPI concurrency; observability: caller `ts=` overrides the timestamp, `write_result` treats a `str` path as a stream, tests leave the events logger configured. |
 | P6 | Payment: reserve-then-execute (pending row) before any real gateway, positive-amount guard, empty vendor name; service exception path drops `invoice_id`/findings/timings and leaves `invoices.status` intermediate; `attach_run`/`set_invoice_status` no-op on unknown ids; CLI tracebacks for unexpected errors (unwritable `--output`); `atomic` join test strength; audit polish (stale status on recommendation/critique events, generic `waiting` event, `error_message` never set, cwd-relative pay-guard test). |

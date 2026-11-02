@@ -76,7 +76,7 @@ These expectations come from inspected TXT, JSON, CSV, XML and generator source.
 | 1004 revised JSON | Inventory and USD 5,940 total pass independently; revision is not a second payable invoice alongside the base version. |
 | 1005 JSON | GadgetX 8 > 5; USD 15,225 high-value check; no payment. |
 | 1006 CSV | Repeated field/value rows retain both items; USD 2,750 passes. |
-| 1007 CSV | Row table and footer parse; WidgetA 20 > 15, WidgetB 15 > 10; USD 15,525 passes arithmetic, fails stock. |
+| 1007 CSV | Row table and footer parse; WidgetA 20 > 15, WidgetB 15 > 10; USD 15,525 passes arithmetic, fails stock. (Correction 2026-11-01: stated total 15,525.00 is 110.00 below subtotal 14,750.00 + 6% tax = 15,635.00, so `total_mismatch` also fires; outcome is still rejected.) |
 | 1008 TXT | Unknown SuperGizmo and MegaSprocket; stated USD 9,900 agrees with arithmetic but inventory fails. |
 | 1009 JSON | Missing vendor/date, negative quantity/total, contradictory subtotal; no invented repairs or payment. |
 | 1010 TXT | Explicit alias for WidgetA (rush order); combined quantity 12; USD 6,700 + 335 + 150 = 7,185. Price variation alone is not invalid without a price master. |

@@ -1,6 +1,6 @@
 # P2-09 — Dates, currency, and payment terms
 
-Phase: 2 · Status: todo · Depends on: P2-08 · Requirements: A02, P01, P04
+Phase: 2 · Status: done · Depends on: P2-08 · Requirements: A02, P01, P04
 
 ## Context
 

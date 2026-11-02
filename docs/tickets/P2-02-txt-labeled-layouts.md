@@ -1,6 +1,6 @@
 # P2-02 — TXT extraction: labeled layouts, label typos, email bodies
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, A02, P04
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, A02, P04
 
 ## Context
 

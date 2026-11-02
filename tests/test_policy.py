@@ -183,8 +183,17 @@ def test_human_review_requires_version_argument():
 
 def test_missing_total_not_high_value():
     inv = invoice(lines=[line("WidgetA", "1", "1.00")], total=None)
+    assert inv.stated.total is None
     r = evaluate(inv, [], Recommendation.approve)
     assert r.outcome == GateOutcome.approved
+    assert "R3_high_value" not in r.rule_ids
+    assert r.rule_ids == ["R4_auto_approve"]
+
+
+def test_high_value_and_model_disagreement_combined():
+    r = evaluate(_inv("10000.01", "USD"), [], Recommendation.reject, None, version=1)
+    assert r.outcome == GateOutcome.awaiting_human_approval
+    assert r.rule_ids == ["R3_high_value", "R3_model_disagreement"]
 
 
 def test_context():

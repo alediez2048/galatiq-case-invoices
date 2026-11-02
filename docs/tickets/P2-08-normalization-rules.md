@@ -1,6 +1,6 @@
 # P2-08 — Evidence-backed normalization: items, OCR artifacts, identity
 
-Phase: 2 · Status: todo · Depends on: P2-02, P2-03 · Requirements: P04, P03
+Phase: 2 · Status: done · Depends on: P2-02, P2-03 · Requirements: P04, P03
 
 ## Context
 

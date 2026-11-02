@@ -34,6 +34,14 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt --mode=offline --db
 
 Options: `--mode {offline,live}` (live is unavailable until Phase 3), `--db`, `--output`, `--events` (default `output/events.jsonl`), `--evaluation-date YYYY-MM-DD` (default today). `main.py` adds `src/` to `sys.path`, so it works without the editable install.
 
+## Run every sample
+
+```bash
+for f in data/invoices/*; do python main.py --invoice_path="$f" --db=/tmp/demo.db; done
+```
+
+Use a fresh database (delete `/tmp/demo.db` first) to see the per-file outcomes: the corpus contains alternate formats and revisions of the same invoice, so later files in a shared database are reported as duplicates or revision conflicts.
+
 ## Seed the inventory
 
 ```bash

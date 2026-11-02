@@ -1,6 +1,6 @@
 # P2-01 — Input limits and unsupported documents
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, P09
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, P09
 
 ## Context
 

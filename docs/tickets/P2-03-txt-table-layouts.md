@@ -1,6 +1,6 @@
 # P2-03 — TXT extraction: column tables and footer totals
 
-Phase: 2 · Status: todo · Depends on: P2-02 · Requirements: A01, A02, P04
+Phase: 2 · Status: done · Depends on: P2-02 · Requirements: A01, A02, P04
 
 ## Context
 

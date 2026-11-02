@@ -1,6 +1,6 @@
 # P2-04 — JSON parser
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, A02
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, A02
 
 ## Context
 

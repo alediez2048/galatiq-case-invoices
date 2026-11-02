@@ -1,6 +1,6 @@
 # P2-06 — Hardened XML parser
 
-Phase: 2 · Status: todo · Depends on: P1-01 · Requirements: A01, P01
+Phase: 2 · Status: done · Depends on: P1-01 · Requirements: A01, P01
 
 ## Context
 

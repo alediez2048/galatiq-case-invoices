@@ -3,7 +3,7 @@
   "error_message": null,
   "events": [
     {
-      "created_at": "2026-11-02T15:43:36.542851Z",
+      "created_at": "2026-11-02T15:59:50.857442Z",
       "event": "received",
       "payload": {
         "mode": "offline",
@@ -16,7 +16,7 @@
       "stage": "intake"
     },
     {
-      "created_at": "2026-11-02T15:43:36.589374Z",
+      "created_at": "2026-11-02T15:59:50.874053Z",
       "event": "extracted",
       "payload": {
         "codes": [
@@ -32,7 +32,7 @@
       "stage": "ingestion"
     },
     {
-      "created_at": "2026-11-02T15:43:36.592638Z",
+      "created_at": "2026-11-02T15:59:50.875049Z",
       "event": "validated",
       "payload": {
         "codes": [
@@ -46,7 +46,7 @@
       "stage": "validation"
     },
     {
-      "created_at": "2026-11-02T15:43:36.601232Z",
+      "created_at": "2026-11-02T15:59:50.875588Z",
       "event": "recommendation",
       "payload": {
         "codes": [],
@@ -59,7 +59,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T15:43:36.601480Z",
+      "created_at": "2026-11-02T15:59:50.875792Z",
       "event": "critique",
       "payload": {
         "agrees": true,
@@ -75,7 +75,7 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T15:43:36.602564Z",
+      "created_at": "2026-11-02T15:59:50.884466Z",
       "event": "decision",
       "payload": {
         "final_decision": "approved",
@@ -90,31 +90,31 @@
       "stage": "approval"
     },
     {
-      "created_at": "2026-11-02T15:43:36.608510Z",
+      "created_at": "2026-11-02T15:59:50.896283Z",
       "event": "payment_succeeded",
       "payload": {
         "amount": "5000.00",
         "currency": "USD",
-        "receipt_id": "rcpt-01cf2b89b509"
+        "receipt_id": "rcpt-b595e0ca152d"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T15:43:36.611624Z",
+      "created_at": "2026-11-02T15:59:50.898226Z",
       "event": "paid",
       "payload": {
         "amount": "5000.00",
         "created": true,
         "currency": "USD",
         "mode": "offline",
-        "receipt_id": "rcpt-01cf2b89b509",
+        "receipt_id": "rcpt-b595e0ca152d",
         "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
         "status": "paid_mock"
       },
       "stage": "payment"
     },
     {
-      "created_at": "2026-11-02T15:43:36.616785Z",
+      "created_at": "2026-11-02T15:59:50.901726Z",
       "event": "finished",
       "payload": {
         "errors": [],
@@ -125,8 +125,8 @@
       "stage": "service"
     }
   ],
-  "finished_at": "2026-11-02T15:43:36.614576Z",
-  "invoice_id": "inv-d84ad39c34d2455b9711c48b7be5118a",
+  "finished_at": "2026-11-02T15:59:50.901379Z",
+  "invoice_id": "inv-a2d1de4184024ad0b18848c962843f8d",
   "mode": "offline",
   "mode_switch_of": null,
   "prior_run_id": null,
@@ -185,7 +185,7 @@
         "severity": "info"
       }
     ],
-    "invoice_id": "inv-d84ad39c34d2455b9711c48b7be5118a",
+    "invoice_id": "inv-a2d1de4184024ad0b18848c962843f8d",
     "mode": "offline",
     "model_calls_budget": null,
     "model_calls_used": 0,
@@ -194,25 +194,26 @@
     "receipt": {
       "amount": "5000.00",
       "currency": "USD",
-      "paid_at": "2026-11-02T15:43:36.608347Z",
-      "receipt_id": "rcpt-01cf2b89b509"
+      "paid_at": "2026-11-02T15:59:50.896215Z",
+      "receipt_id": "rcpt-b595e0ca152d"
     },
     "recoverable": false,
-    "run_id": "run-b4f8628e020f4912a542492d765af2d4",
+    "run_id": "run-e8e459d7713e49888dc72f6e39bcf1c1",
     "source_hash": "7308ab3d7ff26ee338e16ba304e762f0ac90403958d6211cfab36c94eb14dfd1",
     "status": "paid_mock",
     "timings_ms": {},
     "version": 1
   },
   "retry_of": null,
-  "run_id": "run-b4f8628e020f4912a542492d765af2d4",
+  "run_id": "run-e8e459d7713e49888dc72f6e39bcf1c1",
   "source": {
     "format": "txt",
     "original_name": "invoice_1001.txt",
     "source_id": "src-7308ab3d7ff26ee3"
   },
   "stage": "paid_mock",
-  "started_at": "2026-11-02T15:43:36.542569Z",
+  "started_at": "2026-11-02T15:59:50.856412Z",
   "status": "paid_mock",
-  "terminal": true
+  "terminal": true,
+  "trigger": "submission"
 }

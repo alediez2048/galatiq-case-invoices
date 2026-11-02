@@ -1,0 +1,153 @@
+{
+  "error_code": null,
+  "error_message": null,
+  "events": [
+    {
+      "created_at": "2026-11-02T15:59:51.577229Z",
+      "event": "review_run_created",
+      "payload": {
+        "action": "approve",
+        "review_of": "run-2bba97924ec24dbeb60b27fb81ea2633",
+        "trigger": "human_review"
+      },
+      "stage": "review"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.581560Z",
+      "event": "validated",
+      "payload": {
+        "codes": [],
+        "mode": "offline",
+        "source_hash": "41e4bb0f120f5f7b1a939d4c02c3fbe686b4b4dbfba8a24168506b6480dbb0f9",
+        "status": "validated"
+      },
+      "stage": "validation"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.583015Z",
+      "event": "human_review_applied",
+      "payload": {
+        "action": "approve",
+        "version": 1
+      },
+      "stage": "approval"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.585703Z",
+      "event": "decision",
+      "payload": {
+        "final_decision": "approved",
+        "human_review": "approve",
+        "mode": "offline",
+        "policy_version": "2026-11-01.1",
+        "rule_ids": [
+          "R4_human_approved"
+        ],
+        "source_hash": "41e4bb0f120f5f7b1a939d4c02c3fbe686b4b4dbfba8a24168506b6480dbb0f9",
+        "status": "approved"
+      },
+      "stage": "approval"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.588768Z",
+      "event": "payment_succeeded",
+      "payload": {
+        "amount": "10000.01",
+        "currency": "USD",
+        "receipt_id": "rcpt-9087314ce8c6"
+      },
+      "stage": "payment"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.589093Z",
+      "event": "paid",
+      "payload": {
+        "amount": "10000.01",
+        "created": true,
+        "currency": "USD",
+        "mode": "offline",
+        "receipt_id": "rcpt-9087314ce8c6",
+        "source_hash": "41e4bb0f120f5f7b1a939d4c02c3fbe686b4b4dbfba8a24168506b6480dbb0f9",
+        "status": "paid_mock"
+      },
+      "stage": "payment"
+    },
+    {
+      "created_at": "2026-11-02T15:59:51.592457Z",
+      "event": "finished",
+      "payload": {
+        "errors": [],
+        "mode": "offline",
+        "source_hash": "41e4bb0f120f5f7b1a939d4c02c3fbe686b4b4dbfba8a24168506b6480dbb0f9",
+        "status": "paid_mock"
+      },
+      "stage": "service"
+    }
+  ],
+  "finished_at": "2026-11-02T15:59:51.591525Z",
+  "invoice_id": "inv-1748f686721e4c07abb7367d94c73edc",
+  "mode": "offline",
+  "mode_switch_of": null,
+  "prior_run_id": null,
+  "result": {
+    "decision": {
+      "critique_issues": [],
+      "critique_summary": "offline simulation: critique agrees; 0 omission(s); high_value=True",
+      "final_decision": "approved",
+      "human_review": {
+        "action": "approve",
+        "created_at": "2026-11-02T15:59:51.576043Z",
+        "invoice_id": "inv-1748f686721e4c07abb7367d94c73edc",
+        "policy_version": "2026-11-01.1",
+        "reason": "Verified with the vendor",
+        "reviewer": "Ana",
+        "version": 1
+      },
+      "initial_recommendation": "approve",
+      "mode": "offline",
+      "model": "simulated",
+      "model_calls_used": 0,
+      "policy_version": "2026-11-01.1",
+      "prompt_version": null,
+      "provider": "offline",
+      "reasons": [
+        "R4_human_approved"
+      ],
+      "revised_recommendation": null
+    },
+    "error_message": null,
+    "errors": [],
+    "evaluation_date": "2026-01-31",
+    "findings": [],
+    "invoice_id": "inv-1748f686721e4c07abb7367d94c73edc",
+    "mode": "offline",
+    "model_calls_budget": null,
+    "model_calls_used": 0,
+    "next_actions": [],
+    "prior_run_id": null,
+    "receipt": {
+      "amount": "10000.01",
+      "currency": "USD",
+      "paid_at": "2026-11-02T15:59:51.588706Z",
+      "receipt_id": "rcpt-9087314ce8c6"
+    },
+    "recoverable": false,
+    "run_id": "run-657d28b8e02b44aa9552132e94d06977",
+    "source_hash": "41e4bb0f120f5f7b1a939d4c02c3fbe686b4b4dbfba8a24168506b6480dbb0f9",
+    "status": "paid_mock",
+    "timings_ms": {},
+    "version": 1
+  },
+  "retry_of": null,
+  "run_id": "run-657d28b8e02b44aa9552132e94d06977",
+  "source": {
+    "format": "json",
+    "original_name": "valid_10000_01.json",
+    "source_id": "src-41e4bb0f120f5f7b"
+  },
+  "stage": "paid_mock",
+  "started_at": "2026-11-02T15:59:51.577086Z",
+  "status": "paid_mock",
+  "terminal": true,
+  "trigger": "human_review"
+}

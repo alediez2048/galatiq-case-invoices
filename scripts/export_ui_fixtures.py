@@ -2,8 +2,9 @@
 
 Processes a few bundled samples offline on a throwaway database and writes the responses the
 UI consumes to frontend/src/test/real/*.json, so adapter and view tests run against what the
-backend actually returns. Also records review-action bodies (P5-04): a correction's success
-body, the 409 for a stale version and a 422 refusal. Never touches inventory.db.
+backend actually returns. Also records review-action bodies (P5-04): a correction's and an
+approval's 202, the approval run once paid, the 409 for a stale version and a 422 refusal.
+Never touches inventory.db.
 
 Usage: uv run python scripts/export_ui_fixtures.py
 """
@@ -28,6 +29,7 @@ OUT = ROOT / "frontend/src/test/real"
 EVALUATION_DATE = date(2026, 1, 31)
 SAMPLES = {"1001": "invoice_1001.txt", "1011pdf": "invoice_1011.pdf", "1007": "invoice_1007.csv"}
 OCR_AMBIGUOUS = ROOT / "tests/fixtures/review/ocr_ambiguous.txt"  # needs_review, line 9 misread
+HIGH_VALUE = ROOT / "tests/fixtures/threshold/valid_10000_01.json"  # awaiting_human_approval
 
 
 def _wait(client: TestClient, run_id: str) -> dict:
@@ -58,7 +60,7 @@ def main() -> None:
                 for kind, body in (("run", run), ("detail", detail), ("source", source)):
                     _write(f"{kind}-{key}", body)
             _review_bodies(client)
-    print(f"wrote {len(SAMPLES) * 3 + 3} fixtures to {OUT.relative_to(ROOT)}")
+    print(f"wrote {len(SAMPLES) * 3 + 5} fixtures to {OUT.relative_to(ROOT)}")
 
 
 def _write(name: str, body: dict) -> None:
@@ -71,10 +73,15 @@ def _correct(client: TestClient, invoice_id: str, body: dict, key: str):
     )
 
 
-def _review_bodies(client: TestClient) -> None:
-    upload = {"file": (OCR_AMBIGUOUS.name, OCR_AMBIGUOUS.read_bytes(), "text/plain")}
+def _upload(client: TestClient, path: Path, media: str) -> str:
+    """Process an upload offline; its invoice id."""
+    upload = {"file": (path.name, path.read_bytes(), media)}
     accepted = client.post("/api/runs", files=upload, data={"mode": "offline"})
-    invoice_id = _wait(client, accepted.json()["run_id"])["invoice_id"]
+    return _wait(client, accepted.json()["run_id"])["invoice_id"]
+
+
+def _review_bodies(client: TestClient) -> None:
+    invoice_id = _upload(client, OCR_AMBIGUOUS, "text/plain")
     correction = {
         "expected_version": 1,
         "changes": [
@@ -84,6 +91,7 @@ def _review_bodies(client: TestClient) -> None:
         "reviewer": "Ana",
     }
     ok = _correct(client, invoice_id, correction, "fixture-correction")
+    _wait(client, ok.json()["run_id"])
     stale = _correct(client, invoice_id, correction, "fixture-stale")  # still says version 1
     refused = _correct(
         client,
@@ -95,8 +103,16 @@ def _review_bodies(client: TestClient) -> None:
         },
         "fixture-refused",
     )
+    high = _upload(client, HIGH_VALUE, "application/json")
+    approve = client.post(
+        f"/api/invoices/{high}/approve",
+        json={"expected_version": 1, "reason": "Verified with the vendor", "reviewer": "Ana"},
+        headers={"Idempotency-Key": "fixture-approve"},
+    )
+    _write("run-approve", _wait(client, approve.json()["run_id"]))
     for name, response, status in (
-        ("review-correction", ok, 200),
+        ("review-correction", ok, 202),
+        ("review-approve", approve, 202),
         ("review-stale-409", stale, 409),
         ("review-refused-422", refused, 422),
     ):

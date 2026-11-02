@@ -7,7 +7,7 @@
         "submit_corrected"
       ],
       "current_version": 2,
-      "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+      "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
       "refused": {
         "approve": "action_not_allowed",
         "decline": "action_not_allowed"
@@ -18,7 +18,7 @@
       "allowed_actions": [],
       "corrections": [
         {
-          "created_at": "2026-11-02T15:43:37.286506Z",
+          "created_at": "2026-11-02T15:59:51.384841Z",
           "evidence_location": "line:9",
           "field": "lines[0].line_total",
           "from_version": 1,
@@ -47,7 +47,7 @@
         ],
         "revised_recommendation": null
       },
-      "decision_run_id": "run-7ba14b8145b0473289d3d71848056026",
+      "decision_run_id": "run-7106d01321674f928c31565f7a8f8524",
       "evaluation_date": "2026-01-31",
       "findings": [
         {
@@ -200,7 +200,7 @@
         "vendor_key": "ocr test co",
         "vendor_name": "OCR Test Co"
       },
-      "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+      "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
       "invoice_number": "OCR-3002",
       "latest_result": {
         "decision": {
@@ -251,7 +251,7 @@
             "severity": "blocker"
           }
         ],
-        "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+        "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
         "mode": "offline",
         "model_calls_budget": null,
         "model_calls_used": 0,
@@ -259,13 +259,13 @@
         "prior_run_id": null,
         "receipt": null,
         "recoverable": false,
-        "run_id": "run-7ba14b8145b0473289d3d71848056026",
+        "run_id": "run-7106d01321674f928c31565f7a8f8524",
         "source_hash": "0cdbe80877c618bec4f808c59173d264dbb2d78d1acadaa51da9263adfc83f21",
         "status": "rejected",
         "timings_ms": {},
         "version": 2
       },
-      "latest_run_id": "run-7ba14b8145b0473289d3d71848056026",
+      "latest_run_id": "run-7106d01321674f928c31565f7a8f8524",
       "line_items": [
         {
           "available": 15,
@@ -333,7 +333,7 @@
           "submit_corrected"
         ],
         "current_version": 2,
-        "invoice_id": "inv-d1c8541bf9bb4e90b2eb33b2acbb0abf",
+        "invoice_id": "inv-0f35adf41b0c461e8d329e1ab7aa2dc1",
         "refused": {
           "approve": "action_not_allowed",
           "decline": "action_not_allowed"
@@ -347,7 +347,7 @@
           "evaluation_date": "2026-01-31",
           "events": [
             {
-              "created_at": "2026-11-02T15:43:37.103464Z",
+              "created_at": "2026-11-02T15:59:51.324136Z",
               "event": "received",
               "payload": {
                 "mode": "offline",
@@ -360,7 +360,7 @@
               "stage": "intake"
             },
             {
-              "created_at": "2026-11-02T15:43:37.118232Z",
+              "created_at": "2026-11-02T15:59:51.334293Z",
               "event": "extracted",
               "payload": {
                 "codes": [
@@ -376,7 +376,7 @@
               "stage": "ingestion"
             },
             {
-              "created_at": "2026-11-02T15:43:37.122565Z",
+              "created_at": "2026-11-02T15:59:51.336850Z",
               "event": "validated",
               "payload": {
                 "codes": [
@@ -390,7 +390,7 @@
               "stage": "validation"
             },
             {
-              "created_at": "2026-11-02T15:43:37.139938Z",
+              "created_at": "2026-11-02T15:59:51.337733Z",
               "event": "recommendation",
               "payload": {
                 "codes": [
@@ -405,7 +405,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.141600Z",
+              "created_at": "2026-11-02T15:59:51.337915Z",
               "event": "critique",
               "payload": {
                 "agrees": true,
@@ -421,7 +421,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.147569Z",
+              "created_at": "2026-11-02T15:59:51.339268Z",
               "event": "decision",
               "payload": {
                 "final_decision": "needs_review",
@@ -436,7 +436,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.170237Z",
+              "created_at": "2026-11-02T15:59:51.340502Z",
               "event": "waiting",
               "payload": {
                 "mode": "offline",
@@ -446,7 +446,7 @@
               "stage": "outcome"
             },
             {
-              "created_at": "2026-11-02T15:43:37.207425Z",
+              "created_at": "2026-11-02T15:59:51.347951Z",
               "event": "finished",
               "payload": {
                 "errors": [],
@@ -457,17 +457,18 @@
               "stage": "service"
             }
           ],
-          "finished_at": "2026-11-02T15:43:37.206698Z",
+          "finished_at": "2026-11-02T15:59:51.347184Z",
           "mode": "offline",
           "model": "simulated",
           "original_name": "ocr_ambiguous.txt",
           "prior_run_id": null,
           "provider": "offline",
           "retry_of": null,
-          "run_id": "run-36e99135c0ff476e9c72efd18ca5b68a",
+          "run_id": "run-325c8d40de1c45d5a95fd90394c04aec",
           "source_id": "src-0cdbe80877c618be",
-          "started_at": "2026-11-02T15:43:37.103243Z",
-          "status": "needs_review"
+          "started_at": "2026-11-02T15:59:51.323939Z",
+          "status": "needs_review",
+          "trigger": "submission"
         },
         {
           "error_code": null,
@@ -475,16 +476,16 @@
           "evaluation_date": "2026-01-31",
           "events": [
             {
-              "created_at": "2026-11-02T15:43:37.286729Z",
+              "created_at": "2026-11-02T15:59:51.384943Z",
               "event": "review_run_created",
               "payload": {
-                "review_of": "run-36e99135c0ff476e9c72efd18ca5b68a",
+                "review_of": "run-325c8d40de1c45d5a95fd90394c04aec",
                 "trigger": "correction"
               },
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:43:37.286786Z",
+              "created_at": "2026-11-02T15:59:51.384971Z",
               "event": "correction_applied",
               "payload": {
                 "base_version": 1,
@@ -496,11 +497,11 @@
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:43:37.286865Z",
+              "created_at": "2026-11-02T15:59:51.385008Z",
               "event": "approvals_invalidated",
               "payload": {
                 "decision_run_ids": [
-                  "run-36e99135c0ff476e9c72efd18ca5b68a"
+                  "run-325c8d40de1c45d5a95fd90394c04aec"
                 ],
                 "human_review_ids": [],
                 "superseded_version": 1
@@ -508,7 +509,7 @@
               "stage": "review"
             },
             {
-              "created_at": "2026-11-02T15:43:37.297167Z",
+              "created_at": "2026-11-02T15:59:51.391655Z",
               "event": "validated",
               "payload": {
                 "codes": [
@@ -522,7 +523,7 @@
               "stage": "validation"
             },
             {
-              "created_at": "2026-11-02T15:43:37.299354Z",
+              "created_at": "2026-11-02T15:59:51.392197Z",
               "event": "recommendation",
               "payload": {
                 "codes": [
@@ -537,7 +538,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.299652Z",
+              "created_at": "2026-11-02T15:59:51.392342Z",
               "event": "critique",
               "payload": {
                 "agrees": true,
@@ -553,7 +554,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.301372Z",
+              "created_at": "2026-11-02T15:59:51.396791Z",
               "event": "decision",
               "payload": {
                 "final_decision": "rejected",
@@ -568,7 +569,7 @@
               "stage": "approval"
             },
             {
-              "created_at": "2026-11-02T15:43:37.302244Z",
+              "created_at": "2026-11-02T15:59:51.402675Z",
               "event": "rejection_recorded",
               "payload": {
                 "codes": [
@@ -578,7 +579,7 @@
               "stage": "payment"
             },
             {
-              "created_at": "2026-11-02T15:43:37.303848Z",
+              "created_at": "2026-11-02T15:59:51.413507Z",
               "event": "finished",
               "payload": {
                 "errors": [],
@@ -589,17 +590,18 @@
               "stage": "service"
             }
           ],
-          "finished_at": "2026-11-02T15:43:37.302763Z",
+          "finished_at": "2026-11-02T15:59:51.410422Z",
           "mode": "offline",
           "model": "simulated",
           "original_name": "ocr_ambiguous.txt",
           "prior_run_id": null,
           "provider": "offline",
           "retry_of": null,
-          "run_id": "run-7ba14b8145b0473289d3d71848056026",
+          "run_id": "run-7106d01321674f928c31565f7a8f8524",
           "source_id": "src-0cdbe80877c618be",
-          "started_at": "2026-11-02T15:43:37.286418Z",
-          "status": "rejected"
+          "started_at": "2026-11-02T15:59:51.384801Z",
+          "status": "rejected",
+          "trigger": "correction"
         }
       ],
       "source": {
@@ -613,7 +615,7 @@
       "vendor_name": "OCR Test Co",
       "versions": [
         {
-          "created_at": "2026-11-02T15:43:37.111934Z",
+          "created_at": "2026-11-02T15:59:51.331575Z",
           "currency": "USD",
           "lines": [
             {
@@ -641,7 +643,7 @@
           "version": 1
         },
         {
-          "created_at": "2026-11-02T15:43:37.286182Z",
+          "created_at": "2026-11-02T15:59:51.384688Z",
           "currency": "USD",
           "lines": [
             {

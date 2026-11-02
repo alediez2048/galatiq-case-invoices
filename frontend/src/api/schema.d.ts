@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invoices/{invoice_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Invoice
+         * @description Approve mock payment of `expected_version` (``review.approve``). The human-review run revalidates and pays only if the gate approves.
+         */
+        post: operations["approve_invoice_api_invoices__invoice_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invoices/{invoice_id}/corrections": {
         parameters: {
             query?: never;
@@ -67,9 +87,29 @@ export interface paths {
         /**
          * Create Correction
          * @description Correct extracted fields with source evidence (``review.submit_correction``): a new
-         *     version is recorded and revalidated by a new run; the response is that run's result.
+         *     version is recorded and revalidated by a new run, whose id is returned at once.
          */
         post: operations["create_correction_api_invoices__invoice_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invoices/{invoice_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Invoice
+         * @description Decline `expected_version` (``review.decline``): the human-review run rejects it at the gate; no payment.
+         */
+        post: operations["decline_invoice_api_invoices__invoice_id__decline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -753,6 +793,19 @@ export interface components {
          */
         ReviewAction: "correct" | "approve" | "decline" | "submit_corrected";
         /**
+         * ReviewDecisionBody
+         * @description JSON body of ``POST /api/invoices/{invoice_id}/approve`` and ``/decline``. The action
+         *     applies to ``expected_version`` only.
+         */
+        ReviewDecisionBody: {
+            /** Expected Version */
+            expected_version: number;
+            /** Reason */
+            reason: string;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /**
          * ReviewRefusal
          * @description Why a review action was refused. Stable identifiers for the UI and API.
          * @enum {string}
@@ -817,6 +870,11 @@ export interface components {
             /** Started At */
             started_at: string;
             status: components["schemas"]["RunStatus"];
+            /**
+             * Trigger
+             * @default submission
+             */
+            trigger: string;
         };
         /** RunView */
         RunView: {
@@ -848,6 +906,11 @@ export interface components {
             status: components["schemas"]["RunStatus"];
             /** Terminal */
             terminal: boolean;
+            /**
+             * Trigger
+             * @default submission
+             */
+            trigger: string;
         };
         /** Sample */
         Sample: {
@@ -1104,6 +1167,79 @@ export interface operations {
             };
         };
     };
+    approve_invoice_api_invoices__invoice_id__approve_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Unknown invoice (`unknown_invoice`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `busy`: another invoice is processing. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     create_correction_api_invoices__invoice_id__corrections_post: {
         parameters: {
             query?: never;
@@ -1121,13 +1257,95 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true). */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProcessingResult"];
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Unknown invoice (`unknown_invoice`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `busy`: another invoice is processing. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decline_invoice_api_invoices__invoice_id__decline_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "idempotency-key": string;
+            };
+            path: {
+                invoice_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
                 };
             };
             /** @description Unknown invoice (`unknown_invoice`). */

@@ -330,6 +330,9 @@ class RunView(ApiModel):
     retry_of: str | None = None  # set on an explicit retry (P3-08): the failed run it retries
     # set when the same bytes ran in the other mode (P3-08): the latest such run
     mode_switch_of: str | None = None
+    # what started the run: "submission", or a review run ("correction", "human_review"),
+    # which is retried on its own version and never run offline as a separate simulation
+    trigger: str = "submission"
     events: list[AuditEventView]
     result: ProcessingResult | None = None
 
@@ -365,6 +368,7 @@ def get_run(conn: sqlite3.Connection, run_id: str) -> RunView:
         prior_run_id=run["prior_run_id"],
         retry_of=run["retry_of"],
         mode_switch_of=run["mode_switch_of"],
+        trigger=run["trigger"],
         events=_events(conn, run_id),
         result=build_result(conn, run_id) if terminal else None,
     )
@@ -433,6 +437,7 @@ class RunSummary(ApiModel):
     model: str | None = None
     started_at: str
     finished_at: str | None
+    trigger: str = "submission"  # as on RunView
     events: list[AuditEventView] = []
 
 
@@ -659,6 +664,7 @@ def _run_summary(conn: sqlite3.Connection, run: sqlite3.Row) -> RunSummary:
         model=None if decision is None else decision.model,
         started_at=run["started_at"],
         finished_at=run["finished_at"],
+        trigger=run["trigger"],
         events=_events(conn, run["run_id"]),
     )
 

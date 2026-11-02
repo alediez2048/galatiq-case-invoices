@@ -76,11 +76,14 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RUNS_ENDPOINT = "POST /api/runs"
 RETRY_ENDPOINT = "POST /api/runs/{run_id}/retry"
 CORRECTIONS_ENDPOINT = "POST /api/invoices/{invoice_id}/corrections"
+APPROVE_ENDPOINT = "POST /api/invoices/{invoice_id}/approve"
+DECLINE_ENDPOINT = "POST /api/invoices/{invoice_id}/decline"
+REVIEW_TRIGGERS = frozenset({"correction", "human_review"})
 RUN_START_TIMEOUT_S = 120.0
 
-# One lock for everything that mutates state through the service: processing runs (on the
-# worker) and review actions (on the request thread). Process-wide on purpose: the prototype
-# is a single local operator.
+# One lock for everything that mutates state through the service: processing runs and review
+# actions, all executed on the one worker thread. Process-wide on purpose: the prototype is a
+# single local operator.
 PROCESSING_LOCK = threading.Lock()
 
 
@@ -258,6 +261,15 @@ class CorrectionBody(ApiModel):
     reviewer: ReviewerName
 
 
+class ReviewDecisionBody(ApiModel):
+    """JSON body of ``POST /api/invoices/{invoice_id}/approve`` and ``/decline``. The action
+    applies to ``expected_version`` only."""
+
+    expected_version: int = Field(ge=1)
+    reason: ReviewReason
+    reviewer: ReviewerName
+
+
 class RunAccepted(ApiModel):
     run_id: str
     status: RunStatus
@@ -344,6 +356,9 @@ class RunWorker:
     def run(self, job_fn: RunJob) -> str:
         """Run ``job_fn(on_run_started)`` on the worker and return the run id it reports.
 
+        A job that starts no run (a repeated approve of a paid version) reports the run id of
+        the ``ProcessingResult`` it returns instead.
+
         The wait covers only the queue: another job holding PROCESSING_LOCK. Past
         ``run_start_timeout_s`` the queued job is cancelled and the caller gets 503 busy."""
         started: Future[str] = Future()
@@ -358,7 +373,9 @@ class RunWorker:
                 if cancelled.is_set():
                     return
                 try:
-                    job_fn(report)
+                    out = job_fn(report)
+                    if not started.done() and isinstance(out, ProcessingResult):
+                        started.set_result(out.run_id)
                 except Exception as exc:
                     if not started.done():
                         started.set_exception(exc)
@@ -631,24 +648,25 @@ def _retry_source(request: Request, run_id: str) -> tuple[Path, ExecutionMode, d
     return path, ExecutionMode(row["mode"]), when
 
 
-def _is_correction_run(request: Request, run_id: str) -> bool:
+def _is_review_run(request: Request, run_id: str) -> bool:
     with _db(request) as conn:
         row = conn.execute("SELECT trigger FROM runs WHERE run_id = ?", (run_id,)).fetchone()
-    return row is not None and row["trigger"] == "correction"
+    return row is not None and row["trigger"] in REVIEW_TRIGGERS
 
 
 def _start_retry(request: Request, run_id: str, action: str, key: str | None) -> RunAccepted:
     endpoint = f"{RETRY_ENDPOINT}:{run_id}:{action}"
     settings = _settings(request)
     path: Path | None
-    if _is_correction_run(request, run_id):
-        # Retried on its own corrected version from validation (Decision 18): no file, and
-        # never offline, since re-extracting the source would discard the correction.
+    if _is_review_run(request, run_id):
+        # A correction or human-review run is retried on its own version from validation
+        # (Decision 18): no file, and never offline, since re-extracting the source would
+        # discard the correction or the human review.
         if action != "retry":
             raise ApiError(
                 "not_recoverable",
-                "A failed correction run is retried in its own mode; running the document "
-                "offline would discard the correction.",
+                "A failed review run is retried in its own mode; running the document offline "
+                "would discard the correction or human review.",
                 {"reason": "not_recoverable", "run_id": run_id, "receipt_id": None},
             )
         path, when = None, settings.evaluation_date or date.today()  # the run keeps its own
@@ -666,7 +684,7 @@ def _start_retry(request: Request, run_id: str, action: str, key: str | None) ->
         else:
             # Same refusals as a retry (unknown, not failed, wrong file, already paid), and
             # only a live model failure: offline cannot fix a deterministic or offline error.
-            assert path is not None  # a correction run never runs offline (above)
+            assert path is not None  # a review run never runs offline (above)
             original = service.check_retry(run_id, path, settings.db_path, settings.limits)
             if original.mode is not ExecutionMode.live or original.error_code not in (
                 _OFFLINE_FIXABLE
@@ -760,13 +778,16 @@ def invoice_result(invoice_id: str, request: Request) -> Response:
 
 # ---------------------------------------------------------------------------- review actions
 #
-# Every review action (corrections now; approve, decline and corrected submissions next) goes
-# through `_review_action`: it requires an Idempotency-Key, holds PROCESSING_LOCK for the whole
-# action, replays the stored response for a repeated key and maps `ReviewRefused`:
+# Every review action (corrections, approve, decline; corrected submissions next) goes through
+# `_review_action`, which follows POST /api/runs: the action runs on the worker under
+# PROCESSING_LOCK and the response (202 RunAccepted) is sent as soon as its run is committed,
+# via the service's `on_run_started` hook; the client follows GET /api/runs/{run_id}.
+# An Idempotency-Key is required; a repeated key replays the same run (`idempotent_replay`).
+# `ReviewRefused` is raised before any run exists and maps to:
 #   stale_version, action_not_allowed, already_paid -> 409, details {current, invoice}
 #   unknown_invoice -> 404; any other refusal -> 422, details {current}
-# Only successes are stored: a refusal writes nothing, so a resend re-checks fresh state.
-# TODO(P5-04 stage 2): approve / decline, GET /api/review-queue, corrected-submission.
+# Only accepted actions are stored: a refusal writes nothing, so a resend re-checks.
+# TODO(P5-04 stage 3): GET /api/review-queue, corrected-submission.
 
 _REVIEW_CONFLICTS = frozenset(
     {ReviewRefusal.stale_version, ReviewRefusal.action_not_allowed, ReviewRefusal.already_paid}
@@ -796,20 +817,12 @@ def _validation_error(exc: ValidationError) -> ApiError:
     return ApiError("validation_error", "The request body is not valid.", details)
 
 
-@contextmanager
-def _review_lock(settings: ApiSettings) -> Iterator[None]:
-    """PROCESSING_LOCK for a review action; the wait covers only another job holding it."""
-    if not PROCESSING_LOCK.acquire(timeout=settings.run_start_timeout_s):
-        raise ApiError("busy", "Another invoice is still processing. Try again shortly.")
-    try:
-        yield
-    finally:
-        PROCESSING_LOCK.release()
-
-
 def _fingerprint(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+ReviewCall = Callable[[Callable[[str], None]], ProcessingResult]
 
 
 def _review_action(
@@ -819,42 +832,55 @@ def _review_action(
     invoice_id: str,
     key: str,
     payload: dict[str, Any],
-    act: Callable[[], BaseModel],
+    act: ReviewCall,
 ) -> JSONResponse:
-    """Run one review action under PROCESSING_LOCK, idempotently per (key, endpoint, invoice).
+    """Run ``act(on_run_started)`` on the worker, idempotently per (key, endpoint, invoice).
 
-    A repeated key with the same payload returns the stored response unchanged (header
-    ``Idempotent-Replay: true``); with a different payload it is refused. The action runs to
-    completion on this thread (review runs are short: no extraction), so the response is
-    final; it still carries ``run_id`` for the run view."""
-    settings = _settings(request)
+    202 once the action's run is committed. 200 when the action started no run: a repeated
+    approve of the paid version answers with the paying run (``idempotent_replay``). A
+    repeated key with the same payload replays the stored run; with another payload it is
+    refused (422 ``idempotency_key_reused``)."""
     scope = f"{endpoint}:{invoice_id}"
     fingerprint = _fingerprint(payload)
-    with _review_lock(settings):
+    with _idempotency_lock:
         with _db(request) as conn:
             stored = idempotency.lookup(conn, key, scope)
-        if stored is not None:
-            saved = json.loads(stored)
-            if saved["fingerprint"] != fingerprint:
-                raise ApiError(
-                    "idempotency_key_reused",
-                    "This Idempotency-Key was already used for a different request.",
-                )
-            return JSONResponse(
-                saved["body"], status_code=saved["status"], headers={"Idempotent-Replay": "true"}
-            )
+            if stored is not None:
+                saved = json.loads(stored)
+                if saved["fingerprint"] != fingerprint:
+                    raise ApiError(
+                        "idempotency_key_reused",
+                        "This Idempotency-Key was already used for a different request.",
+                    )
+                replay = _accepted(conn, saved["run_id"], replay=True)
+                return JSONResponse(replay.model_dump(mode="json"), status_code=saved["status"])
+        started: list[str] = []
+
+        def job(report: Callable[[str], None]) -> ProcessingResult:
+            def hook(run_id: str) -> None:
+                started.append(run_id)
+                report(run_id)
+
+            return act(hook)
+
         try:
-            result = act()
+            run_id = request.app.state.worker.run(job)
         except review.ReviewRefused as exc:
             raise _refusal_error(request, exc, invoice_id) from None
-        body = result.model_dump(mode="json")
-        record = {"fingerprint": fingerprint, "status": 200, "body": body}
+        status = 202 if started else 200
         with _db(request) as conn:
+            accepted = _accepted(conn, run_id, replay=not started)
+            record = {"fingerprint": fingerprint, "run_id": run_id, "status": status}
             idempotency.remember(conn, key, scope, json.dumps(record))
-    return JSONResponse(body, status_code=200)
+    return JSONResponse(accepted.model_dump(mode="json"), status_code=status)
 
 
 _REVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {
+        "model": RunAccepted,
+        "description": "No new run: a repeated approve of the paid version answers with the "
+        "paying run (`idempotent_replay`: true).",
+    },
     404: {"model": ErrorBody, "description": "Unknown invoice (`unknown_invoice`)."},
     409: {
         "model": ErrorBody,
@@ -870,35 +896,93 @@ _REVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorBody, "description": "`busy`: another invoice is processing."},
 }
 
+IdempotencyKey = Annotated[str, Header(min_length=1, max_length=200)]
+
+
+def _events_logger() -> logging.Logger:
+    return logging.getLogger(LOGGER_NAME)
+
 
 @router.post(
     "/invoices/{invoice_id}/corrections",
-    response_model=ProcessingResult,
+    status_code=202,
+    response_model=RunAccepted,
     responses=_REVIEW_RESPONSES,
 )
 def create_correction(
-    invoice_id: str,
-    body: CorrectionBody,
-    request: Request,
-    idempotency_key: Annotated[str, Header(min_length=1, max_length=200)],
+    invoice_id: str, body: CorrectionBody, request: Request, idempotency_key: IdempotencyKey
 ) -> Response:
     """Correct extracted fields with source evidence (``review.submit_correction``): a new
-    version is recorded and revalidated by a new run; the response is that run's result."""
+    version is recorded and revalidated by a new run, whose id is returned at once."""
     try:
         correction = CorrectionRequest(invoice_id=invoice_id, **body.model_dump())
     except ValidationError as exc:
         raise _validation_error(exc) from None
-    settings = _settings(request)
+    db_path = _settings(request).db_path
     return _review_action(
         request,
         endpoint=CORRECTIONS_ENDPOINT,
         invoice_id=invoice_id,
         key=idempotency_key,
         payload=body.model_dump(mode="json"),
-        act=lambda: review.submit_correction(
-            correction, db_path=settings.db_path, events=logging.getLogger(LOGGER_NAME)
+        act=lambda started: review.submit_correction(
+            correction, db_path=db_path, events=_events_logger(), on_run_started=started
         ),
     )
+
+
+def _decision_route(endpoint: str, fn: Callable[..., ProcessingResult]):
+    def route(
+        invoice_id: str,
+        body: ReviewDecisionBody,
+        request: Request,
+        idempotency_key: IdempotencyKey,
+    ) -> Response:
+        db_path = _settings(request).db_path
+        return _review_action(
+            request,
+            endpoint=endpoint,
+            invoice_id=invoice_id,
+            key=idempotency_key,
+            payload=body.model_dump(mode="json"),
+            act=lambda started: fn(
+                invoice_id,
+                body.expected_version,
+                body.reviewer,
+                body.reason,
+                db_path=db_path,
+                events=_events_logger(),
+                on_run_started=started,
+            ),
+        )
+
+    return route
+
+
+router.add_api_route(
+    "/invoices/{invoice_id}/approve",
+    _decision_route(APPROVE_ENDPOINT, review.approve),
+    methods=["POST"],
+    status_code=202,
+    response_model=RunAccepted,
+    responses=_REVIEW_RESPONSES,
+    name="approve_invoice",
+    summary="Approve Invoice",
+    description="Approve mock payment of `expected_version` (``review.approve``). The "
+    "human-review run revalidates and pays only if the gate approves.",
+)
+router.add_api_route(
+    "/invoices/{invoice_id}/decline",
+    _decision_route(DECLINE_ENDPOINT, review.decline),
+    methods=["POST"],
+    status_code=202,
+    response_model=RunAccepted,
+    responses=_REVIEW_RESPONSES,
+    name="decline_invoice",
+    summary="Decline Invoice",
+    description="Decline `expected_version` (``review.decline``): the human-review run "
+    "rejects it at the gate; no payment.",
+)
 
 
 def _locate_original(settings: ApiSettings, record: queries.SourceRecord) -> Path | None:

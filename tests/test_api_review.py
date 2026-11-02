@@ -75,6 +75,14 @@ def correct(client, invoice_id, payload, key="key-1"):
     return client.post(f"/api/invoices/{invoice_id}/corrections", json=payload, headers=headers)
 
 
+def finished(client, r, status=202) -> dict:
+    """The accepted action's run once finished; its ProcessingResult."""
+    assert r.status_code == status, r.text
+    accepted = r.json()
+    assert set(accepted) == {"run_id", "status", "mode", "idempotent_replay"}
+    return wait_done(client, accepted["run_id"])["result"]
+
+
 def refused(client, settings, invoice_id, payload, status, code, key="key-1") -> dict:
     before = counts(settings)
     r = correct(client, invoice_id, payload, key=key)
@@ -124,12 +132,11 @@ def live_needs_review(settings, live) -> str:
 def test_correction_creates_a_version_and_returns_the_revalidation_run(client, settings):
     r1 = process(REVIEW / "extraction_mistake.txt", settings.db_path)
     r = correct(client, r1.invoice_id, body())
-    assert r.status_code == 200, r.text
-    result = r.json()
+    assert r.json()["idempotent_replay"] is False
+    result = finished(client, r)
     assert result["status"] == "paid_mock" and result["version"] == 2
     assert result["run_id"] != r1.run_id and result["invoice_id"] == r1.invoice_id
     assert result["receipt"]["amount"] == "3500.00"
-    assert "Idempotent-Replay" not in r.headers
     run = client.get(f"/api/runs/{result['run_id']}").json()
     assert run["terminal"] and run["status"] == "paid_mock"
     detail = client.get(f"/api/invoices/{r1.invoice_id}").json()
@@ -144,18 +151,19 @@ def test_correction_creates_a_version_and_returns_the_revalidation_run(client, s
 def test_repeated_key_replays_the_original_response_once(client, settings):
     r1 = process(REVIEW / "extraction_mistake.txt", settings.db_path)
     first = correct(client, r1.invoice_id, body(), key="same")
+    finished(client, first)
     after_first = counts(settings)
     again = correct(client, r1.invoice_id, body(), key="same")
-    assert again.status_code == 200
-    assert again.json() == first.json()
-    assert again.headers["Idempotent-Replay"] == "true"
+    assert again.status_code == 202
+    assert again.json()["run_id"] == first.json()["run_id"]
+    assert again.json()["idempotent_replay"] is True
     assert counts(settings) == after_first  # no second version, run or payment
     assert after_first["payments"] == 1 and after_first["corrections"] == 1
 
 
 def test_repeated_key_with_a_different_body_is_refused(client, settings):
     r1 = process(REVIEW / "extraction_mistake.txt", settings.db_path)
-    assert correct(client, r1.invoice_id, body(), key="same").status_code == 200
+    finished(client, correct(client, r1.invoice_id, body(), key="same"))
     changed = body(reason="Another reason")
     err = refused(
         client, settings, r1.invoice_id, changed, 422, "idempotency_key_reused", key="same"
@@ -166,7 +174,7 @@ def test_repeated_key_with_a_different_body_is_refused(client, settings):
 def test_a_key_is_scoped_to_its_invoice(client, settings):
     a = process(REVIEW / "extraction_mistake.txt", settings.db_path)
     b = process(INVOICES / "invoice_1001.txt", settings.db_path)
-    assert correct(client, a.invoice_id, body(), key="k").status_code == 200
+    finished(client, correct(client, a.invoice_id, body(), key="k"))
     r = correct(client, b.invoice_id, body(loc="line:14"), key="k")
     assert r.status_code == 409 and r.json()["code"] == "already_paid"  # not a replay of a
 
@@ -209,8 +217,7 @@ def test_duplicate_fields_are_a_validation_error(client, settings):
 def test_stale_version_is_409_with_the_current_record(client, settings):
     r1 = process(REVIEW / "ocr_ambiguous.txt", settings.db_path)
     line_total = body(field="lines[0].line_total", value="3500.00", loc="line:9")
-    first = correct(client, r1.invoice_id, line_total, key="first")
-    assert first.status_code == 200 and first.json()["status"] == "rejected", first.text
+    assert finished(client, correct(client, r1.invoice_id, line_total))["status"] == "rejected"
     before = counts(settings)
     r = correct(client, r1.invoice_id, line_total, key="second")  # still says version 1
     assert r.status_code == 409
@@ -289,7 +296,7 @@ def test_busy_when_another_job_holds_the_processing_lock(client, settings):
     with api.PROCESSING_LOCK:
         r = correct(client, r1.invoice_id, body())
     assert r.status_code == 503 and r.json()["code"] == "busy"
-    assert correct(client, r1.invoice_id, body()).status_code == 200  # nothing was stored
+    finished(client, correct(client, r1.invoice_id, body()))  # nothing was stored
 
 
 # ------------------------------------------------------------------ allowed actions
@@ -318,9 +325,7 @@ def test_detail_carries_the_review_actions(client, settings):
 def failed_correction(client, settings, live) -> tuple[str, dict]:
     invoice_id = live_needs_review(settings, live)
     live.append([DOWN, DOWN])
-    r = correct(client, invoice_id, body())
-    assert r.status_code == 200, r.text
-    result = r.json()
+    result = finished(client, correct(client, invoice_id, body()))
     assert result["status"] == "failed" and result["recoverable"] and result["version"] == 2
     return invoice_id, result
 
@@ -373,3 +378,147 @@ def test_retry_of_a_correction_no_longer_current_is_409_not_current(client, sett
     assert r.json()["code"] == "not_current"
     assert r.json()["message"] == api._RETRY_MESSAGES["not_current"]
     assert counts(settings) == before
+
+
+# ------------------------------------------------------------------ approve / decline
+
+THRESHOLD = Path(__file__).resolve().parent / "fixtures" / "threshold"
+
+
+def decide(client, invoice_id, action, version=1, key="d-1", reason="Checked against PO"):
+    headers = {"Idempotency-Key": key} if key else {}
+    payload = {"expected_version": version, "reason": reason, "reviewer": "Ana"}
+    return client.post(f"/api/invoices/{invoice_id}/{action}", json=payload, headers=headers)
+
+
+def waiting(settings) -> str:
+    r1 = process(THRESHOLD / "valid_10000_01.json", settings.db_path)
+    assert r1.status == "awaiting_human_approval", r1
+    return r1.invoice_id
+
+
+def test_approve_returns_the_run_at_once_and_pays_once(client, settings):
+    invoice_id = waiting(settings)
+    r = decide(client, invoice_id, "approve")
+    assert r.json()["idempotent_replay"] is False
+    result = finished(client, r)
+    assert result["status"] == "paid_mock" and result["receipt"]["amount"] == "10000.01"
+    assert result["decision"]["reasons"] == ["R4_human_approved"]
+    assert result["decision"]["human_review"]["reviewer"] == "Ana"
+    (run,) = rows(settings, "SELECT trigger FROM runs WHERE run_id = ?", result["run_id"])
+    assert run["trigger"] == "human_review"
+    assert client.get(f"/api/runs/{result['run_id']}").json()["trigger"] == "human_review"
+    detail = client.get(f"/api/invoices/{invoice_id}").json()
+    assert detail["outcome"] == "paid_mock" and len(detail["human_reviews"]) == 1
+    assert counts(settings)["payments"] == 1
+
+
+def test_repeated_approve_key_replays_the_same_run_and_receipt(client, settings):
+    invoice_id = waiting(settings)
+    first = finished(client, decide(client, invoice_id, "approve", key="same"))
+    after = counts(settings)
+    again = decide(client, invoice_id, "approve", key="same")
+    assert again.status_code == 202
+    assert again.json() == {
+        "run_id": first["run_id"],
+        "status": "paid_mock",
+        "mode": "offline",
+        "idempotent_replay": True,
+    }
+    assert counts(settings) == after and after["payments"] == 1
+
+
+def test_double_approve_with_a_new_key_returns_the_paying_run(client, settings):
+    invoice_id = waiting(settings)
+    first = finished(client, decide(client, invoice_id, "approve", key="one"))
+    after = counts(settings)
+    again = decide(client, invoice_id, "approve", key="two")  # Decision 20: no new run
+    assert again.status_code == 200, again.text
+    assert again.json()["run_id"] == first["run_id"] and again.json()["idempotent_replay"]
+    replayed = client.get(f"/api/runs/{again.json()['run_id']}").json()["result"]
+    assert replayed["receipt"]["receipt_id"] == first["receipt"]["receipt_id"]
+    assert counts(settings) == after and after["payments"] == 1
+
+
+def test_approve_with_a_stale_version_is_409_and_pays_nothing(client, settings):
+    invoice_id = waiting(settings)
+    err = refused_decision(client, settings, invoice_id, "approve", 409, "stale_version", 2)
+    assert err["details"]["current"]["current_version"] == 1
+    assert err["details"]["invoice"] == client.get(f"/api/invoices/{invoice_id}").json()
+    assert counts(settings)["payments"] == 0
+
+
+def test_approve_on_a_needs_review_eur_invoice_is_409_action_not_allowed(client, settings):
+    eur = process(INVOICES / "invoice_1014.xml", settings.db_path)
+    assert eur.status == "needs_review"
+    err = refused_decision(client, settings, eur.invoice_id, "approve", 409, "action_not_allowed")
+    assert "approve" not in err["details"]["current"]["allowed"]
+    assert err["details"]["invoice"]["outcome"] == "needs_review"
+
+
+def test_decline_rejects_then_approve_is_refused(client, settings):
+    invoice_id = waiting(settings)
+    result = finished(client, decide(client, invoice_id, "decline", reason="Not on contract"))
+    assert result["status"] == "rejected"
+    assert result["decision"]["reasons"] == ["R3_human_declined"]
+    err = refused_decision(client, settings, invoice_id, "approve", 409, "action_not_allowed")
+    assert err["details"]["current"]["status"] == "rejected"
+    assert counts(settings)["payments"] == 0
+
+
+def test_decline_of_a_paid_invoice_is_409_already_paid(client, settings):
+    paid = process(INVOICES / "invoice_1001.txt", settings.db_path)
+    err = refused_decision(client, settings, paid.invoice_id, "decline", 409, "already_paid")
+    assert err["details"]["invoice"]["outcome"] == "paid_mock"
+
+
+def test_decision_on_an_unknown_invoice_is_404(client, settings):
+    refused_decision(client, settings, "inv-nope", "approve", 404, "unknown_invoice")
+
+
+@pytest.mark.parametrize("missing", ["reason", "reviewer", "expected_version"])
+def test_decision_body_is_validated(client, settings, missing):
+    invoice_id = waiting(settings)
+    payload = {"expected_version": 1, "reason": "ok", "reviewer": "Ana"}
+    del payload[missing]
+    before = counts(settings)
+    r = client.post(
+        f"/api/invoices/{invoice_id}/approve", json=payload, headers={"Idempotency-Key": "k"}
+    )
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
+    assert counts(settings) == before
+
+
+def test_decision_requires_an_idempotency_key(client, settings):
+    invoice_id = waiting(settings)
+    r = decide(client, invoice_id, "approve", key=None)
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
+    assert counts(settings)["payments"] == 0
+
+
+def refused_decision(client, settings, invoice_id, action, status, code, version=1) -> dict:
+    before = counts(settings)
+    r = decide(client, invoice_id, action, version=version, key=f"{action}-{code}")
+    assert r.status_code == status, r.text
+    assert r.json()["code"] == code
+    assert counts(settings) == before
+    return r.json()
+
+
+def test_interrupted_approve_is_retried_without_a_file_and_never_offline(
+    client, settings, monkeypatch
+):
+    from invoice_processing import review, service
+
+    invoice_id = waiting(settings)
+    with monkeypatch.context() as m:  # commit the approval, then "crash" before the graph
+        m.setattr(service, "run_existing_version", lambda run_id, **kw: run_id)
+        run_id = review.approve(invoice_id, 1, "Ana", "Checked", db_path=settings.db_path)
+    r = retry(client, run_id, action="run_offline")
+    assert r.status_code == 409 and r.json()["code"] == "not_recoverable"  # sweep marks it
+    r = retry(client, run_id)
+    assert r.status_code == 202, r.text
+    done = wait_done(client, r.json()["run_id"])
+    assert done["status"] == "paid_mock" and done["trigger"] == "human_review"
+    assert done["retry_of"] == run_id
+    assert counts(settings)["payments"] == 1

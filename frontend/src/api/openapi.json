@@ -1729,6 +1729,36 @@
         "title": "ReviewAction",
         "type": "string"
       },
+      "ReviewDecisionBody": {
+        "additionalProperties": false,
+        "description": "JSON body of ``POST /api/invoices/{invoice_id}/approve`` and ``/decline``. The action\napplies to ``expected_version`` only.",
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reviewer": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason",
+          "reviewer"
+        ],
+        "title": "ReviewDecisionBody",
+        "type": "object"
+      },
       "ReviewRefusal": {
         "description": "Why a review action was refused. Stable identifiers for the UI and API.",
         "enum": [
@@ -1943,6 +1973,11 @@
           },
           "status": {
             "$ref": "#/components/schemas/RunStatus"
+          },
+          "trigger": {
+            "default": "submission",
+            "title": "Trigger",
+            "type": "string"
           }
         },
         "required": [
@@ -2085,6 +2120,11 @@
           "terminal": {
             "title": "Terminal",
             "type": "boolean"
+          },
+          "trigger": {
+            "default": "submission",
+            "title": "Trigger",
+            "type": "string"
           }
         },
         "required": [
@@ -2851,9 +2891,110 @@
         "summary": "Get Invoice"
       }
     },
+    "/api/invoices/{invoice_id}/approve": {
+      "post": {
+        "description": "Approve mock payment of `expected_version` (``review.approve``). The human-review run revalidates and pays only if the gate approves.",
+        "operationId": "approve_invoice_api_invoices__invoice_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true)."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown invoice (`unknown_invoice`)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`busy`: another invoice is processing."
+          }
+        },
+        "summary": "Approve Invoice"
+      }
+    },
     "/api/invoices/{invoice_id}/corrections": {
       "post": {
-        "description": "Correct extracted fields with source evidence (``review.submit_correction``): a new\nversion is recorded and revalidated by a new run; the response is that run's result.",
+        "description": "Correct extracted fields with source evidence (``review.submit_correction``): a new\nversion is recorded and revalidated by a new run, whose id is returned at once.",
         "operationId": "create_correction_api_invoices__invoice_id__corrections_post",
         "parameters": [
           {
@@ -2892,7 +3033,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProcessingResult"
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true)."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
                 }
               }
             },
@@ -2940,6 +3091,107 @@
           }
         },
         "summary": "Create Correction"
+      }
+    },
+    "/api/invoices/{invoice_id}/decline": {
+      "post": {
+        "description": "Decline `expected_version` (``review.decline``): the human-review run rejects it at the gate; no payment.",
+        "operationId": "decline_invoice_api_invoices__invoice_id__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invoice_id",
+            "required": true,
+            "schema": {
+              "title": "Invoice Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "No new run: a repeated approve of the paid version answers with the paying run (`idempotent_replay`: true)."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown invoice (`unknown_invoice`)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`stale_version`, `action_not_allowed`, `already_paid` or `provider_unavailable`. Review refusals carry `details.current` (AllowedActions) and `details.invoice` (the current invoice detail)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A review refusal code (e.g. `correction_not_in_source`) with `details.current`, `validation_error`, or `idempotency_key_reused`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "`busy`: another invoice is processing."
+          }
+        },
+        "summary": "Decline Invoice"
       }
     },
     "/api/invoices/{invoice_id}/result.json": {

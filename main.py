@@ -26,6 +26,13 @@ def _install_network_guard() -> None:
     socket.create_connection = blocked  # type: ignore[assignment]
     socket.socket.connect_ex = blocked  # type: ignore[method-assign]
     socket.getaddrinfo = blocked  # type: ignore[assignment]
+    # gRPC (used by xai_sdk) opens sockets in its C core, bypassing the socket module.
+    try:
+        import grpc
+    except ImportError:
+        return
+    grpc.secure_channel = blocked  # type: ignore[assignment]
+    grpc.insecure_channel = blocked  # type: ignore[assignment]
 
 
 if os.environ.get("INVOICE_NETWORK_GUARD") == "1":

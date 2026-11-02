@@ -27,6 +27,10 @@ packages = ["src/invoice_processing"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 addopts = "-q"
+markers = [
+    "real_xai_factory: keep the real xai_sdk client factory (gRPC channels stay blocked)",
+    "real_dotenv: keep the real .env loader (the test must chdir to a tmp .env)",
+]
 
 [tool.ruff]
 line-length = 100

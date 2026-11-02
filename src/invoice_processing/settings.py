@@ -31,11 +31,20 @@ class LiveSettings:
     __str__ = __repr__
 
 
+def load_dotenv_file() -> None:
+    """Load `.env` (searched upward from the cwd) without overriding set variables.
+
+    The single place `.env` is read; tests replace it so a developer's real key never
+    reaches the suite.
+    """
+    from dotenv import find_dotenv, load_dotenv
+
+    load_dotenv(find_dotenv(usecwd=True), override=False)
+
+
 def load_live_settings(env: Mapping[str, str] | None = None) -> LiveSettings:
     if env is None:
-        from dotenv import find_dotenv, load_dotenv
-
-        load_dotenv(find_dotenv(usecwd=True), override=False)
+        load_dotenv_file()
         env = os.environ
     api_key = (env.get("XAI_API_KEY") or "").strip()
     model = (env.get("XAI_MODEL") or "").strip()

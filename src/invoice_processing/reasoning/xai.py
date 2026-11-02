@@ -110,14 +110,23 @@ class _Attempt:
         self.output_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
 
 
-def _output_error(exc: ValidationError) -> ModelError:
-    """Map a structured-output validation failure; never echoes the model's text."""
+def _output_error(exc: ValidationError, *, tools_offered: bool = False) -> ModelError:
+    """Map a structured-output validation failure; never echoes the model's text.
+
+    `chat.parse` validates inside the SDK, so an empty answer cannot be inspected further.
+    With tools offered, an empty final answer is (almost always) a tool call where the
+    final answer was due, so it counts as a runaway tool loop; without tools it is a refusal.
+    """
     errors = exc.errors(include_url=False, include_context=False, include_input=True)
     empty = (
         len(errors) == 1
         and errors[0]["type"] == "json_invalid"
         and not str(errors[0].get("input", "")).strip()
     )
+    if empty and tools_offered:
+        return ModelError(
+            ModelErrorCode.model_tool_loop_exceeded, "model called tools instead of answering"
+        )
     if empty:
         return ModelError(ModelErrorCode.model_refused, "model returned an empty answer")
     return ModelError(
@@ -266,14 +275,16 @@ class XaiProvider:
                 stats.tool_turns += 1
                 response = chat.sample()
                 stats.add_usage(response)
-        return self._parse(chat, output, stats)
+        return self._parse(chat, output, stats, tools_offered=bool(specs))
 
     @staticmethod
-    def _parse[T: BaseModel](chat: Any, output: type[T], stats: _Attempt) -> T:
+    def _parse[T: BaseModel](
+        chat: Any, output: type[T], stats: _Attempt, *, tools_offered: bool
+    ) -> T:
         try:
             response, parsed = chat.parse(output)
         except ValidationError as exc:  # the SDK validates the JSON against `output`
-            error = _output_error(exc)
+            error = _output_error(exc, tools_offered=tools_offered)
         else:
             stats.add_usage(response)
             if not isinstance(parsed, BaseModel):

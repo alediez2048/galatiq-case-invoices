@@ -158,11 +158,15 @@ def test_process_invoice_marks_interrupted_runs_first(tmp_path):
     assert r.run_id != stale and r.status is RunStatus.paid_mock
 
 
-def test_live_mode_raises_and_creates_no_run(tmp_path):
-    from invoice_processing.reasoning import ProviderUnavailable
+def test_live_mode_without_settings_raises_and_creates_no_run(tmp_path, monkeypatch):
+    from invoice_processing.settings import ConfigurationError
 
+    # FIXTURE is cwd-relative, so no chdir: the .env loader is disabled instead.
+    monkeypatch.setattr("invoice_processing.settings.load_dotenv_file", lambda: None)
+    for name in ("XAI_API_KEY", "XAI_MODEL"):
+        monkeypatch.delenv(name, raising=False)
     db = tmp_db(tmp_path)
-    with pytest.raises(ProviderUnavailable):
+    with pytest.raises(ConfigurationError):
         process_invoice(FIXTURE, ExecutionMode.live, db, EVAL)
     assert count(db, "runs") == 0
 

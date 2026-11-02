@@ -5,6 +5,7 @@ import os
 import sys
 import time
 
+from invoice_processing import settings as settings_module
 from invoice_processing.settings import ConfigurationError, load_live_settings
 
 
@@ -30,9 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ping", action="store_true", help="make one minimal SDK call")
     args = parser.parse_args(argv)
 
-    from dotenv import find_dotenv, load_dotenv
-
-    load_dotenv(find_dotenv(usecwd=True), override=False)
+    settings_module.load_dotenv_file()
     env = os.environ
     print(f"XAI_API_KEY: {'set' if (env.get('XAI_API_KEY') or '').strip() else 'missing'}")
     print(f"XAI_MODEL: {(env.get('XAI_MODEL') or '').strip() or 'missing'}")

@@ -26,12 +26,14 @@ from tests.fakes.xai_client import (
     Malformed,
     Parsed,
     Raise,
+    ScriptExhausted,
     ToolCalls,
     factory,
 )
 from tests.helpers import finding, inv_1001
 
 SENTINEL = "sk-SENTINEL-123"
+_REAL_SECURE_CHANNEL = grpc.secure_channel  # captured before the per-test guard
 SETTINGS = LiveSettings(api_key=SENTINEL, model="grok-test")
 POLICY = PolicyContext(policy_version="test", high_value_threshold=Decimal("10000.00"))
 
@@ -390,14 +392,55 @@ def test_client_is_built_once_per_provider():
     assert built == [1]
 
 
-def test_real_client_factory_builds_sdk_client_without_a_request():
-    # Constructing the gRPC client is lazy (no RPC, no socket); it is closed immediately.
+@pytest.mark.real_xai_factory
+def test_real_client_factory_is_stopped_by_the_grpc_guard():
+    with pytest.raises(RuntimeError, match="network access blocked"):
+        real_client_factory(SETTINGS)
+
+
+@pytest.mark.real_xai_factory
+def test_real_client_factory_builds_a_lazy_channel_and_sends_nothing(monkeypatch):
+    # Delegate to the real secure_channel (captured before the guard) only to record it:
+    # creating a gRPC channel connects nothing; no RPC is issued and the client is closed.
+    opened = []
+
+    def spy(target, credentials, options=None, compression=None):
+        opened.append(target)
+        return _REAL_SECURE_CHANNEL(target, credentials, options, compression)
+
+    monkeypatch.setattr(grpc, "secure_channel", spy)
     client = real_client_factory(SETTINGS)
     try:
         assert type(client).__module__.startswith("xai_sdk")
         assert SENTINEL not in repr(client)
+        assert opened == ["api.x.ai"]
     finally:
         client.close()
+
+
+def test_real_factory_is_blocked_without_the_marker():
+    from invoice_processing.reasoning import xai
+
+    with pytest.raises(RuntimeError, match="network access blocked"):
+        xai.real_client_factory(SETTINGS)
+
+
+def test_exhausted_script_fails_the_test_instead_of_model_unavailable():
+    provider, client = _provider()  # empty script
+    with pytest.raises(ScriptExhausted):
+        _recommend(provider, _session())
+    assert len(client.requests) == 1
+
+
+def test_tool_call_at_final_parse_is_tool_loop_exceeded():
+    # With tools offered, sample() sees a final answer but parse() then gets the empty
+    # content a tool-call-only answer has; the SDK raises inside parse.
+    tools = _EchoToolBox()
+    provider, client = _provider(Malformed(""))
+    with pytest.raises(ModelError) as info:
+        _recommend(provider, _session(tools=tools))
+    assert info.value.code is E.model_tool_loop_exceeded
+    assert [r.kind for r in client.requests] == ["sample", "parse"]
 
 
 def test_rpc_error_type_is_the_real_grpc_base():

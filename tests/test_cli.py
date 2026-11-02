@@ -66,8 +66,8 @@ def test_live_mode_without_env_names_variable_and_touches_nothing(tmp_path, caps
 
 
 def test_live_mode_banner_then_clean_failure_never_leaks_key(tmp_path, capsys, monkeypatch):
-    # The real client is swapped for a scripted one that fails like a blocked network: the
-    # Python-level guard cannot stop gRPC's C-core sockets, so the real client must never send.
+    # The real client is swapped for a scripted one that fails like a blocked network (the
+    # conftest gRPC guard would also stop the real one: channel creation raises).
     from invoice_processing.reasoning import xai
     from tests.fakes.xai_client import FakeXaiClient, Raise
 

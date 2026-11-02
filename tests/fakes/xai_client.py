@@ -58,8 +58,13 @@ class Raise:
 Step = Parsed | ToolCalls | Malformed | Raise
 
 
-class ScriptExhausted(AssertionError):
-    """The adapter made more requests than the script provides."""
+class ScriptExhausted(BaseException):
+    """The adapter made more requests than the script provides.
+
+    A BaseException on purpose: the adapter (and the service) catch `Exception` and would
+    turn an ordinary error into `model_unavailable`, letting a test pass because its
+    script ran out. This one escapes every such handler and fails the test.
+    """
 
 
 class FakeRpcError(grpc.RpcError):

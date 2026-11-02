@@ -61,6 +61,7 @@ def test_repr_and_str_mask_key():
     assert "***" in repr(s) and isinstance(s, LiveSettings)
 
 
+@pytest.mark.real_dotenv
 def test_dotenv_not_read_when_env_passed(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("XAI_API_KEY=from-file\nXAI_MODEL=from-file\n")
     monkeypatch.chdir(tmp_path)
@@ -68,6 +69,7 @@ def test_dotenv_not_read_when_env_passed(tmp_path, monkeypatch):
         load_live_settings({})
 
 
+@pytest.mark.real_dotenv
 def test_dotenv_read_without_override(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("XAI_API_KEY=from-file\nXAI_MODEL=from-file\n")
     monkeypatch.chdir(tmp_path)

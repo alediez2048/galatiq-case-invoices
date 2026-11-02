@@ -22,10 +22,10 @@ The fixture expectations come from generator source; [requirements](../requireme
 
 ## Acceptance criteria
 
-- [ ] 1011 PDF yields WidgetA ×6, WidgetB ×3, total 3,000.00, no stated subtotal/tax (absent, not zero).
-- [ ] 1012 PDF yields the same raw values as 1012 TXT.
-- [ ] 1013 PDF yields eight lines with notes, invoice `INV-1013`, both dates, subtotal 21,040.00, tax 1,472.80, total 22,562.80, currency absent.
-- [ ] Any difference between pdfplumber output and the `pdftotext` reading above is documented in the ticket before closing.
+- [x] 1011 PDF yields WidgetA ×6, WidgetB ×3, total 3,000.00, no stated subtotal/tax (absent, not zero). (tests/test_parser_pdf.py::test_1011_pdf_total_only)
+- [x] 1012 PDF yields the same raw values as 1012 TXT. (tests/test_parser_pdf.py::test_1012_pdf_matches_txt)
+- [x] 1013 PDF yields eight lines with notes, invoice `INV-1013`, both dates, subtotal 21,040.00, tax 1,472.80, total 22,562.80, currency absent. (tests/test_parser_pdf.py::test_1013_pdf)
+- [x] Any difference between pdfplumber output and the `pdftotext` reading above is documented in the ticket before closing. (documented under Extraction notes below; tests/test_parser_pdf.py::test_snapshot)
 
 ## Extraction notes
 

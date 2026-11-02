@@ -19,7 +19,7 @@ Two CSV layouts exist:
 
 ## Acceptance criteria
 
-- [ ] 1006 yields WidgetA ×5 @ 250.00 and WidgetB ×3 @ 500.00 (both retained), subtotal 2,750.00, tax 0.00, total 2,750.00.
-- [ ] 1007 yields three lines, raw dates `01/28/2026`/`02/28/2026`, subtotal 14,750.00, tax 885.00 at 6%, total 15,525.00.
-- [ ] 1015 yields three lines, subtotal 6,500.00, tax 0.00, total 6,500.00.
-- [ ] A test CSV whose rows disagree on vendor produces `inconsistent_row_header`.
+- [x] 1006 yields WidgetA ×5 @ 250.00 and WidgetB ×3 @ 500.00 (both retained), subtotal 2,750.00, tax 0.00, total 2,750.00. (tests/test_parser_csv.py::test_1006_field_value)
+- [x] 1007 yields three lines, raw dates `01/28/2026`/`02/28/2026`, subtotal 14,750.00, tax 885.00 at 6%, total 15,525.00. (tests/test_parser_csv.py::test_1007_row_table)
+- [x] 1015 yields three lines, subtotal 6,500.00, tax 0.00, total 6,500.00. (tests/test_parser_csv.py::test_1015_row_table)
+- [x] A test CSV whose rows disagree on vendor produces `inconsistent_row_header`. (tests/test_parser_csv.py::test_rows_disagree_on_vendor)

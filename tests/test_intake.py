@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -121,3 +122,20 @@ def test_all_supplied_files_pass_intake():
     for p in sorted(Path("data/invoices").iterdir()):
         source, _ = read_source(p)
         assert source.format.value == p.suffix[1:].lower()
+
+
+def test_file_growing_after_stat_is_still_too_large(tmp_path, monkeypatch):
+    # The size check must hold for the bytes actually read, not only for stat().
+    p = tmp_path / "grow.txt"
+    p.write_text("INVOICE 1001\n")
+    real_stat = Path.stat
+
+    def stale_stat(self, *a, **k):
+        st = real_stat(self, *a, **k)
+        if self.name != p.name:
+            return st
+        return os.stat_result((*st[:6], 1, *st[7:10]))
+
+    monkeypatch.setattr(Path, "stat", stale_stat)
+    assert _code(p, limits=Limits(max_bytes=4))[0] == "file_too_large"
+    assert read_source(p, limits=Limits(max_bytes=13))[1] == b"INVOICE 1001\n"

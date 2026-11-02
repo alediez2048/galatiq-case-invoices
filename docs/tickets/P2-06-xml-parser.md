@@ -16,6 +16,6 @@ INV-1014 is XML: `<header>` with invoice number, vendor, dates, and explicit `<c
 
 ## Acceptance criteria
 
-- [ ] 1014 yields vendor `TechParts International`, currency `EUR` (explicit, not assumed), WidgetA ×4 @ 225.00, WidgetB ×6 @ 475.00, subtotal 3,750.00, tax 375.00 at 10%, total 4,125.00.
-- [ ] A billion-laughs test document and an external-entity test document are both refused.
-- [ ] No network or file access occurs while parsing (network guard from P1-10 active).
+- [x] 1014 yields vendor `TechParts International`, currency `EUR` (explicit, not assumed), WidgetA ×4 @ 225.00, WidgetB ×6 @ 475.00, subtotal 3,750.00, tax 375.00 at 10%, total 4,125.00. (tests/test_parser_xml.py::test_1014)
+- [x] A billion-laughs test document and an external-entity test document are both refused. (tests/test_parser_xml.py::test_forbidden_constructs)
+- [x] No network or file access occurs while parsing (network guard from P1-10 active). (autouse `no_network` fixture in tests/conftest.py)

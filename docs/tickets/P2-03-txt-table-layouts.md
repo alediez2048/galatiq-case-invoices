@@ -22,7 +22,7 @@ The same extractor will be reused for PDF text (P2-07), whose `pdftotext -layout
 
 ## Acceptance criteria
 
-- [ ] 1010 extracts invoice number `INV-1010` (from the `INVOICE #INV-1010` title line), vendor `Consolidated Materials Group`, four lines including raw name `WidgetA (rush order)`, subtotal 6,700.00, tax 335.00, shipping 150.00, total 7,185.00.
-- [ ] 1011 TXT extracts WidgetA ×6, WidgetB ×3, subtotal 3,000.00, tax 0.00, total 3,000.00.
-- [ ] 1012 extracts vendor `QuickShip Distributers` (spelling unchanged), raw invoice `INV 1012`, raw names `Widget A`/`WidgetB`/`Gadget X`, raw amount `$3,500.O0`, totals 9,500.00 / 475.00 / 9,975.00.
-- [ ] A row with the wrong number of columns becomes an extraction issue, not a shifted value.
+- [x] 1010 extracts invoice number `INV-1010` (from the `INVOICE #INV-1010` title line), vendor `Consolidated Materials Group`, four lines including raw name `WidgetA (rush order)`, subtotal 6,700.00, tax 335.00, shipping 150.00, total 7,185.00. (tests/test_parser_text.py::test_1010_table_and_footer)
+- [x] 1011 TXT extracts WidgetA ×6, WidgetB ×3, subtotal 3,000.00, tax 0.00, total 3,000.00. (tests/test_parser_text.py::test_1011_txt)
+- [x] 1012 extracts vendor `QuickShip Distributers` (spelling unchanged), raw invoice `INV 1012`, raw names `Widget A`/`WidgetB`/`Gadget X`, raw amount `$3,500.O0`, totals 9,500.00 / 475.00 / 9,975.00. (tests/test_parser_text.py::test_1012_raw_tokens_preserved)
+- [x] A row with the wrong number of columns becomes an extraction issue, not a shifted value. (tests/test_parser_text.py::test_row_with_missing_column_is_malformed)

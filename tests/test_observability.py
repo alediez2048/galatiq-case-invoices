@@ -131,3 +131,10 @@ def test_output_paths_are_gitignored():
         text=True,
     )
     assert out.returncode == 0
+
+
+def test_format_summary_escapes_quotes_in_reason():
+    result = make_result(with_receipt=False).model_copy(
+        update={"status": RunStatus.failed, "errors": ["x"], "error_message": 'bad "key" here'}
+    )
+    assert 'reason="bad \\"key\\" here"' in format_summary(result)

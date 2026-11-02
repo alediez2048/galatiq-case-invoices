@@ -25,7 +25,7 @@ Table layouts (P2-03). Date parsing and relative dates (P2-09). Item aliases (P2
 
 ## Acceptance criteria
 
-- [ ] 1002 extracts vendor `Gadgets Co.`, invoice `1002`, GadgetX ×20 @ 750, total 15,000.00, with label-alias events for each misspelled label.
-- [ ] 1003 extracts FakeItem ×100 @ 1,000.00, total 100,000.00, raw due date `yesterday`, and `risk_signal_urgency`.
-- [ ] 1008 extracts vendor `NoProd Industries`, invoice `INV-1008`, SuperGizmo ×12 @ 400.00, MegaSprocket ×6 @ 850.00, total 9,900.00.
-- [ ] Every value has line-number evidence.
+- [x] 1002 extracts vendor `Gadgets Co.`, invoice `1002`, GadgetX ×20 @ 750, total 15,000.00, with label-alias events for each misspelled label. (tests/test_parser_text.py::test_1002_misspelled_labels)
+- [x] 1003 extracts FakeItem ×100 @ 1,000.00, total 100,000.00, raw due date `yesterday`, and `risk_signal_urgency`. (tests/test_parser_text.py::test_1003_notes_and_relative_due_date, tests/test_normalize.py::test_1003_unresolved_and_urgency)
+- [x] 1008 extracts vendor `NoProd Industries`, invoice `INV-1008`, SuperGizmo ×12 @ 400.00, MegaSprocket ×6 @ 850.00, total 9,900.00. (tests/test_parser_text.py::test_1008_email_body, tests/test_parser_text.py::test_1008_dates_via_aliases)
+- [x] Every value has line-number evidence. (tests/test_parser_text.py::test_every_value_has_line_evidence)

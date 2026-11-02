@@ -23,12 +23,12 @@ Choosing which version wins (needs a human; Phase 4 adds corrections, not versio
 
 ## Acceptance criteria (persistent ledger, in order)
 
-- [ ] 1011 TXT → `paid_mock`; 1011 PDF → `duplicate`; one payment.
-- [ ] 1012 TXT → `paid_mock`; 1012 PDF → `duplicate`; one payment.
-- [ ] 1013 JSON → `rejected`; 1013 PDF → `duplicate` of that rejection.
-- [ ] 1004 → `paid_mock`; 1004 revised → `needs_review` / `revision_after_payment`; one payment of 1,890.00.
-- [ ] Reverse order: 1004 revised → `paid_mock` (5,940.00); 1004 → `needs_review` / `revision_after_payment`.
-- [ ] Changing a filename or reformatting whitespace does not change the semantic hash.
+- [x] 1011 TXT → `paid_mock`; 1011 PDF → `duplicate`; one payment. (tests/test_service.py::test_alternate_format_is_duplicate)
+- [x] 1012 TXT → `paid_mock`; 1012 PDF → `duplicate`; one payment. (tests/test_service.py::test_alternate_format_is_duplicate)
+- [x] 1013 JSON → `rejected`; 1013 PDF → `duplicate` of that rejection. (tests/test_service.py::test_alternate_format_is_duplicate)
+- [x] 1004 → `paid_mock`; 1004 revised → `needs_review` / `revision_after_payment`; one payment of 1,890.00. (tests/test_service.py::test_revision_after_payment)
+- [x] Reverse order: 1004 revised → `paid_mock` (5,940.00); 1004 → `needs_review` / `revision_after_payment`. (tests/test_service.py::test_revision_after_payment_reverse_order)
+- [x] Changing a filename or reformatting whitespace does not change the semantic hash. (tests/test_ledger.py::test_semantic_hash_ignores_filename_whitespace_and_line_order)
 
 ## Behaviour (implemented)
 

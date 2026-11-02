@@ -40,15 +40,19 @@ def read_source(path: str | Path, limits: Limits = DEFAULT_LIMITS) -> tuple[Sour
     if ext not in SUPPORTED_EXTENSIONS:
         raise IntakeError("unsupported_format", f"unsupported file type: {path.suffix!r}")
     fmt = SourceFormat(ext[1:])
+    too_large = IntakeError(
+        "file_too_large", f"File exceeds the {limits.max_bytes / 2**20:g} MiB limit."
+    )
     try:
-        size = path.stat().st_size
-        if size > limits.max_bytes:
-            raise IntakeError(
-                "file_too_large", f"File exceeds the {limits.max_bytes / 2**20:g} MiB limit."
-            )
-        data = path.read_bytes()
+        if path.stat().st_size > limits.max_bytes:
+            raise too_large
+        # Read one byte past the cap so a file that grew after stat() is still refused.
+        with path.open("rb") as f:
+            data = f.read(limits.max_bytes + 1)
     except OSError as exc:
         raise IntakeError("unreadable", f"could not read file: {exc.strerror or exc}") from exc
+    if len(data) > limits.max_bytes:
+        raise too_large
     if not data:
         raise IntakeError("empty_file", "The file is empty.")
     if not _content_matches(fmt, data):

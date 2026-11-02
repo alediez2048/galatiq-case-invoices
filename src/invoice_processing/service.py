@@ -12,6 +12,7 @@ from invoice_processing.codes import (
     TERMINAL_RUN_STATUSES,
     ExecutionMode,
     InvoiceStatus,
+    ModelErrorCode,
     RunStatus,
 )
 from invoice_processing.limits import DEFAULT_LIMITS, Limits
@@ -29,9 +30,20 @@ _INVOICE_STATUS = {
 }
 
 
-def _result(state: InvoiceState, **overrides) -> ProcessingResult:
+RECOVERY_ACTIONS = ["retry", "run offline as a separate simulation"]
+_MODEL_ERROR_CODES = frozenset(c.value for c in ModelErrorCode)
+
+
+def _call_budget(provider: ReasoningProvider) -> int | None:
+    """The per-invoice model budget of a live provider; None offline (no model calls)."""
+    settings = getattr(provider, "settings", None)
+    return None if settings is None else settings.call_budget
+
+
+def _result(state: InvoiceState, budget: int | None, **overrides) -> ProcessingResult:
     error_code = state.get("error_code")
     source = state.get("source")
+    recoverable = error_code in _MODEL_ERROR_CODES
     fields = {
         "run_id": state["run_id"],
         "invoice_id": state.get("invoice_id"),
@@ -46,6 +58,10 @@ def _result(state: InvoiceState, **overrides) -> ProcessingResult:
         "error_message": state.get("error_message"),
         "source_hash": source.content_hash if source is not None else None,
         "evaluation_date": state.get("evaluation_date"),
+        "model_calls_used": state.get("model_calls_used", 0),
+        "model_calls_budget": budget,
+        "recoverable": recoverable,
+        "next_actions": list(RECOVERY_ACTIONS) if recoverable else [],
     }
     fields.update(overrides)
     return ProcessingResult(**fields)
@@ -64,6 +80,7 @@ def process_invoice(
     if events is None:
         events = observability.configure_events(None)
     provider = provider or get_provider(mode)  # config errors propagate before any run exists
+    budget = _call_budget(provider)
     conn = connect(db_path)
     try:
         init_schema(conn)
@@ -96,6 +113,7 @@ def process_invoice(
                 emit(deps, state, "service", "duplicate", prior_run_id=prior.run_id)
                 return _result(
                     state,
+                    budget,
                     invoice_id=prior.invoice_id,
                     receipt=prior.receipt,
                     prior_run_id=prior.run_id,
@@ -123,7 +141,7 @@ def process_invoice(
             if invoice_id is not None and status in _INVOICE_STATUS:
                 ledger.set_invoice_status(conn, invoice_id, _INVOICE_STATUS[status])
             emit(deps, final, "service", "finished", errors=[error_code] if error_code else [])
-            return _result(final)
+            return _result(final, budget)
         except Exception as e:  # BaseException (Ctrl-C) propagates; mark_interrupted_runs recovers
             current = ledger.get_run_status(conn, run_id)
             if current not in TERMINAL_RUN_STATUSES:
@@ -138,6 +156,6 @@ def process_invoice(
             state["status"] = current
             state["error_code"] = "unexpected_error"
             emit(deps, state, "service", "failed", error_type=type(e).__name__)
-            return _result(state, invoice_id=state.get("invoice_id"))
+            return _result(state, budget, invoice_id=state.get("invoice_id"))
     finally:
         conn.close()

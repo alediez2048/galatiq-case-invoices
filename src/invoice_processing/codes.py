@@ -98,6 +98,14 @@ class ModelErrorCode(StrEnum):
     model_tool_loop_exceeded = "model_tool_loop_exceeded"
 
 
+class CritiqueIssue(StrEnum):
+    """A problem with a recommendation, found by the critique model or the deterministic checks."""
+
+    uncited_blocker = "uncited_blocker"
+    unsupported_claim = "unsupported_claim"
+    missed_high_value_scrutiny = "missed_high_value_scrutiny"
+
+
 class SourceFormat(StrEnum):
     txt = "txt"
     json = "json"

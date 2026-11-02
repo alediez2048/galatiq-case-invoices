@@ -27,6 +27,17 @@ def _cited_codes(findings: list[ValidationFinding]) -> list[FindingCode]:
     return codes
 
 
+def _high_value(invoice: NormalizedInvoice, policy: PolicyContext) -> bool:
+    total = invoice.stated.total
+    return total is not None and total > policy.high_value_threshold
+
+
+def _threshold_note(invoice: NormalizedInvoice, policy: PolicyContext) -> str:
+    if not _high_value(invoice, policy):
+        return ""
+    return f"; total above the {policy.high_value_threshold} high-value threshold"
+
+
 def _rule(findings: list[ValidationFinding]) -> Recommendation:
     severities = {f.severity for f in findings}
     if Severity.blocker in severities:
@@ -55,7 +66,10 @@ class OfflineSimulator:
             recommendation=rec,
             reasons=[c.value for c in cited],
             cited_codes=cited,
-            summary=f"{_PREFIX}{rec.value} based on {len(cited)} blocking or review finding(s)",
+            summary=(
+                f"{_PREFIX}{rec.value} based on {len(cited)} blocking or review finding(s)"
+                + _threshold_note(invoice, policy)
+            ),
             mode=self.mode,
             provider=self.provider,
             model=self.model,
@@ -75,8 +89,7 @@ class OfflineSimulator:
             expected is Recommendation.reject
         )
         agrees = not omissions and consistent
-        total = invoice.stated.total
-        high_value = total is not None and total > policy.high_value_threshold
+        high_value = _high_value(invoice, policy)
         return Critique(
             agrees=agrees,
             omissions=omissions,
@@ -107,7 +120,8 @@ class OfflineSimulator:
             recommendation=rec,
             reasons=[c.value for c in cited],
             cited_codes=cited,
-            summary=f"{_PREFIX}revised to {rec.value} after critique",
+            summary=f"{_PREFIX}revised to {rec.value} after critique"
+            + _threshold_note(invoice, policy),
             mode=self.mode,
             provider=self.provider,
             model=self.model,

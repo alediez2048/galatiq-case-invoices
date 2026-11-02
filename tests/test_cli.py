@@ -86,9 +86,11 @@ def test_live_mode_banner_then_clean_failure_never_leaks_key(tmp_path, capsys, m
     out, err = capsys.readouterr()
     assert code == 1 and built == ["grok-test"]
     assert "Mode: live model (grok-test)" in err and "sent to xAI" in err
-    assert json.loads(out)["status"] == "failed"
+    result = json.loads(out)
+    assert result["status"] == "failed" and result["errors"] == ["model_unavailable"]
+    assert result["recoverable"] is True
     events = (tmp_path / "e.jsonl").read_text()
-    assert "ModelError" in events
+    assert '"event": "model_failed"' in events and '"error_code": "model_unavailable"' in events
     db = sqlite3.connect(tmp_path / "i.db")
     dumped = "\n".join(map(str, db.iterdump()))
     db.close()

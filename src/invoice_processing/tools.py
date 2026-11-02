@@ -12,7 +12,8 @@ import logging
 import re
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from typing import Annotated, Any
 from xml.etree.ElementTree import Element, ParseError
@@ -43,6 +44,24 @@ class ReadOnlyConnection:
         if not sql.lstrip().upper().startswith("SELECT"):
             raise PermissionError("read-only connection: only SELECT statements are allowed")
         return self._conn.execute(sql, parameters)
+
+    @contextmanager
+    def query_only(self) -> Iterator[None]:
+        """Defence in depth while a handler runs: SQLite itself refuses writes.
+
+        The wrapped connection is the run's writable one (an in-memory test database has no
+        second connection to open), so the pragma is switched on only for the handler's
+        duration and always switched back; handlers run synchronously, so no ledger write
+        can happen in between. Already-on (nested) stays on.
+        """
+        if self._conn.execute("PRAGMA query_only").fetchone()[0]:
+            yield
+            return
+        self._conn.execute("PRAGMA query_only = ON")
+        try:
+            yield
+        finally:
+            self._conn.execute("PRAGMA query_only = OFF")
 
 
 @dataclass(frozen=True)
@@ -325,11 +344,12 @@ class Dispatcher:
             return _reject("unauthorized"), None
         try:
             parsed = spec.args_model.model_validate(json.loads(arguments_json or "{}"))
-        except (ValueError, TypeError, ValidationError):
-            return _reject("invalid_arguments"), None
+        except (ValueError, TypeError, ValidationError, RecursionError):
+            return _reject("invalid_arguments"), None  # RecursionError: absurdly nested JSON
         args = parsed.model_dump(mode="json")
         try:
-            return spec.handler(self._ctx, parsed), args
+            with self._ctx.conn.query_only():
+                return spec.handler(self._ctx, parsed), args
         except ToolRejected as e:
             return _reject(e.reason), args
         except Exception:
@@ -341,7 +361,8 @@ class Dispatcher:
         error = result.get("error")
         payload = {
             "agent": agent,
-            "tool": name if name in REGISTRY else "unknown",  # never echo untrusted names
+            # never echo untrusted names; a non-string (unhashable) name must not raise here
+            "tool": name if isinstance(name, str) and name in REGISTRY else "unknown",
             "args": args,
             "ok": error is None,
             "error": result.get("reason", error),

@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from invoice_processing.codes import (
+    CritiqueIssue,
     ExecutionMode,
     FindingCode,
     GateOutcome,
@@ -147,7 +148,8 @@ class ValidationFinding(Contract):
 class ApprovalDecision(Contract):
     initial_recommendation: Recommendation
     critique_summary: str | None = None
-    revised_recommendation: Recommendation | None = None
+    critique_issues: list[CritiqueIssue] = Field(default_factory=list)
+    revised_recommendation: Recommendation | None = None  # the revision's, when one ran
     final_decision: GateOutcome
     reasons: list[str] = Field(default_factory=list)
     policy_version: str
@@ -182,6 +184,7 @@ class CritiqueOutput(Contract):
     high_value: bool
     revised_recommendation: Recommendation | None
     summary: str
+    issues: list[CritiqueIssue] = Field(default_factory=list)
 
 
 class ApprovalRecommendation(RecommendationOutput):

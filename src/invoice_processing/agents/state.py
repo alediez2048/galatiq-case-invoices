@@ -42,6 +42,7 @@ class InvoiceState(TypedDict, total=False):
     error_code: str
     error_message: str
     timings_ms: dict[str, int]
+    model_calls_used: int  # budget units spent so far this run, carried between nodes
 
 
 @dataclass
@@ -53,8 +54,13 @@ class Deps:
 
 
 def make_session(deps: Deps, state: InvoiceState) -> ModelSession:
-    """A fresh model session; live providers also get the read-only tool dispatcher."""
+    """A model session for one node; live providers also get the read-only tool dispatcher.
+
+    The budget is per invoice: the session starts from the units earlier nodes spent, and
+    the node returns `session.used` as the new `model_calls_used`.
+    """
     session = ModelSession.for_provider(deps.provider)
+    session.used = state.get("model_calls_used", 0)
     settings = getattr(deps.provider, "settings", None)
     if settings is not None:
         ctx = ToolContext(

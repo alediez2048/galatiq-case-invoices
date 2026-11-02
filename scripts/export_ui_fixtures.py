@@ -51,9 +51,18 @@ def main() -> None:
             frontend_dist=Path(tmp) / "no-dist",
             evaluation_date=EVALUATION_DATE,
         )
-        with TestClient(create_app(settings)) as client, contextlib.redirect_stdout(io.StringIO()):
+        # A loopback base URL: the app trusts loopback Host names only (not "testserver").
+        app = create_app(settings)
+        with (
+            TestClient(app, base_url="http://127.0.0.1") as client,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             for key, sample in SAMPLES.items():
-                accepted = client.post("/api/runs", json={"sample": sample, "mode": "offline"})
+                accepted = client.post(
+                    "/api/runs",
+                    json={"sample": sample, "mode": "offline"},
+                    headers={"Idempotency-Key": f"fixture-run-{key}"},
+                )
                 run = _wait(client, accepted.json()["run_id"])
                 detail = client.get(f"/api/invoices/{run['invoice_id']}").json()
                 source = client.get(f"/api/sources/{detail['source']['source_id']}/content").json()
@@ -76,7 +85,12 @@ def _correct(client: TestClient, invoice_id: str, body: dict, key: str):
 def _upload(client: TestClient, path: Path, media: str) -> str:
     """Process an upload offline; its invoice id."""
     upload = {"file": (path.name, path.read_bytes(), media)}
-    accepted = client.post("/api/runs", files=upload, data={"mode": "offline"})
+    accepted = client.post(
+        "/api/runs",
+        files=upload,
+        data={"mode": "offline"},
+        headers={"Idempotency-Key": f"fixture-upload-{path.name}"},
+    )
     return _wait(client, accepted.json()["run_id"])["invoice_id"]
 
 

@@ -4,6 +4,7 @@ Invoices are processed with the service directly (the review fixtures live outsi
 bundled samples), then corrected over HTTP. Offline, except where a fake xAI client stands in
 for the live provider (sentinel key, no network)."""
 
+import uuid
 from pathlib import Path
 
 import grpc
@@ -15,7 +16,7 @@ from invoice_processing.codes import ExecutionMode
 from invoice_processing.reasoning import xai
 from tests.fakes.xai_client import FakeXaiClient, Parsed, Raise
 from tests.review_helpers import EVAL, INVOICES, REVIEW, process
-from tests.test_api import wait_done
+from tests.test_api import TEST_HOSTS, wait_done
 
 SENTINEL = "sk-SENTINEL-p504"
 LIVE = ExecutionMode.live
@@ -29,13 +30,15 @@ TABLES = ("invoice_versions", "corrections", "runs", "audit_events", "findings",
 
 @pytest.fixture
 def settings(tmp_path) -> api.ApiSettings:
-    return api.ApiSettings(
+    s = api.ApiSettings(
         db_path=tmp_path / "api.db",
         uploads_dir=tmp_path / "uploads",
         samples_dir=INVOICES,
         frontend_dist=tmp_path / "no-dist",
         evaluation_date=EVAL,
     )
+    s.allowed_hosts = TEST_HOSTS
+    return s
 
 
 @pytest.fixture
@@ -331,7 +334,7 @@ def failed_correction(client, settings, live) -> tuple[str, dict]:
 
 
 def retry(client, run_id, key=None, **payload):
-    headers = {"Idempotency-Key": key} if key else {}
+    headers = {"Idempotency-Key": key or str(uuid.uuid4())}
     return client.post(f"/api/runs/{run_id}/retry", json=payload or None, headers=headers)
 
 
@@ -665,12 +668,20 @@ def test_corrected_submission_uses_the_upload_checks(client, settings, tmp_path)
     settings.limits = type(settings.limits)(**{**settings.limits.__dict__, "max_bytes": 10})
     big = submit_corrected(client, invoice_id, key="cs-big")
     assert big.status_code == 413 and big.json()["code"] == "file_too_large"
+    fields = {"expected_version": "1", "reason": "r", "reviewer": "Ana"}
+    # A multipart form without a file part is 422; a url-encoded form is not multipart (415).
     r = client.post(
         f"/api/invoices/{invoice_id}/corrected-submission",
-        data={"expected_version": "1", "reason": "r", "reviewer": "Ana"},
+        files={k: (None, v) for k, v in fields.items()},
         headers={"Idempotency-Key": "cs-nofile"},
     )
-    assert r.status_code == 422
+    assert r.status_code == 422, r.text
+    r = client.post(
+        f"/api/invoices/{invoice_id}/corrected-submission",
+        data=fields,
+        headers={"Idempotency-Key": "cs-urlencoded"},
+    )
+    assert r.status_code == 415 and r.json()["code"] == "unsupported_media_type"
     assert counts(settings) == before
 
 

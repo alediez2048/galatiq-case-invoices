@@ -1,6 +1,6 @@
 {
   "idempotent_replay": false,
   "mode": "offline",
-  "run_id": "run-c7de89fcd8cf4f47a037298c3ff09e37",
-  "status": "validated"
+  "run_id": "run-4be8a09a13304934aef4f7dd4a075d2f",
+  "status": "extracted"
 }

@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import sys
 import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -25,7 +26,7 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, FastAPI, Header, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -33,6 +34,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from invoice_processing import (
     idempotency,
@@ -74,7 +77,10 @@ from invoice_processing.storage import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VITE_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
-LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")  # trusted Host header names (DNS rebinding)
+LOOPBACK_HOSTS = set(LOCAL_HOSTS)
+STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+MAX_JSON_BODY_BYTES = 64 * 1024  # the largest JSON body (ten corrections) is a few KiB
 RUNS_ENDPOINT = "POST /api/runs"
 RETRY_ENDPOINT = "POST /api/runs/{run_id}/retry"
 CORRECTIONS_ENDPOINT = "POST /api/invoices/{invoice_id}/corrections"
@@ -96,7 +102,8 @@ class ApiSettings:
     uploads_dir: Path = field(default_factory=lambda: Path("uploads"))
     samples_dir: Path = field(default_factory=lambda: REPO_ROOT / "data" / "invoices")
     frontend_dist: Path = field(default_factory=lambda: REPO_ROOT / "frontend" / "dist")
-    cors_origins: tuple[str, ...] = VITE_ORIGINS
+    cors_origins: tuple[str, ...] = VITE_ORIGINS  # also the cross-origin POSTs accepted
+    allowed_hosts: tuple[str, ...] = LOCAL_HOSTS  # tests add "testserver" (TestClient)
     evaluation_date: date | None = None  # workspace default; None means "today"
     limits: Limits = DEFAULT_LIMITS
     run_start_timeout_s: float = RUN_START_TIMEOUT_S
@@ -121,6 +128,9 @@ _STATUS_BY_CODE = {
     "not_current": 409,
     "already_paid": 409,
     "idempotency_key_reused": 422,
+    "unsupported_media_type": 415,
+    "forbidden_origin": 403,
+    "body_too_large": 413,
 }
 
 
@@ -208,6 +218,121 @@ def _install_error_handlers(app: FastAPI) -> None:
         code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
         return _error_response(exc.status_code, code, str(exc.detail))
 
+    @app.exception_handler(Exception)
+    async def _unexpected(_: Request, exc: Exception) -> JSONResponse:
+        # The envelope carries no exception text, traceback or path; the server log has them.
+        return _error_response(
+            500, "internal_error", "Something went wrong on the server. Nothing more is known."
+        )
+
+
+# ---------------------------------------------------------------------------- local web guard
+
+
+class LocalRequestGuard:
+    """Refuses cross-site writes from a browser on the same machine (pure ASGI middleware).
+
+    For POST/PUT/PATCH/DELETE under /api:
+    - an ``Origin`` header that is present must be the request's own origin or one of
+      ``allowed_origins`` (the Vite dev server); anything else, including ``null``, is 403
+      ``forbidden_origin``. Requests without Origin (curl, the CLI, TestClient) pass.
+    - a JSON body is limited to ``MAX_JSON_BODY_BYTES`` (413 ``body_too_large``).
+
+    The Host header is checked separately (TrustedHostMiddleware), so a same-origin match on a
+    rebound DNS name never gets here."""
+
+    def __init__(self, app: ASGIApp, allowed_origins: tuple[str, ...]) -> None:
+        self.app = app
+        self.allowed = {o.lower().rstrip("/") for o in allowed_origins}
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or scope["method"] not in STATE_CHANGING_METHODS
+            or not scope["path"].startswith("/api/")
+        ):
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+        origin = headers.get("origin")
+        if origin is not None:
+            own = f"{scope.get('scheme', 'http')}://{headers.get('host', '')}".lower()
+            if origin.lower().rstrip("/") not in self.allowed | {own}:
+                await _error_response(
+                    403,
+                    "forbidden_origin",
+                    "Requests that change data are accepted only from this application.",
+                )(scope, receive, send)
+                return
+        if _media_type(headers.get("content-type")) == "application/json":
+            body = await self._read_capped(receive, headers.get("content-length"))
+            if body is None:
+                await _error_response(
+                    413,
+                    "body_too_large",
+                    f"The request body exceeds {MAX_JSON_BODY_BYTES // 1024} KiB.",
+                )(scope, receive, send)
+                return
+            receive = _replay_body(body, receive)
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    async def _read_capped(receive: Receive, declared: str | None) -> bytes | None:
+        if declared and declared.isdigit() and int(declared) > MAX_JSON_BODY_BYTES:
+            return None
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return bytes(body)
+            body += message.get("body", b"")
+            if len(body) > MAX_JSON_BODY_BYTES:
+                return None
+            if not message.get("more_body", False):
+                return bytes(body)
+
+
+def _replay_body(body: bytes, receive: Receive) -> Receive:
+    sent = False
+
+    async def replay() -> Message:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await receive()
+
+    return replay
+
+
+def _media_type(content_type: str | None) -> str:
+    return (content_type or "").split(";", 1)[0].strip().lower()
+
+
+def _has_body(request: Request) -> bool:
+    length = request.headers.get("content-length")
+    return (length is not None and length != "0") or "transfer-encoding" in request.headers
+
+
+def _unsupported(expected: str) -> ApiError:
+    return ApiError("unsupported_media_type", f"The request body must be {expected}.")
+
+
+def require_json(request: Request) -> None:
+    """A JSON route: any body (or declared Content-Type) must be ``application/json``. A
+    text/plain or form body is a CORS "simple" request a foreign page could send unseen."""
+    media = _media_type(request.headers.get("content-type"))
+    if (media or _has_body(request)) and media != "application/json":
+        raise _unsupported("application/json")
+
+
+def _require_multipart(request: Request) -> None:
+    if _media_type(request.headers.get("content-type")) != "multipart/form-data":
+        raise _unsupported("multipart/form-data")
+
+
+RequireJson = Depends(require_json)
+
 
 # ---------------------------------------------------------------------------- models
 
@@ -229,7 +354,7 @@ class Readiness(ApiModel):
     modes: dict[str, ModeAvailability]
     live_settings_present: bool
     inventory_seeded: bool
-    database_path: str
+    database_path: str  # the database file name only
     schema_version: int
     live_model: str | None = None  # the configured XAI_MODEL when live settings are present
 
@@ -362,7 +487,9 @@ class RunWorker:
     def _events(self) -> logging.Logger:
         return logging.getLogger(LOGGER_NAME)
 
-    def submit(self, path: Path, mode: ExecutionMode, evaluation_date: date) -> str:
+    def submit(
+        self, path: Path, mode: ExecutionMode, evaluation_date: date, deadline: float | None = None
+    ) -> str:
         """Queue one processing job and return its run id once the run row exists."""
         return self.run(
             lambda started: process_invoice(
@@ -373,10 +500,13 @@ class RunWorker:
                 events=self._events(),
                 limits=self._settings.limits,
                 on_run_started=started,
-            )
+            ),
+            deadline,
         )
 
-    def submit_retry(self, run_id: str, path: Path | None, evaluation_date: date) -> str:
+    def submit_retry(
+        self, run_id: str, path: Path | None, evaluation_date: date, deadline: float | None = None
+    ) -> str:
         """Queue ``service.retry_run``; a RetryRefused or ProviderUnavailable is raised here."""
         return self.run(
             lambda started: retry_run(
@@ -387,17 +517,19 @@ class RunWorker:
                 events=self._events(),
                 limits=self._settings.limits,
                 on_run_started=started,
-            )
+            ),
+            deadline,
         )
 
-    def run(self, job_fn: RunJob) -> str:
+    def run(self, job_fn: RunJob, deadline: float | None = None) -> str:
         """Run ``job_fn(on_run_started)`` on the worker and return the run id it reports.
 
         A job that starts no run (a repeated approve of a paid version) reports the run id of
         the ``ProcessingResult`` it returns instead.
 
-        The wait covers only the queue: another job holding PROCESSING_LOCK. Past
-        ``run_start_timeout_s`` the queued job is cancelled and the caller gets 503 busy."""
+        The wait covers only the queue: another job holding PROCESSING_LOCK. Past ``deadline``
+        (``time.monotonic()``; default ``run_start_timeout_s`` from now) the queued job is
+        cancelled and the caller gets 503 busy."""
         started: Future[str] = Future()
         cancelled = threading.Event()
 
@@ -420,14 +552,14 @@ class RunWorker:
                     if not started.done():
                         started.set_exception(RuntimeError("processing ended before a run began"))
 
+        if deadline is None:
+            deadline = time.monotonic() + self._settings.run_start_timeout_s
         self._pool.submit(job)
         try:
-            return started.result(timeout=self._settings.run_start_timeout_s)
+            return started.result(timeout=max(0.0, deadline - time.monotonic()))
         except FutureTimeout:
             cancelled.set()
-            raise ApiError(
-                "busy", "Another invoice is still processing. Try again shortly."
-            ) from None
+            raise _busy() from None
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=True, cancel_futures=True)
@@ -468,6 +600,9 @@ def _live_status() -> readiness.LiveStatus:
 
 router = APIRouter(prefix="/api")
 
+# Required on every POST: a custom header makes a browser preflight a cross-origin request.
+IdempotencyKey = Annotated[str, Header(min_length=1, max_length=200)]
+
 
 @router.get("/health", response_model=Health)
 def health() -> Health:
@@ -487,7 +622,7 @@ def get_readiness(request: Request) -> Readiness:
         live_settings_present=live.available,
         live_model=live.model,
         inventory_seeded=set(SEED_ITEMS) <= stock,
-        database_path=str(_settings(request).db_path),
+        database_path=Path(_settings(request).db_path).name,  # never the absolute path
         schema_version=SCHEMA_VERSION,
     )
 
@@ -507,14 +642,55 @@ def _accepted(conn: sqlite3.Connection, run_id: str, replay: bool) -> RunAccepte
     )
 
 
-def _replay(request: Request, key: str | None) -> RunAccepted | None:
-    if not key:
-        return None
+def _busy() -> ApiError:
+    return ApiError("busy", "Another invoice is still processing. Try again shortly.")
+
+
+def _deadline(request: Request) -> float:
+    """One wait budget per request, shared by the idempotency lock and the worker queue."""
+    return time.monotonic() + _settings(request).run_start_timeout_s
+
+
+@contextmanager
+def _locked(deadline: float) -> Iterator[None]:
+    if not _idempotency_lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+        raise _busy()
+    try:
+        yield
+    finally:
+        _idempotency_lock.release()
+
+
+_KEY_REUSED = "This Idempotency-Key was already used for a different request."
+
+
+def _replay(request: Request, key: str, fingerprint: str) -> RunAccepted | None:
+    """The run stored for ``key`` on POST /api/runs, if the request is the same one.
+
+    The stored record holds a fingerprint of (mode, evaluation date, sample name or upload
+    sha256); a different request under the same key is refused (422). Records written before
+    fingerprints existed replay as before."""
     with _db(request) as conn:
         stored = idempotency.lookup(conn, key, RUNS_ENDPOINT)
         if stored is None:
             return None
-        return _accepted(conn, json.loads(stored)["run_id"], replay=True)
+        saved = json.loads(stored)
+        if saved.get("fingerprint", fingerprint) != fingerprint:
+            raise ApiError("idempotency_key_reused", _KEY_REUSED)
+        return _accepted(conn, saved["run_id"], replay=True)
+
+
+def _run_fingerprint(
+    mode: ExecutionMode, evaluation_date: date | None, sample: str | None, sha256: str | None
+) -> str:
+    return _fingerprint(
+        {
+            "mode": mode.value,
+            "evaluation_date": None if evaluation_date is None else evaluation_date.isoformat(),
+            "sample": sample,
+            "sha256": sha256,
+        }
+    )
 
 
 def _bad(message: str, field_name: str) -> ApiError:
@@ -567,6 +743,7 @@ def _store_checked(settings: ApiSettings, upload: uploads.ParsedUpload) -> Path:
 async def _read_upload(request: Request) -> uploads.ParsedUpload:
     """The multipart body of an upload, size-limited like POST /api/runs."""
     settings = _settings(request)
+    _require_multipart(request)
     try:
         return await uploads.read_multipart(
             request, settings.uploads_dir / ".tmp", settings.limits.max_bytes
@@ -582,12 +759,19 @@ def _start_run(
     *,
     mode: ExecutionMode,
     evaluation_date: date | None,
-    key: str | None,
+    key: str,
     sample: str | None = None,
     upload: uploads.ParsedUpload | None = None,
 ) -> RunAccepted:
     settings = _settings(request)
+    deadline = _deadline(request)
+    fingerprint = _run_fingerprint(
+        mode, evaluation_date, sample, None if upload is None else upload.sha256
+    )
     try:
+        replay = _replay(request, key, fingerprint)  # before the lock: a replay never waits
+        if replay is not None:
+            return replay
         get_provider(mode)  # live-mode readiness error surfaces here, before any run exists
         if upload is not None:
             path = _store_checked(settings, upload)
@@ -598,15 +782,15 @@ def _start_run(
             path = resolved
             intake.read_source(path, settings.limits)
         when = evaluation_date or settings.evaluation_date or date.today()
-        with _idempotency_lock:
-            replay = _replay(request, key)
+        with _locked(deadline):
+            replay = _replay(request, key, fingerprint)
             if replay is not None:
                 return replay
-            run_id = request.app.state.worker.submit(path, mode, when)
+            run_id = request.app.state.worker.submit(path, mode, when, deadline)
             with _db(request) as conn:
                 accepted = _accepted(conn, run_id, replay=False)
-                if key:
-                    idempotency.remember(conn, key, RUNS_ENDPOINT, accepted.model_dump_json())
+                record = {"fingerprint": fingerprint, "run_id": run_id}
+                idempotency.remember(conn, key, RUNS_ENDPOINT, json.dumps(record))
             return accepted
     finally:
         if upload is not None:
@@ -624,15 +808,12 @@ def _start_run(
         422: {"model": ErrorBody},
     },
 )
-async def create_run(
-    request: Request,
-    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None,
-) -> RunAccepted:
-    replay = await run_in_threadpool(_replay, request, idempotency_key)
-    if replay is not None:
-        return replay
-    content_type = request.headers.get("content-type", "")
-    if content_type.startswith("multipart/form-data"):
+async def create_run(request: Request, idempotency_key: IdempotencyKey) -> RunAccepted:
+    """Submit a bundled sample (``application/json``) or an upload (``multipart/form-data``);
+    any other Content-Type is 415. The required Idempotency-Key replays the same run for the
+    same request and refuses a different one (422 ``idempotency_key_reused``)."""
+    media = _media_type(request.headers.get("content-type"))
+    if media == "multipart/form-data":
         upload = await _read_upload(request)
         try:
             mode = _parse_mode(upload.fields.get("mode"))
@@ -645,6 +826,8 @@ async def create_run(
                 request, mode=mode, evaluation_date=when, key=idempotency_key, upload=upload
             )
         )
+    if media != "application/json":
+        raise _unsupported("application/json or multipart/form-data")
     try:
         body = RunRequest.model_validate(await request.json())
     except (ValueError, ValidationError) as exc:
@@ -701,9 +884,19 @@ def _run_trigger(request: Request, run_id: str) -> str | None:
     return None if row is None else row["trigger"]
 
 
-def _start_retry(request: Request, run_id: str, action: str, key: str | None) -> RunAccepted:
+def _retry_replay(request: Request, key: str, endpoint: str) -> RunAccepted | None:
+    with _db(request) as conn:
+        stored = idempotency.lookup(conn, key, endpoint)
+        return None if stored is None else _accepted(conn, json.loads(stored)["run_id"], True)
+
+
+def _start_retry(request: Request, run_id: str, action: str, key: str) -> RunAccepted:
     endpoint = f"{RETRY_ENDPOINT}:{run_id}:{action}"
     settings = _settings(request)
+    deadline = _deadline(request)
+    replay = _retry_replay(request, key, endpoint)  # before the lock: a replay never waits
+    if replay is not None:
+        return replay
     path: Path | None
     trigger = _run_trigger(request, run_id)
     if trigger in queries.NO_OFFLINE_TRIGGERS and action != "retry":
@@ -721,15 +914,13 @@ def _start_retry(request: Request, run_id: str, action: str, key: str | None) ->
         path, when = None, settings.evaluation_date or date.today()  # the run keeps its own
     else:
         path, _mode, when = _retry_source(request, run_id)
-    with _idempotency_lock:
-        if key:
-            with _db(request) as conn:
-                stored = idempotency.lookup(conn, key, endpoint)
-                if stored is not None:
-                    return _accepted(conn, json.loads(stored)["run_id"], replay=True)
+    with _locked(deadline):
+        replay = _retry_replay(request, key, endpoint)
+        if replay is not None:
+            return replay
         worker: RunWorker = request.app.state.worker
         if action == "retry":
-            new_run = worker.submit_retry(run_id, path, when)
+            new_run = worker.submit_retry(run_id, path, when, deadline)
         else:
             # Same refusals as a retry (unknown, not failed, wrong file, already paid), and
             # only a live model failure: offline cannot fix a deterministic or offline error.
@@ -739,11 +930,10 @@ def _start_retry(request: Request, run_id: str, action: str, key: str | None) ->
                 _OFFLINE_FIXABLE
             ):
                 raise RetryRefused("not_recoverable", run_id)
-            new_run = worker.submit(path, ExecutionMode.offline, when)
+            new_run = worker.submit(path, ExecutionMode.offline, when, deadline)
         with _db(request) as conn:
             accepted = _accepted(conn, new_run, replay=False)
-            if key:
-                idempotency.remember(conn, key, endpoint, accepted.model_dump_json())
+            idempotency.remember(conn, key, endpoint, accepted.model_dump_json())
         return accepted
 
 
@@ -761,8 +951,9 @@ def _start_retry(request: Request, run_id: str, action: str, key: str | None) ->
 def create_retry(
     run_id: str,
     request: Request,
+    idempotency_key: IdempotencyKey,
     body: RetryRequest | None = None,
-    idempotency_key: Annotated[str | None, Header(min_length=1, max_length=200)] = None,
+    _json: None = RequireJson,
 ) -> RunAccepted:
     """Explicitly retry a recoverable failed run (P3-08). Creates a new linked run; never
     resumes the failed one. Refusals use the RetryRefused reason as the error code."""
@@ -890,18 +1081,26 @@ def _review_action(
     refused (422 ``idempotency_key_reused``)."""
     scope = f"{endpoint}:{invoice_id}"
     fingerprint = _fingerprint(payload)
-    with _idempotency_lock:
+    deadline = _deadline(request)
+
+    def stored_replay() -> JSONResponse | None:
         with _db(request) as conn:
             stored = idempotency.lookup(conn, key, scope)
-            if stored is not None:
-                saved = json.loads(stored)
-                if saved["fingerprint"] != fingerprint:
-                    raise ApiError(
-                        "idempotency_key_reused",
-                        "This Idempotency-Key was already used for a different request.",
-                    )
-                replay = _accepted(conn, saved["run_id"], replay=True)
-                return JSONResponse(replay.model_dump(mode="json"), status_code=saved["status"])
+            if stored is None:
+                return None
+            saved = json.loads(stored)
+            if saved["fingerprint"] != fingerprint:
+                raise ApiError("idempotency_key_reused", _KEY_REUSED)
+            replay = _accepted(conn, saved["run_id"], replay=True)
+            return JSONResponse(replay.model_dump(mode="json"), status_code=saved["status"])
+
+    early = stored_replay()  # before the lock: a replay never waits behind other work
+    if early is not None:
+        return early
+    with _locked(deadline):
+        again = stored_replay()
+        if again is not None:
+            return again
         started: list[str] = []
 
         def job(report: Callable[[str], None]) -> ProcessingResult:
@@ -912,7 +1111,7 @@ def _review_action(
             return act(hook)
 
         try:
-            run_id = request.app.state.worker.run(job)
+            run_id = request.app.state.worker.run(job, deadline)
         except review.ReviewRefused as exc:
             raise _refusal_error(request, exc, invoice_id) from None
         status = 202 if started else 200
@@ -944,8 +1143,6 @@ _REVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorBody, "description": "`busy`: another invoice is processing."},
 }
 
-IdempotencyKey = Annotated[str, Header(min_length=1, max_length=200)]
-
 
 def _events_logger() -> logging.Logger:
     return logging.getLogger(LOGGER_NAME)
@@ -958,7 +1155,11 @@ def _events_logger() -> logging.Logger:
     responses=_REVIEW_RESPONSES,
 )
 def create_correction(
-    invoice_id: str, body: CorrectionBody, request: Request, idempotency_key: IdempotencyKey
+    invoice_id: str,
+    body: CorrectionBody,
+    request: Request,
+    idempotency_key: IdempotencyKey,
+    _json: None = RequireJson,
 ) -> Response:
     """Correct extracted fields with source evidence (``review.submit_correction``): a new
     version is recorded and revalidated by a new run, whose id is returned at once."""
@@ -985,6 +1186,7 @@ def _decision_route(endpoint: str, fn: Callable[..., ProcessingResult]):
         body: ReviewDecisionBody,
         request: Request,
         idempotency_key: IdempotencyKey,
+        _json: None = RequireJson,
     ) -> Response:
         db_path = _settings(request).db_path
         return _review_action(
@@ -1143,13 +1345,10 @@ def source_content(source_id: str, request: Request) -> queries.SourceContent:
     return queries.source_content(record, raw_text, has_original=original is not None)
 
 
-_MEDIA = {
-    "pdf": "application/pdf",
-    "json": "application/json",
-    "xml": "application/xml",
-    "csv": "text/csv",
-    "txt": "text/plain",
-}
+# The original bytes are untrusted (an uploaded .xml can be XHTML with a script). Every
+# response is sandboxed with no sources allowed and never sniffed; only a PDF is shown inline
+# (the UI embeds it); any other format is inert text, downloaded.
+ORIGINAL_CSP = "sandbox; default-src 'none'"
 
 
 @router.get("/sources/{source_id}/original", response_class=FileResponse)
@@ -1159,10 +1358,18 @@ def source_original(source_id: str, request: Request) -> FileResponse:
     original = _locate_original(_settings(request), record)
     if original is None:
         raise queries.NotFound("original_not_found", "The original file is no longer available.")
+    headers = {"Content-Security-Policy": ORIGINAL_CSP, "X-Content-Type-Options": "nosniff"}
+    if record.format.value == "pdf":
+        return FileResponse(
+            original,
+            media_type="application/pdf",
+            headers={**headers, "Content-Disposition": "inline"},
+        )
+    name = uploads.safe_filename(record.original_name)
     return FileResponse(
         original,
-        media_type=_MEDIA.get(record.format.value, "application/octet-stream"),
-        headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"},
+        media_type="text/plain; charset=utf-8",
+        headers={**headers, "Content-Disposition": f'attachment; filename="{name}"'},
     )
 
 
@@ -1180,6 +1387,11 @@ class SpaStaticFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
+def _host_patterns(hosts: tuple[str, ...]) -> list[str]:
+    """Starlette compares the Host name with IPv6 literals still bracketed ("[::1]")."""
+    return [f"[{h}]" if ":" in h and not h.startswith("[") else h for h in hosts]
+
+
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
     settings = settings or ApiSettings()
     ensure_database(Path(settings.db_path))
@@ -1194,12 +1406,15 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     app = FastAPI(title="Invoice Processing API", version="0.1.0", lifespan=_lifespan)
     app.state.settings = settings
     app.state.worker = worker
+    # Outermost last: Host check, then the Origin/body guard, then CORS.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "Idempotency-Key"],
     )
+    app.add_middleware(LocalRequestGuard, allowed_origins=tuple(settings.cors_origins))
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_host_patterns(settings.allowed_hosts))
     _install_error_handlers(app)
     app.include_router(router)
     dist = Path(settings.frontend_dist)

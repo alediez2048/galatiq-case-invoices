@@ -3,6 +3,7 @@
 import ast
 import io
 import time
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -16,17 +17,21 @@ from invoice_processing.service import process_invoice
 SAMPLES = Path("data/invoices")
 EVAL = date(2026, 1, 31)
 MiB = 1024 * 1024
+# TestClient sends ``Host: testserver``; the app trusts loopback names only unless told.
+TEST_HOSTS = ("127.0.0.1", "localhost", "::1", "testserver")
 
 
 @pytest.fixture
 def settings(tmp_path) -> api.ApiSettings:
-    return api.ApiSettings(
+    s = api.ApiSettings(
         db_path=tmp_path / "api.db",
         uploads_dir=tmp_path / "uploads",
         samples_dir=SAMPLES,
         frontend_dist=tmp_path / "no-dist",
         evaluation_date=EVAL,
     )
+    s.allowed_hosts = TEST_HOSTS
+    return s
 
 
 @pytest.fixture
@@ -47,7 +52,7 @@ def wait_done(client, run_id, timeout=30.0) -> dict:
 
 
 def submit(client, sample, mode="offline", key=None, **extra):
-    headers = {"Idempotency-Key": key} if key else {}
+    headers = {"Idempotency-Key": key or str(uuid.uuid4())}
     return client.post("/api/runs", json={"sample": sample, "mode": mode, **extra}, headers=headers)
 
 
@@ -74,7 +79,7 @@ def test_readiness_without_live_key_exposes_only_availability(client, settings, 
     assert body["modes"]["live"]["available"] is False
     assert body["live_settings_present"] is False
     assert body["inventory_seeded"] is True
-    assert body["database_path"] == str(settings.db_path)
+    assert body["database_path"] == settings.db_path.name
     assert set(body) == {
         "modes",
         "live_settings_present",
@@ -247,7 +252,10 @@ def test_sample_name_must_be_a_listed_basename(client, name):
 
 
 def test_mode_is_required_and_validated(client):
-    assert client.post("/api/runs", json={"sample": "invoice_1001.txt"}).status_code == 422
+    no_mode = client.post(
+        "/api/runs", json={"sample": "invoice_1001.txt"}, headers={"Idempotency-Key": "k"}
+    )
+    assert no_mode.status_code == 422
     assert submit(client, "invoice_1001.txt", mode="turbo").status_code == 422
     assert submit(client, "invoice_1001.txt", evaluation_date="31/01/2026").status_code == 422
 
@@ -267,11 +275,12 @@ def test_evaluation_date_is_honoured(client):
     assert done["result"]["evaluation_date"] == "2026-01-10"
 
 
-def multipart(client, name, data: bytes, mode="offline", **kw):
+def multipart(client, name, data: bytes, mode="offline", key=None, **kw):
     return client.post(
         "/api/runs",
         files={"file": (name, io.BytesIO(data), "text/plain")},
         data={"mode": mode},
+        headers={"Idempotency-Key": key or str(uuid.uuid4())},
         **kw,
     )
 
@@ -437,7 +446,8 @@ def test_source_content_txt_has_line_anchors(client):
     done = process(client, "invoice_1001.txt")[0]
     src = done["source"]["source_id"]
     body = client.get(f"/api/sources/{src}/content").json()
-    assert body["format"] == "txt" and body["original_url"] == f"/api/sources/{src}/original"
+    # Only a PDF is previewed from its original bytes; other formats show extracted text.
+    assert body["format"] == "txt" and body["original_url"] is None
     lines = {ln["anchor"]: ln["text"] for ln in body["lines"]}
     assert lines["line:1"] == "INVOICE" and "Vendor: Widgets Inc." in lines["line:3"]
     assert body["rows"] is None
@@ -703,7 +713,7 @@ def _failed_live_run(client, live, sample="invoice_1001.txt") -> dict:
 
 
 def retry(client, run_id, key=None, **body):
-    headers = {"Idempotency-Key": key} if key else {}
+    headers = {"Idempotency-Key": key or str(uuid.uuid4())}
     return client.post(f"/api/runs/{run_id}/retry", json=body or None, headers=headers)
 
 

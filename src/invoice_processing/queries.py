@@ -713,7 +713,7 @@ class SourceContent(ApiModel):
     page_count: int | None = None
     lines: list[SourceLine]
     rows: list[SourceRow] | None = None
-    original_url: str | None = None  # set when the original bytes are available for preview
+    original_url: str | None = None  # a PDF whose original bytes are available for preview
     preview_limitation: str | None = None  # why the readable view may differ from the original
 
 
@@ -781,7 +781,13 @@ def source_content(record: SourceRecord, raw_text: str | None, has_original: boo
         page_count=page_count,
         lines=lines,
         rows=rows,
-        original_url=f"/api/sources/{record.source_id}/original" if has_original else None,
+        # Only a PDF is previewed from its original bytes (the UI embeds it); other formats
+        # show the extracted text, so no link to their untrusted original is handed out.
+        original_url=(
+            f"/api/sources/{record.source_id}/original"
+            if has_original and record.format is SourceFormat.pdf
+            else None
+        ),
         preview_limitation=(
             PDF_PREVIEW_LIMITATION
             if record.format is SourceFormat.pdf

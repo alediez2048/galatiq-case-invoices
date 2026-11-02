@@ -9,10 +9,12 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from python_multipart.exceptions import MultipartParseError
 from python_multipart.multipart import MultipartParser, parse_options_header
 from starlette.requests import Request
 
 MAX_FIELD_BYTES = 4096
+MAX_PARTS = 16  # the forms here have at most six fields and one file
 ENVELOPE_ALLOWANCE = 1024 * 1024  # multipart framing and text fields on top of the file cap
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -49,8 +51,10 @@ def safe_filename(name: str | None) -> str:
 async def read_multipart(request: Request, temp_dir: Path, max_bytes: int) -> ParsedUpload:
     """Parse a multipart body chunk by chunk, writing the first file part to ``temp_dir``.
 
-    Raises UploadTooLarge as soon as the file part passes ``max_bytes`` (or the declared
-    Content-Length is clearly over it) and deletes the partial file.
+    Raises UploadTooLarge as soon as the file part passes ``max_bytes``, the whole body passes
+    ``max_bytes + ENVELOPE_ALLOWANCE`` (ignored parts count too), or the declared
+    Content-Length is clearly over it, and deletes the partial file. A malformed body or more
+    than ``MAX_PARTS`` parts is a BadUpload.
     """
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > max_bytes + ENVELOPE_ALLOWANCE:
@@ -66,6 +70,9 @@ async def read_multipart(request: Request, temp_dir: Path, max_bytes: int) -> Pa
     digest = hashlib.sha256()
 
     def on_part_begin() -> None:
+        state["parts"] = state.get("parts", 0) + 1
+        if state["parts"] > MAX_PARTS:
+            raise BadUpload(f"more than {MAX_PARTS} form fields")
         state.update(header=b"", value=b"", headers={}, sink=None, name=None)
 
     def on_header_field(data: bytes, start: int, end: int) -> None:
@@ -133,10 +140,17 @@ async def read_multipart(request: Request, temp_dir: Path, max_bytes: int) -> Pa
             "on_part_end": on_part_end,
         },
     )
+    received = 0
     try:
-        async for chunk in request.stream():
-            parser.write(chunk)
-        parser.finalize()
+        try:
+            async for chunk in request.stream():
+                received += len(chunk)
+                if received > max_bytes + ENVELOPE_ALLOWANCE:
+                    raise UploadTooLarge(max_bytes)
+                parser.write(chunk)
+            parser.finalize()
+        except MultipartParseError:
+            raise BadUpload("The upload is not a valid multipart/form-data body.") from None
     except BaseException:
         sink = state["sink"]
         if sink is not None and not isinstance(sink, bytearray):

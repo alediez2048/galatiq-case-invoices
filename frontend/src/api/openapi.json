@@ -3541,24 +3541,18 @@
     },
     "/api/runs": {
       "post": {
+        "description": "Submit a bundled sample (``application/json``) or an upload (``multipart/form-data``);\nany other Content-Type is 415. The required Idempotency-Key replays the same run for the\nsame request and refuses a different one (422 ``idempotency_key_reused``).",
         "operationId": "create_run_api_runs_post",
         "parameters": [
           {
             "in": "header",
             "name": "idempotency-key",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 200,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
             }
           }
         ],
@@ -3727,19 +3721,12 @@
           {
             "in": "header",
             "name": "idempotency-key",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 200,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
             }
           }
         ],

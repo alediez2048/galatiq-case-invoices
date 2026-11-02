@@ -203,7 +203,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Run */
+        /**
+         * Create Run
+         * @description Submit a bundled sample (``application/json``) or an upload (``multipart/form-data``);
+         *     any other Content-Type is 415. The required Idempotency-Key replays the same run for the
+         *     same request and refuses a different one (422 ``idempotency_key_reused``).
+         */
         post: operations["create_run_api_runs_post"];
         delete?: never;
         options?: never;
@@ -1628,8 +1633,8 @@ export interface operations {
     create_run_api_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "idempotency-key"?: string | null;
+            header: {
+                "idempotency-key": string;
             };
             path?: never;
             cookie?: never;
@@ -1726,8 +1731,8 @@ export interface operations {
     create_retry_api_runs__run_id__retry_post: {
         parameters: {
             query?: never;
-            header?: {
-                "idempotency-key"?: string | null;
+            header: {
+                "idempotency-key": string;
             };
             path: {
                 run_id: string;

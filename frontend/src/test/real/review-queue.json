@@ -9,7 +9,7 @@
             "decline"
           ],
           "current_version": 1,
-          "invoice_id": "inv-a8bbccd7916948d1ad24fdca30ebe9f6",
+          "invoice_id": "inv-ed7556eb6d164f56bc4aa0b0a9939e0f",
           "refused": {
             "submit_corrected": "action_not_allowed"
           },
@@ -17,7 +17,7 @@
         },
         "currency": "USD",
         "current_version": 1,
-        "invoice_id": "inv-a8bbccd7916948d1ad24fdca30ebe9f6",
+        "invoice_id": "inv-ed7556eb6d164f56bc4aa0b0a9939e0f",
         "invoice_number": "TH-10000-01",
         "reason_codes": [],
         "status": "awaiting_human_approval",
